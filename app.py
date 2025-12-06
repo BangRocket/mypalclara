@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from db import init_db, SessionLocal
 from models import Project
-from memory_manager import MemoryManager
+from memory_manager import MemoryManager, load_initial_profile
 from llm_backends import make_llm
 
 load_dotenv()
@@ -24,6 +24,7 @@ def init() -> None:
     init_db()
     llm = make_llm()
     mm = MemoryManager(llm_callable=llm)
+    load_initial_profile(USER_ID)
 
 
 def get_projects() -> list[str]:

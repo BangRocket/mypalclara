@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session as OrmSession
@@ -12,6 +13,49 @@ from mem0_config import MEM0
 SESSION_IDLE_MINUTES = 30
 CARRYOVER_MESSAGE_COUNT = 10
 BUFFER_MESSAGE_COUNT = 20
+
+# Paths for initial profile loading
+BASE_DIR = Path(__file__).parent
+USER_PROFILE_PATH = BASE_DIR / "user_profile.txt"
+PROFILE_LOADED_FLAG = BASE_DIR / "mem0_data" / ".profile_loaded"
+
+
+def load_initial_profile(user_id: str) -> None:
+    """Load initial user profile into mem0 once on first run."""
+    if MEM0 is None:
+        print("[mem0] Skipping profile load - mem0 not available")
+        return
+
+    if PROFILE_LOADED_FLAG.exists():
+        return
+
+    if not USER_PROFILE_PATH.exists():
+        print("[mem0] No user_profile.txt found, skipping initial load")
+        return
+
+    try:
+        profile_text = USER_PROFILE_PATH.read_text()
+        # Break into paragraphs and add each as a separate conversation
+        paragraphs = [p.strip() for p in profile_text.split("\n\n") if p.strip()]
+        total_memories = 0
+
+        for para in paragraphs:
+            # Frame as a conversation so mem0 can extract facts
+            messages = [
+                {"role": "user", "content": f"Remember this about me: {para}"},
+                {"role": "assistant", "content": "I've noted that information about you."},
+            ]
+            result = MEM0.add(messages, user_id=user_id)
+            count = len(result.get("results", []))
+            total_memories += count
+            if count > 0:
+                print(f"[mem0] Extracted {count} memories from paragraph")
+
+        PROFILE_LOADED_FLAG.parent.mkdir(parents=True, exist_ok=True)
+        PROFILE_LOADED_FLAG.write_text("loaded")
+        print(f"[mem0] Initial profile loaded: {total_memories} total memories")
+    except Exception as e:
+        print(f"[mem0] Error loading initial profile: {e}")
 
 
 class MemoryManager:
