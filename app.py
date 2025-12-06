@@ -10,21 +10,30 @@ from models import Project
 from memory_manager import MemoryManager
 from llm_backends import make_llm
 
-# Load .env
 load_dotenv()
 
 USER_ID = os.getenv("USER_ID", "demo-user")
 DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
 
+mm: MemoryManager = None
+current_project: str = DEFAULT_PROJECT
 
-def init() -> MemoryManager:
+
+def init() -> None:
+    global mm
     init_db()
     llm = make_llm()
     mm = MemoryManager(llm_callable=llm)
-    return mm
 
 
-mm = init()
+def get_projects() -> list[str]:
+    """Get list of existing projects for the user."""
+    db = SessionLocal()
+    try:
+        projects = db.query(Project).filter_by(owner_id=USER_ID).all()
+        return [p.name for p in projects] or [DEFAULT_PROJECT]
+    finally:
+        db.close()
 
 
 def ensure_project(name: str) -> str:
@@ -45,28 +54,53 @@ def ensure_project(name: str) -> str:
         db.close()
 
 
-def chat_fn(message: str, history, project_name: str):
-    project_id = ensure_project(project_name or DEFAULT_PROJECT)
+def set_project(name: str):
+    global current_project
+    current_project = name or DEFAULT_PROJECT
+    return name
+
+
+def chat_fn(message: str, history: list):
+    if not message.strip():
+        return ""
+    project_id = ensure_project(current_project)
     reply = mm.handle_message(USER_ID, project_id, message)
     return reply
 
 
 def main():
-    with gr.Blocks() as demo:
-        gr.Markdown(
-            "# Clara / Mara Assistant\nSession-based chat with mem0 memory.")
+    init()
 
-        project_name = gr.Textbox(
-            label="Project",
-            value=DEFAULT_PROJECT,
-            info="Use a different name per topic to segment memory.",
-        )
+    css = """
+    footer {display: none !important;}
+    .gradio-container {max-width: 900px !important;}
+    """
+
+    with gr.Blocks(css=css, title="Mara", theme=gr.themes.Soft()) as demo:
+        with gr.Row():
+            gr.Markdown("## Mara")
+            project_dropdown = gr.Dropdown(
+                choices=get_projects(),
+                value=DEFAULT_PROJECT,
+                label="Project",
+                allow_custom_value=True,
+                interactive=True,
+                scale=2,
+            )
+
+        project_dropdown.change(set_project, inputs=[project_dropdown])
 
         gr.ChatInterface(
-            fn=lambda msg, hist: chat_fn(msg, hist, project_name.value),
-            title="Clara",
-            textbox=gr.Textbox(placeholder="Type your message here..."),
-            type="messages",
+            fn=chat_fn,
+            chatbot=gr.Chatbot(
+                height=500,
+                show_copy_button=True,
+                type="tuples",
+            ),
+            textbox=gr.Textbox(
+                placeholder="Message Mara...",
+                container=False,
+            ),
         )
 
     demo.launch()
