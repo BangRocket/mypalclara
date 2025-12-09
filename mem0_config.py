@@ -81,4 +81,11 @@ config = {
 print(f"[mem0] LLM_PROVIDER env var: {LLM_PROVIDER}")
 print(f"[mem0] LLM config: {llm_config}")
 
-MEM0 = Memory.from_config(config)
+# Initialize mem0 - make it optional so app can start even if mem0 fails
+try:
+    MEM0 = Memory.from_config(config)
+    print("[mem0] Memory initialized successfully")
+except Exception as e:
+    print(f"[mem0] WARNING: Failed to initialize Memory: {e}")
+    print("[mem0] App will run without memory features")
+    MEM0 = None

@@ -4,7 +4,9 @@ import type {
 } from "@assistant-ui/react";
 import { createAssistantStream } from "assistant-stream";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+// Use relative URL - Next.js rewrites will proxy to backend
+// This avoids CORS issues entirely
+const BACKEND_URL = "";
 
 // Types for message content parts
 type ContentPart = { type: string; text?: string };

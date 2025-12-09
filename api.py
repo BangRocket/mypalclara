@@ -37,18 +37,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors()},
     )
 
-# CORS for frontend
+# CORS for frontend - allow all origins in Docker for LAN access
+# You can restrict this by setting CORS_ORIGINS env var (comma-separated)
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+if cors_origins_env:
+    cors_origins = [o.strip() for o in cors_origins_env.split(",")]
+    allow_creds = True
+else:
+    # Default: allow all origins for easier LAN access
+    # Note: credentials must be False when using wildcard origins
+    cors_origins = ["*"]
+    allow_creds = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3434",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3434",
-        "http://192.168.0.63:3000",
-        "http://192.168.0.63:3434",
-    ],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,0 +1,102 @@
+# Combined Dockerfile for Clara (Backend + Frontend)
+# Uses supervisord to run both services in one container
+
+FROM python:3.12-slim AS python-base
+
+# Install system dependencies including Node.js
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    supervisor \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ============ Python Backend ============
+# Install Poetry and Python dependencies
+RUN pip install poetry
+
+COPY pyproject.toml poetry.lock* ./
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main --no-interaction --no-ansi
+
+# Copy backend code
+COPY *.py ./
+COPY user_profile.txt* ./
+
+# Create data directory
+RUN mkdir -p /data
+ENV DATA_DIR=/data
+
+# ============ Node.js Frontend ============
+WORKDIR /app/frontend
+
+# Copy frontend package files and install
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build frontend - uses relative URLs now (proxied via Next.js rewrites)
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV BACKEND_URL=http://localhost:8000
+RUN npm run build
+
+# ============ Setup ============
+WORKDIR /app
+
+# Copy static files for standalone server
+RUN cp -r /app/frontend/public /app/frontend/.next/standalone/public 2>/dev/null || true
+RUN cp -r /app/frontend/.next/static /app/frontend/.next/standalone/.next/static
+
+# Create wait script for frontend to wait for backend
+RUN echo '#!/bin/bash' > /app/start-frontend.sh && \
+    echo 'echo "Waiting for backend to be ready..."' >> /app/start-frontend.sh && \
+    echo 'while ! curl -sf http://localhost:8000/api/projects > /dev/null 2>&1; do' >> /app/start-frontend.sh && \
+    echo '  sleep 1' >> /app/start-frontend.sh && \
+    echo 'done' >> /app/start-frontend.sh && \
+    echo 'echo "Backend is ready, starting frontend..."' >> /app/start-frontend.sh && \
+    echo 'exec node /app/frontend/.next/standalone/server.js' >> /app/start-frontend.sh && \
+    chmod +x /app/start-frontend.sh
+
+# Create supervisord config
+RUN mkdir -p /var/log/supervisor && \
+    echo '[supervisord]' > /etc/supervisor/conf.d/clara.conf && \
+    echo 'nodaemon=true' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisor/conf.d/clara.conf && \
+    echo '' >> /etc/supervisor/conf.d/clara.conf && \
+    echo '[program:backend]' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'command=uvicorn api:app --host 0.0.0.0 --port 8000' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'directory=/app' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'autostart=true' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'priority=10' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/clara.conf && \
+    echo '' >> /etc/supervisor/conf.d/clara.conf && \
+    echo '[program:frontend]' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'command=/app/start-frontend.sh' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'directory=/app' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'environment=PORT=3000,HOSTNAME="0.0.0.0",BACKEND_URL="http://localhost:8000"' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'autostart=true' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'priority=20' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/clara.conf && \
+    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/clara.conf
+
+# Expose both ports
+EXPOSE 3000 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/api/projects && curl -f http://localhost:3000/ || exit 1
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

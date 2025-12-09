@@ -1,0 +1,44 @@
+services:
+  clara:
+    image: ${REGISTRY:-}clara:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.combined
+    container_name: clara
+    ports:
+      - "3434:3000"   # Frontend
+      - "8484:8000"   # Backend API (optional, can remove if only accessing via frontend)
+    environment:
+      # LLM Provider
+      - LLM_PROVIDER=${LLM_PROVIDER:-nanogpt}
+      # OpenRouter
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-moonshotai/kimi-k2-0905}
+      - OPENROUTER_SITE=${OPENROUTER_SITE:-http://localhost:3000}
+      - OPENROUTER_TITLE=${OPENROUTER_TITLE:-Clara Assistant}
+      # NanoGPT
+      - NANOGPT_API_KEY=${NANOGPT_API_KEY}
+      - NANOGPT_MODEL=${NANOGPT_MODEL:-moonshotai/Kimi-K2-Instruct-0905}
+      - NANOGPT_MEM0_MODEL=${NANOGPT_MEM0_MODEL:-openai/gpt-oss-120b}
+      # OpenAI (for embeddings)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # User config
+      - USER_ID=${USER_ID:-demo-user}
+      - DEFAULT_PROJECT=${DEFAULT_PROJECT:-Default Project}
+    volumes:
+      - clara-data:/data
+      - ./user_profile.txt:/app/user_profile.txt:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/projects"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  clara-data:
+
+networks:
+  default:
+    name: clara-network

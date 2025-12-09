@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -23,6 +24,12 @@ PROFILE_LOADED_FLAG = BASE_DIR / ".profile_loaded"
 
 def load_initial_profile(user_id: str) -> None:
     """Load initial user profile into mem0 once on first run."""
+    # Skip profile loading for now - can be re-enabled once mem0/LLM is stable
+    skip_profile = os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true"
+    if skip_profile:
+        print("[mem0] Profile loading disabled (SKIP_PROFILE_LOAD=true)")
+        return
+
     if MEM0 is None:
         print("[mem0] Skipping profile load - mem0 not available")
         return

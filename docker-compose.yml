@@ -1,5 +1,6 @@
 services:
   backend:
+    image: ${REGISTRY:-}clara-backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -35,6 +36,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: ${REGISTRY:-}clara-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
