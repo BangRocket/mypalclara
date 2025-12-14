@@ -254,52 +254,191 @@ def load_existing_memories(output_dir: Path) -> dict:
     return existing
 
 
+def group_memories_for_graph(memories: dict) -> list[dict]:
+    """
+    Group related memories into relationship-rich conversations for better graph extraction.
+    Returns a list of conversation groups with metadata.
+    """
+    groups = []
+
+    # Group 1: Core identity and family relationships
+    family_items = []
+    bio_items = memories.get("profile_bio", [])
+    for item in bio_items:
+        if any(k in item["key"] for k in ["name", "family", "location"]):
+            family_items.append(item)
+
+    if family_items:
+        # Build a relationship-rich statement
+        facts = [item["value"] for item in family_items]
+        content = "Here's information about me and my family: " + ". ".join(facts)
+        groups.append({
+            "namespace": "profile_bio",
+            "category": "identity_and_family",
+            "content": content,
+            "items": family_items,
+        })
+
+    # Group 2: Career and skills
+    career_items = [item for item in bio_items if any(k in item["key"] for k in ["career", "skill"])]
+    if career_items:
+        facts = [item["value"] for item in career_items]
+        content = "About my career and skills: " + ". ".join(facts)
+        groups.append({
+            "namespace": "profile_bio",
+            "category": "career",
+            "content": content,
+            "items": career_items,
+        })
+
+    # Group 3: Interaction preferences (as a cohesive set)
+    style_items = memories.get("interaction_style", [])
+    if style_items:
+        facts = [item["value"] for item in style_items]
+        content = "My preferences for how Clara should interact with me: " + ". ".join(facts)
+        groups.append({
+            "namespace": "interaction_style",
+            "category": "preferences",
+            "content": content,
+            "items": style_items,
+        })
+
+    # Group 4: Project seed principles
+    seed_items = memories.get("project_seed", [])
+    if seed_items:
+        facts = [item["value"] for item in seed_items]
+        content = "Core principles for how the assistant should operate: " + ". ".join(facts)
+        groups.append({
+            "namespace": "project_seed",
+            "category": "principles",
+            "content": content,
+            "items": seed_items,
+        })
+
+    # Group 5: Creative projects - group by project
+    creative_items = memories.get("project_context:creative_portfolio", [])
+    project_groups = {}
+    other_creative = []
+
+    for item in creative_items:
+        key = item["key"]
+        if key.startswith("project."):
+            # Extract project name (e.g., "project.midnight_hunters.concept" -> "midnight_hunters")
+            parts = key.split(".")
+            if len(parts) >= 2:
+                proj_name = parts[1]
+                if proj_name not in project_groups:
+                    project_groups[proj_name] = []
+                project_groups[proj_name].append(item)
+        else:
+            other_creative.append(item)
+
+    # Add each project as a group
+    for proj_name, items in project_groups.items():
+        facts = [item["value"] for item in items]
+        display_name = proj_name.replace("_", " ").title()
+        content = f"About my game project '{display_name}': " + ". ".join(facts)
+        groups.append({
+            "namespace": "project_context:creative_portfolio",
+            "category": f"project_{proj_name}",
+            "content": content,
+            "items": items,
+        })
+
+    # Other creative preferences
+    if other_creative:
+        facts = [item["value"] for item in other_creative]
+        content = "My creative preferences and interests: " + ". ".join(facts)
+        groups.append({
+            "namespace": "project_context:creative_portfolio",
+            "category": "preferences",
+            "content": content,
+            "items": other_creative,
+        })
+
+    # Group 6: Sensitive/mental health - flag but include
+    sensitive_items = memories.get("restricted:sensitive", [])
+    if sensitive_items:
+        facts = [item["value"] for item in sensitive_items]
+        content = "Personal context about my mental health and challenges: " + ". ".join(facts)
+        groups.append({
+            "namespace": "restricted:sensitive",
+            "category": "mental_health",
+            "content": content,
+            "items": sensitive_items,
+            "sensitive": True,  # Flag it
+        })
+
+    return groups
+
+
 def apply_to_mem0(memories: dict, user_id: str, dry_run: bool = False):
-    """Upsert memories to mem0."""
+    """Upsert memories to mem0 with relationship-rich grouping for graph extraction."""
     from mem0_config import MEM0
 
     if MEM0 is None:
         print("[bootstrap] Error: mem0 is not initialized")
         return
 
+    # Group memories for better graph extraction
+    groups = group_memories_for_graph(memories)
+
     total_added = 0
-    total_updated = 0
+    total_relations = 0
 
-    for namespace, items in memories.items():
-        print(f"\n[bootstrap] Processing namespace: {namespace}")
+    for group in groups:
+        namespace = group["namespace"]
+        category = group["category"]
+        content = group["content"]
+        is_sensitive = group.get("sensitive", False)
 
-        for item in items:
-            memory_id = f"{namespace}:{item['key']}"
-            memory_text = item["value"]
-            metadata = {
-                "namespace": namespace,
-                "key": item["key"],
-                "confidence": item["confidence"],
-                "source": "user_profile.txt",
-                "bootstrap": True,
-            }
+        metadata = {
+            "namespace": namespace,
+            "category": category,
+            "source": "user_profile.txt",
+            "bootstrap": True,
+            "sensitive": is_sensitive,
+        }
 
-            if dry_run:
-                print(f"  [DRY RUN] Would upsert: {memory_id}")
-                continue
+        # Add confidence from items
+        items = group.get("items", [])
+        if items:
+            avg_confidence = sum(i["confidence"] for i in items) / len(items)
+            metadata["confidence"] = round(avg_confidence, 2)
 
-            # Add memory with metadata
-            try:
-                result = MEM0.add(
-                    [{"role": "user", "content": f"Remember: {memory_text}"}],
-                    user_id=user_id,
-                    metadata=metadata,
-                )
+        if dry_run:
+            print(f"  [DRY RUN] Would add group: {namespace}/{category} ({len(items)} items)")
+            continue
 
-                added = len(result.get("results", []))
-                if added > 0:
-                    total_added += added
-                    print(f"  Added: {memory_id}")
-            except Exception as e:
-                print(f"  Error adding {memory_id}: {e}")
+        # Add as a conversation for rich graph extraction
+        try:
+            messages = [
+                {"role": "user", "content": content},
+                {"role": "assistant", "content": f"I've noted this information about {category.replace('_', ' ')}."}
+            ]
+
+            result = MEM0.add(
+                messages,
+                user_id=user_id,
+                metadata=metadata,
+            )
+
+            added = len(result.get("results", []))
+            relations = result.get("relations", {})
+            added_entities = relations.get("added_entities", [])
+            relation_count = sum(len(e) for e in added_entities if isinstance(e, list))
+
+            total_added += added
+            total_relations += relation_count
+
+            sensitive_tag = " [SENSITIVE]" if is_sensitive else ""
+            print(f"  Added {namespace}/{category}: {added} memories, {relation_count} relations{sensitive_tag}")
+
+        except Exception as e:
+            print(f"  Error adding {namespace}/{category}: {e}")
 
     if not dry_run:
-        print(f"\n[bootstrap] Total memories added: {total_added}")
+        print(f"\n[bootstrap] Total: {total_added} memories, {total_relations} graph relations")
 
 
 def consolidate_memories(memories: dict) -> dict:
