@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session as OrmSession
 
-from db import SessionLocal
-from models import Session, Message
 from mem0_config import MEM0
+from models import Message, Session
 
 # How many messages to include in context
 CONTEXT_MESSAGE_COUNT = 20
@@ -19,11 +17,62 @@ SUMMARY_INTERVAL = 10
 # Paths for initial profile loading
 BASE_DIR = Path(__file__).parent
 USER_PROFILE_PATH = BASE_DIR / "inputs" / "user_profile.txt"
+GENERATED_DIR = BASE_DIR / "generated"
 PROFILE_LOADED_FLAG = BASE_DIR / ".profile_loaded"
 
 
+def _has_generated_memories() -> bool:
+    """Check if generated memory JSON files exist."""
+    if not GENERATED_DIR.exists():
+        return False
+    # Check for at least one memory file
+    memory_files = ["profile_bio.json", "interaction_style.json", "project_seed.json"]
+    return any((GENERATED_DIR / f).exists() for f in memory_files)
+
+
+def _generate_memories_from_profile() -> dict | None:
+    """Generate structured memories from user_profile.txt using LLM extraction."""
+    if not USER_PROFILE_PATH.exists():
+        print("[mem0] No user_profile.txt found, cannot generate memories")
+        return None
+
+    # Import bootstrap functions lazily to avoid circular imports
+    from src.bootstrap_memory import (
+        consolidate_memories,
+        extract_memories_with_llm,
+        validate_memories,
+        write_json_files,
+    )
+
+    print("[mem0] Generating memories from user_profile.txt...")
+    try:
+        profile_text = USER_PROFILE_PATH.read_text()
+
+        # Extract, validate, consolidate
+        raw_memories = extract_memories_with_llm(profile_text)
+        memories = validate_memories(raw_memories)
+        memories = consolidate_memories(memories)
+
+        # Write JSON files
+        write_json_files(memories, GENERATED_DIR)
+
+        return memories
+    except Exception as e:
+        print(f"[mem0] Error generating memories: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None
+
+
 def load_initial_profile(user_id: str) -> None:
-    """Load initial user profile into mem0 once on first run."""
+    """Load initial user profile into mem0 once on first run.
+
+    Uses the bootstrap pipeline:
+    1. If generated/*.json files exist, load from them
+    2. If not, generate from inputs/user_profile.txt first
+    3. Apply structured memories to mem0 with graph-friendly grouping
+    """
     skip_profile = os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true"
     if skip_profile:
         print("[mem0] Profile loading disabled (SKIP_PROFILE_LOAD=true)")
@@ -37,37 +86,41 @@ def load_initial_profile(user_id: str) -> None:
         print("[mem0] Profile already loaded (flag exists), skipping")
         return
 
+    # Import bootstrap functions lazily
+    from src.bootstrap_memory import (
+        apply_to_mem0,
+        load_existing_memories,
+    )
+
+    # Check for existing generated files, or generate them
+    if _has_generated_memories():
+        print("[mem0] Loading from existing generated/*.json files...")
+        memories = load_existing_memories(GENERATED_DIR)
+    else:
+        print("[mem0] No generated files found, extracting from profile...")
+        memories = _generate_memories_from_profile()
+        if not memories:
+            print("[mem0] Could not generate memories, skipping profile load")
+            return
+
+    # Create flag to prevent duplicate loads
     print("[mem0] Creating flag file to prevent duplicate loads...")
     try:
-        PROFILE_LOADED_FLAG.write_text(f"loading started at {datetime.now().isoformat()}")
+        PROFILE_LOADED_FLAG.write_text(
+            f"loading started at {datetime.now().isoformat()}"
+        )
     except Exception as e:
         print(f"[mem0] ERROR: Could not create flag file: {e}")
 
-    if not USER_PROFILE_PATH.exists():
-        print("[mem0] No user_profile.txt found, skipping initial load")
-        return
-
-    print("[mem0] Loading initial user profile...")
+    # Apply to mem0
     try:
-        profile_text = USER_PROFILE_PATH.read_text()
-        paragraphs = [p.strip() for p in profile_text.split("\n\n") if p.strip()]
-        total_memories = 0
-
-        for i, para in enumerate(paragraphs):
-            messages = [
-                {"role": "user", "content": f"Remember this about me: {para}"},
-                {"role": "assistant", "content": "I've noted that information about you."},
-            ]
-            result = MEM0.add(messages, user_id=user_id)
-            count = len(result.get("results", []))
-            total_memories += count
-            print(f"[mem0] Paragraph {i+1}/{len(paragraphs)}: extracted {count} memories")
-
+        apply_to_mem0(memories, user_id)
         PROFILE_LOADED_FLAG.write_text(f"completed at {datetime.now().isoformat()}")
-        print(f"[mem0] Initial profile loaded: {total_memories} total memories")
+        print("[mem0] Profile loaded successfully")
     except Exception as e:
-        print(f"[mem0] Error loading initial profile: {e}")
+        print(f"[mem0] Error applying memories to mem0: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -77,11 +130,11 @@ class MemoryManager:
 
     # ---------- Thread/Message helpers ----------
 
-    def get_thread(self, db: OrmSession, thread_id: str) -> Optional[Session]:
+    def get_thread(self, db: OrmSession, thread_id: str) -> Session | None:
         """Get a thread by ID."""
         return db.query(Session).filter_by(id=thread_id).first()
 
-    def get_recent_messages(self, db: OrmSession, thread_id: str) -> List[Message]:
+    def get_recent_messages(self, db: OrmSession, thread_id: str) -> list[Message]:
         """Get recent messages from a thread."""
         msgs = (
             db.query(Message)
@@ -105,12 +158,7 @@ class MemoryManager:
         content: str,
     ) -> Message:
         """Store a message in a thread."""
-        msg = Message(
-            session_id=thread_id,
-            user_id=user_id,
-            role=role,
-            content=content
-        )
+        msg = Message(session_id=thread_id, user_id=user_id, role=role, content=content)
         db.add(msg)
         db.commit()
         db.refresh(msg)
@@ -137,7 +185,8 @@ class MemoryManager:
             return ""
 
         conversation = "\n".join(
-            f"{m.role.upper()}: {m.content[:500]}" for m in all_msgs[-30:]  # Last 30 messages
+            f"{m.role.upper()}: {m.content[:500]}"
+            for m in all_msgs[-30:]  # Last 30 messages
         )
 
         summary_prompt = [
@@ -158,7 +207,7 @@ class MemoryManager:
 
     def fetch_mem0_context(
         self, user_id: str, project_id: str, user_message: str
-    ) -> Tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         """Fetch relevant memories from mem0."""
         if MEM0 is None:
             return [], []
@@ -183,14 +232,16 @@ class MemoryManager:
                     user_mems.append(mem_text)
 
         if user_mems or proj_mems:
-            print(f"[mem0] Found {len(user_mems)} user memories, {len(proj_mems)} project memories")
+            print(
+                f"[mem0] Found {len(user_mems)} user memories, {len(proj_mems)} project memories"
+            )
         return user_mems, proj_mems
 
     def add_to_mem0(
         self,
         user_id: str,
         project_id: str,
-        recent_msgs: List[Message],
+        recent_msgs: list[Message],
         user_message: str,
         assistant_reply: str,
     ) -> None:
@@ -199,8 +250,7 @@ class MemoryManager:
             return
 
         history_slice = [
-            {"role": m.role, "content": m.content}
-            for m in recent_msgs[-4:]
+            {"role": m.role, "content": m.content} for m in recent_msgs[-4:]
         ] + [
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": assistant_reply},
@@ -217,12 +267,12 @@ class MemoryManager:
 
     def build_prompt(
         self,
-        user_mems: List[str],
-        proj_mems: List[str],
-        thread_summary: Optional[str],
-        recent_msgs: List[Message],
+        user_mems: list[str],
+        proj_mems: list[str],
+        thread_summary: str | None,
+        recent_msgs: list[Message],
         user_message: str,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Build the full prompt for the LLM."""
 
         system_base = """You are Clara, a multi-adaptive reasoning assistant.
@@ -259,15 +309,12 @@ Use the context below to inform responses. When contradictions exist, prefer new
         if thread_summary:
             context_parts.append(f"THREAD SUMMARY:\n{thread_summary}")
 
-        messages: List[Dict[str, str]] = [
+        messages: list[dict[str, str]] = [
             {"role": "system", "content": system_base},
         ]
 
         if context_parts:
-            messages.append({
-                "role": "system",
-                "content": "\n\n".join(context_parts)
-            })
+            messages.append({"role": "system", "content": "\n\n".join(context_parts)})
 
         for m in recent_msgs:
             messages.append({"role": m.role, "content": m.content})

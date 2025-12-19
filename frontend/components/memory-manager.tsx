@@ -21,13 +21,43 @@ interface Memory {
   hash?: string;
   metadata?: {
     project_id?: string;
+    namespace?: string;
+    category?: string;
+    sensitive?: boolean;
+    confidence?: number;
+    source?: string;
+    bootstrap?: boolean;
     [key: string]: unknown;
   };
   created_at?: string;
   updated_at?: string;
 }
 
-export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+// Format namespace/category for display
+function formatLabel(value: string): string {
+  return value.replace(/[_:]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Get color classes for namespace badges
+function getNamespaceColor(namespace: string): string {
+  if (namespace.startsWith("profile")) return "bg-blue-500/20 text-blue-400";
+  if (namespace.startsWith("interaction"))
+    return "bg-purple-500/20 text-purple-400";
+  if (namespace.startsWith("project_seed"))
+    return "bg-green-500/20 text-green-400";
+  if (namespace.startsWith("project_context"))
+    return "bg-amber-500/20 text-amber-400";
+  if (namespace.startsWith("restricted")) return "bg-red-500/20 text-red-400";
+  return "bg-gray-500/20 text-gray-400";
+}
+
+export function MemoryManager({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +112,14 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
     if (!editingMemory) return;
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/memories/${editingMemory.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: editText }),
-      });
+      const res = await fetch(
+        `${BACKEND_URL}/api/memories/${editingMemory.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: editText }),
+        },
+      );
       if (!res.ok) {
         throw new Error(`Update failed: ${res.status}`);
       }
@@ -148,7 +181,7 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Brain className="size-5" />
@@ -162,7 +195,7 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
         {/* Search bar */}
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search memories..."
               value={searchQuery}
@@ -187,24 +220,24 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
         )}
 
         {/* Memory list */}
-        <div className="flex-1 overflow-y-auto space-y-2 min-h-[300px]">
+        <div className="min-h-[300px] flex-1 space-y-2 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-muted-foreground">
               Loading...
             </div>
           ) : memories.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-muted-foreground">
               No memories found
             </div>
           ) : (
             memories.map((memory) => (
               <div
                 key={memory.id}
-                className="group rounded-lg border bg-card p-3 hover:bg-accent/50 transition-colors"
+                className="group rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm flex-1">{memory.memory}</p>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <p className="flex-1 text-sm">{memory.memory}</p>
+                  <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -223,11 +256,26 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
                     </Button>
                   </div>
                 </div>
-                {memory.metadata?.project_id && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Project: {memory.metadata.project_id}
-                  </p>
-                )}
+                {/* Labels for namespace, category, and sensitive flag */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {memory.metadata?.namespace && (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getNamespaceColor(memory.metadata.namespace)}`}
+                    >
+                      {formatLabel(memory.metadata.namespace)}
+                    </span>
+                  )}
+                  {memory.metadata?.category && (
+                    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {formatLabel(memory.metadata.category)}
+                    </span>
+                  )}
+                  {memory.metadata?.sensitive && (
+                    <span className="inline-flex items-center rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
+                      Sensitive
+                    </span>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -250,13 +298,16 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
         </DialogFooter>
 
         {/* Edit dialog */}
-        <Dialog open={!!editingMemory} onOpenChange={() => setEditingMemory(null)}>
+        <Dialog
+          open={!!editingMemory}
+          onOpenChange={() => setEditingMemory(null)}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Memory</DialogTitle>
             </DialogHeader>
             <textarea
-              className="w-full min-h-[100px] rounded-md border bg-background p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-[100px] w-full resize-none rounded-md border bg-background p-3 text-sm focus:ring-2 focus:ring-ring focus:outline-none"
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
             />
@@ -270,7 +321,10 @@ export function MemoryManager({ open, onOpenChange }: { open: boolean; onOpenCha
         </Dialog>
 
         {/* Delete confirmation dialog */}
-        <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <Dialog
+          open={!!deleteConfirm}
+          onOpenChange={() => setDeleteConfirm(null)}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Confirm Delete</DialogTitle>
