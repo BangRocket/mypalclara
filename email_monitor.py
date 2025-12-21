@@ -10,7 +10,11 @@ Provides:
 import asyncio
 import imaplib
 import email
+import re
+import smtplib
 from email.header import decode_header
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, UTC
 from dataclasses import dataclass
 import os
@@ -36,6 +40,7 @@ class EmailInfo:
     subject: str
     date: str
     preview: str = ""
+    is_read: bool = True
 
 
 class EmailMonitor:
@@ -124,7 +129,6 @@ class EmailMonitor:
                     if isinstance(response_part, tuple):
                         uid_part = response_part[0].decode()
                         if "UID" in uid_part:
-                            import re
                             match = re.search(r'UID (\d+)', uid_part)
                             if match:
                                 uid_match = match.group(1)
@@ -201,9 +205,8 @@ class EmailMonitor:
                         # Check flags for seen status
                         flags_part = response_part[0].decode()
                         is_seen = "\\Seen" in flags_part
-                        
+
                         # Get UID
-                        import re
                         uid_match = re.search(r'UID (\d+)', flags_part)
                         uid = uid_match.group(1) if uid_match else str(num.decode())
                         
@@ -218,7 +221,7 @@ class EmailMonitor:
                             from_addr=from_addr,
                             subject=subject,
                             date=date,
-                            preview="[unread]" if not is_seen else ""
+                            is_read=is_seen
                         ))
             
             mail.logout()
@@ -283,10 +286,6 @@ EMAIL_TOOLS = [
                     "body": {
                         "type": "string",
                         "description": "Email body text"
-                    },
-                    "reply_to_uid": {
-                        "type": "string",
-                        "description": "Optional: UID of email to reply to (for threading)"
                     }
                 },
                 "required": ["to", "subject", "body"]
@@ -318,19 +317,17 @@ async def handle_email_tool(tool_name: str, arguments: dict) -> str:
         # Format results
         lines = [f"Found {len(emails)} email(s):\n"]
         for i, e in enumerate(emails, 1):
-            status = " [UNREAD]" if e.preview == "[unread]" else ""
+            status = " [UNREAD]" if not e.is_read else ""
             lines.append(f"{i}. **From:** {e.from_addr}")
             lines.append(f"   **Subject:** {e.subject}{status}")
             lines.append(f"   **Date:** {e.date}")
+            if e.preview:
+                lines.append(f"   **Preview:** {e.preview}")
             lines.append("")
-        
+
         return "\n".join(lines)
     
     elif tool_name == "send_email":
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        
         to_addr = arguments.get("to", "")
         subject = arguments.get("subject", "")
         body = arguments.get("body", "")
