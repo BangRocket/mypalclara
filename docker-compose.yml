@@ -1,10 +1,8 @@
 services:
-  # PostgreSQL databases (run with: docker-compose --profile postgres up)
+  # PostgreSQL databases
   postgres:
     image: postgres:16
     container_name: mypalclara-postgres
-    profiles:
-      - postgres
     environment:
       POSTGRES_USER: clara
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clara}
@@ -23,8 +21,6 @@ services:
   postgres-vectors:
     image: pgvector/pgvector:pg16
     container_name: mypalclara-postgres-vectors
-    profiles:
-      - postgres
     environment:
       POSTGRES_USER: clara
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clara}
@@ -46,6 +42,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mypalclara-backend
+    profiles:
+      - backend
+      - full
     ports:
       - "8000:8000"
     environment:
@@ -88,6 +87,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: mypalclara-frontend
+    profiles:
+      - frontend
+      - full
     ports:
       - "3000:3000"
     environment:
