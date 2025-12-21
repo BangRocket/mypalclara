@@ -40,7 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from db import SessionLocal, init_db
-from e2b_tools import E2B_TOOLS, get_sandbox_manager
+from docker_tools import DOCKER_TOOLS, get_sandbox_manager
 from llm_backends import make_llm, make_llm_with_tools
 from local_files import LOCAL_FILE_TOOLS, get_file_manager
 from memory_manager import MemoryManager
@@ -134,13 +134,12 @@ ALLOWED_ROLES = [
 ]
 DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
 
-# E2B configuration
-E2B_ENABLED = bool(os.getenv("E2B_API_KEY"))
+# Docker sandbox configuration
+DOCKER_ENABLED = True  # Docker sandbox is always available if Docker is running
 MAX_TOOL_ITERATIONS = 10  # Max tool call rounds per response
 
-# Combined tools: E2B sandbox + local file management
-# Local file tools are always available, E2B tools only when enabled
-ALL_TOOLS = LOCAL_FILE_TOOLS + (E2B_TOOLS if E2B_ENABLED else [])
+# Combined tools: Docker sandbox + local file management
+ALL_TOOLS = LOCAL_FILE_TOOLS + DOCKER_TOOLS
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
@@ -439,12 +438,12 @@ You can search and review the full chat history beyond what's in your current co
 **Note:** Only the current channel's history is accessible.
 """
 
-        # Add E2B capabilities if available
-        if E2B_ENABLED:
-            e2b_context = """
+        # Add Docker sandbox capabilities if available
+        if DOCKER_ENABLED:
+            sandbox_context = """
 
-## Code Execution (E2B Sandbox)
-You have access to a secure cloud sandbox where you can execute code! This gives you
+## Code Execution (Docker Sandbox)
+You have access to a secure Docker sandbox where you can execute code! This gives you
 real computational abilities - you're not just simulating or explaining code.
 
 **Available Tools:**
@@ -495,7 +494,7 @@ Always prefer running actual code over mental math or approximations!
 3. Download to local storage with `download_from_sandbox`
 4. Send to user with `send_local_file`
 """
-            context += e2b_context
+            context += sandbox_context
 
         return context.strip()
 
@@ -783,9 +782,9 @@ Always prefer running actual code over mental math or approximations!
                         prompt_messages[:-1] + channel_context + [prompt_messages[-1]]
                     )
 
-                # Debug: check E2B status
-                e2b_available = E2B_ENABLED and get_sandbox_manager().is_available()
-                print(f"[discord] E2B status: enabled={E2B_ENABLED}, available={e2b_available}")
+                # Debug: check Docker sandbox status
+                docker_available = DOCKER_ENABLED and get_sandbox_manager().is_available()
+                print(f"[discord] Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}")
 
                 # Generate streaming response
                 response = await self._generate_response(message, prompt_messages)
@@ -1094,14 +1093,14 @@ Always prefer running actual code over mental math or approximations!
             full_response = ""
 
             # Determine if we should use tools
-            # Local file tools are always available; E2B tools require setup
+            # Local file tools are always available; Docker tools require Docker running
             sandbox_mgr = get_sandbox_manager()
-            e2b_available = E2B_ENABLED and sandbox_mgr.is_available()
+            docker_available = DOCKER_ENABLED and sandbox_mgr.is_available()
 
             # Always use tools (local file tools are always available)
             # Build the active tool list
-            if e2b_available:
-                print(f"{C.BLUE}[discord]{C.RESET} Using tool-calling mode {C.GREEN}(E2B + local files){C.RESET}")
+            if docker_available:
+                print(f"{C.BLUE}[discord]{C.RESET} Using tool-calling mode {C.GREEN}(Docker + local files){C.RESET}")
                 active_tools = ALL_TOOLS
             else:
                 print(f"{C.BLUE}[discord]{C.RESET} Using tool-calling mode {C.YELLOW}(local files only){C.RESET}")
@@ -1226,9 +1225,9 @@ Always prefer running actual code over mental math or approximations!
         # Tool execution tracking
         total_tools_run = 0
 
-        # Tool status messages (E2B + local file tools)
+        # Tool status messages (Docker + local file tools)
         tool_status = {
-            # E2B tools
+            # Docker sandbox tools
             "execute_python": ("🐍", "Running Python code"),
             "install_package": ("📦", "Installing package"),
             "read_file": ("📖", "Reading sandbox file"),
@@ -1377,7 +1376,7 @@ Always prefer running actual code over mental math or approximations!
                 except Exception as e:
                     print(f"[discord] Failed to send status: {e}")
 
-                # Execute the tool - handle both E2B and local file tools
+                # Execute the tool - handle both Docker sandbox and local file tools
                 tool_output = await self._execute_tool(
                     tool_name, arguments, user_id, sandbox_manager, file_manager,
                     files_to_send, message.channel
@@ -1442,22 +1441,22 @@ Always prefer running actual code over mental math or approximations!
     ) -> str:
         """Execute a tool and return the output string.
 
-        Handles E2B sandbox tools, local file tools, and chat history tools.
+        Handles Docker sandbox tools, local file tools, and chat history tools.
         """
         from pathlib import Path
 
         # Get channel_id for file storage organization
         channel_id = str(channel.id) if channel else None
 
-        # E2B sandbox tools (including web_search which uses Tavily)
-        e2b_tools = {
+        # Docker sandbox tools (including web_search which uses Tavily)
+        docker_tools = {
             "execute_python", "install_package", "read_file",
             "write_file", "list_files", "run_shell", "unzip_file",
             "web_search", "run_claude_code"
         }
 
-        if tool_name in e2b_tools:
-            # Use E2B sandbox manager
+        if tool_name in docker_tools:
+            # Use Docker sandbox manager
             result = await sandbox_manager.handle_tool_call(user_id, tool_name, arguments)
             if result.success:
                 return result.output
@@ -2192,18 +2191,20 @@ async def async_main():
     print(f"{C.GRAY}[tools]   Endpoint: {C.CYAN}{tool_base_url}{C.RESET} {C.GRAY}({tool_source}){C.RESET}")
     print(f"{C.GRAY}[tools]   Format: {C.CYAN}{TOOL_FORMAT}{C.RESET}")
 
-    # E2B status check
-    from e2b_tools import E2B_AVAILABLE, E2B_API_KEY
+    # Docker sandbox status check
+    from docker_tools import DOCKER_AVAILABLE
 
-    if E2B_ENABLED and E2B_AVAILABLE and E2B_API_KEY:
-        print(f"{C.GREEN}[e2b] ✓ Code execution ENABLED{C.RESET}")
+    sandbox_mgr = get_sandbox_manager()
+    if DOCKER_ENABLED and DOCKER_AVAILABLE and sandbox_mgr.is_available():
+        print(f"{C.GREEN}[docker] ✓ Code execution ENABLED{C.RESET}")
     else:
-        print(f"{C.RED}[e2b] ✗ Code execution DISABLED{C.RESET}")
-        if not E2B_API_KEY:
-            print(f"{C.GRAY}[e2b]   - E2B_API_KEY not set{C.RESET}")
-        if not E2B_AVAILABLE:
-            print(f"{C.GRAY}[e2b]   - e2b_code_interpreter package not installed{C.RESET}")
-            print(f"{C.GRAY}[e2b]   - Run: poetry add e2b-code-interpreter{C.RESET}")
+        print(f"{C.RED}[docker] ✗ Code execution DISABLED{C.RESET}")
+        if not DOCKER_AVAILABLE:
+            print(f"{C.GRAY}[docker]   - docker package not installed{C.RESET}")
+            print(f"{C.GRAY}[docker]   - Run: poetry add docker{C.RESET}")
+        elif not sandbox_mgr.is_available():
+            print(f"{C.GRAY}[docker]   - Docker daemon not running{C.RESET}")
+            print(f"{C.GRAY}[docker]   - Start Docker Desktop or dockerd{C.RESET}")
 
     if MONITOR_ENABLED:
         print(f"{C.CYAN}[monitor]{C.RESET} Dashboard at {C.BLUE}http://localhost:{MONITOR_PORT}{C.RESET}")
