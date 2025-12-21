@@ -297,8 +297,11 @@ EMAIL_TOOLS = [
 
 async def handle_email_tool(tool_name: str, arguments: dict) -> str:
     """Handle email tool calls."""
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        return "Error: Email not configured. CLARA_EMAIL_ADDRESS and CLARA_EMAIL_PASSWORD must be set."
+
     monitor = get_email_monitor()
-    
+
     if tool_name == "check_email":
         unread_only = arguments.get("unread_only", False)
         limit = min(arguments.get("limit", 10), 25)
@@ -361,11 +364,15 @@ async def handle_email_tool(tool_name: str, arguments: dict) -> str:
 async def email_check_loop(bot):
     """
     Background task that checks for new emails periodically.
-    
+
     Should be started from on_ready() in the Discord bot.
     """
     await bot.wait_until_ready()
-    
+
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        print("[email] Email monitoring DISABLED - CLARA_EMAIL_ADDRESS or CLARA_EMAIL_PASSWORD not set")
+        return
+
     monitor = get_email_monitor()
     print(f"[email] Starting email monitor for {EMAIL_ADDRESS}")
     print(f"[email] Will notify user ID {NOTIFY_USER_ID}")
