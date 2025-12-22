@@ -31,6 +31,9 @@ IMAP_PORT = int(os.getenv("CLARA_IMAP_PORT", "993"))
 # Discord user ID to notify (Joshua's Discord ID)
 NOTIFY_USER_ID = int(os.getenv("CLARA_EMAIL_NOTIFY_USER", "271274659385835521"))
 
+# Whether to send Discord notifications (default: off)
+NOTIFY_ENABLED = os.getenv("CLARA_EMAIL_NOTIFY", "false").lower() == "true"
+
 # Check interval in seconds
 CHECK_INTERVAL = int(os.getenv("CLARA_EMAIL_CHECK_INTERVAL", "60"))
 
@@ -553,7 +556,10 @@ async def email_check_loop(bot):
     monitor = get_email_monitor()
     print(f"[email] Starting email monitor for {EMAIL_ADDRESS}")
     print(f"[email] Auto-respond enabled - Clara will evaluate and respond to emails")
-    print(f"[email] Will notify user ID {NOTIFY_USER_ID}")
+    if NOTIFY_ENABLED:
+        print(f"[email] Discord notifications ON - will notify user ID {NOTIFY_USER_ID}")
+    else:
+        print(f"[email] Discord notifications OFF (set CLARA_EMAIL_NOTIFY=true to enable)")
 
     while not bot.is_closed():
         try:
@@ -564,12 +570,13 @@ async def email_check_loop(bot):
             elif new_emails:
                 print(f"[email] {len(new_emails)} new email(s) detected!")
 
-                # Get the user to notify
-                try:
-                    user = await bot.fetch_user(NOTIFY_USER_ID)
-                except Exception as e:
-                    print(f"[email] Failed to fetch user for notifications: {e}")
-                    user = None
+                # Get the user to notify (only if notifications enabled)
+                user = None
+                if NOTIFY_ENABLED:
+                    try:
+                        user = await bot.fetch_user(NOTIFY_USER_ID)
+                    except Exception as e:
+                        print(f"[email] Failed to fetch user for notifications: {e}")
 
                 for email_header in new_emails:
                     # Fetch full email with body
