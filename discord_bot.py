@@ -39,14 +39,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from db import SessionLocal, init_db
+from db import SessionLocal
 from docker_tools import DOCKER_TOOLS, get_sandbox_manager
-from llm_backends import make_llm, make_llm_with_tools
 from local_files import LOCAL_FILE_TOOLS, get_file_manager
-from memory_manager import MemoryManager
 from email_monitor import EMAIL_TOOLS, handle_email_tool, email_check_loop, get_email_monitor
-
 from models import ChannelSummary, Project, Session
+
+# Import from clara_core for unified platform
+from clara_core import init_platform, MemoryManager, make_llm, make_llm_with_tools
 
 
 # ============== Console Colors ==============
@@ -280,9 +280,9 @@ class ClaraDiscordBot(discord.Client):
         self.msg_cache: dict[int, CachedMessage] = {}
         self.cache_lock = asyncio.Lock()
 
-        # Initialize Clara's backend
-        init_db()
-        self.mm = MemoryManager(llm_callable=self._sync_llm)
+        # Initialize Clara's unified platform (DB, LLM, MemoryManager, ToolRegistry)
+        init_platform()
+        self.mm = MemoryManager.get_instance()
 
     def _sync_llm(self, messages: list[dict]) -> str:
         """Synchronous LLM call for MemoryManager."""
