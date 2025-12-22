@@ -208,9 +208,20 @@ class MemoryManager:
     # ---------- mem0 integration ----------
 
     def fetch_mem0_context(
-        self, user_id: str, project_id: str, user_message: str
+        self,
+        user_id: str,
+        project_id: str,
+        user_message: str,
+        participants: list[dict] | None = None,
     ) -> tuple[list[str], list[str]]:
-        """Fetch relevant memories from mem0."""
+        """Fetch relevant memories from mem0.
+
+        Args:
+            user_id: The user making the request
+            project_id: Project context
+            user_message: The message to search for relevant memories
+            participants: List of {"id": str, "name": str} for conversation members
+        """
         if MEM0 is None:
             return [], []
 
@@ -230,6 +241,34 @@ class MemoryManager:
 
         user_mems = [r["memory"] for r in user_res.get("results", [])]
         proj_mems = [r["memory"] for r in proj_res.get("results", [])]
+
+        # Also search for memories about each participant
+        # This enables cross-user memory: if User A told Clara about User B,
+        # Clara can recall that when talking to User B
+        if participants:
+            for p in participants:
+                p_id = p.get("id")
+                p_name = p.get("name", p_id)
+                if not p_id or p_id == user_id:
+                    continue  # Skip self
+
+                # Search memories stored by this user about the participant
+                try:
+                    # Search for memories mentioning this participant by name
+                    p_search = MEM0.search(
+                        f"{p_name} {search_query[:500]}",  # Include name + context
+                        user_id=user_id,
+                    )
+                    for r in p_search.get("results", []):
+                        mem = r["memory"]
+                        # Avoid duplicates
+                        if mem not in user_mems:
+                            # Label with participant info for clarity
+                            labeled_mem = f"[About {p_name}]: {mem}"
+                            if labeled_mem not in user_mems:
+                                user_mems.append(labeled_mem)
+                except Exception as e:
+                    print(f"[mem0] Error searching participant {p_id}: {e}")
 
         # Extract contact-related memories with source info
         for r in user_res.get("results", []):
@@ -253,22 +292,49 @@ class MemoryManager:
         recent_msgs: list[Message],
         user_message: str,
         assistant_reply: str,
+        participants: list[dict] | None = None,
     ) -> None:
-        """Send conversation slice to mem0 for memory extraction."""
+        """Send conversation slice to mem0 for memory extraction.
+
+        Args:
+            user_id: The user ID for memory storage
+            project_id: Project context
+            recent_msgs: Recent message history
+            user_message: Current user message
+            assistant_reply: Clara's response
+            participants: List of {"id": str, "name": str} for people mentioned
+        """
         if MEM0 is None:
             return
+
+        # Build context with participant names for better extraction
+        context_prefix = ""
+        if participants:
+            names = [p.get("name", p.get("id", "Unknown")) for p in participants]
+            context_prefix = f"[Participants: {', '.join(names)}]\n"
 
         history_slice = [
             {"role": m.role, "content": m.content} for m in recent_msgs[-4:]
         ] + [
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": context_prefix + user_message},
             {"role": "assistant", "content": assistant_reply},
         ]
+
+        # Store with participant metadata for cross-user search
+        metadata = {"project_id": project_id}
+        if participants:
+            # Store participant IDs for cross-reference
+            metadata["participant_ids"] = [
+                p.get("id") for p in participants if p.get("id")
+            ]
+            metadata["participant_names"] = [
+                p.get("name") for p in participants if p.get("name")
+            ]
 
         result = MEM0.add(
             history_slice,
             user_id=user_id,
-            metadata={"project_id": project_id},
+            metadata=metadata,
         )
         print(f"[mem0] Added memories: {result}")
 

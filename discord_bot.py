@@ -729,11 +729,19 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
                 print(f"[discord] Content length: {len(user_content)} chars")
 
+                # Extract participants from conversation for cross-user memory
+                participants = self._extract_participants(
+                    recent_channel_msgs, message.author
+                )
+                if len(participants) > 1:
+                    names = [p["name"] for p in participants]
+                    print(f"[discord] Participants: {', '.join(names)}")
+
                 # Fetch memories
                 db = SessionLocal()
                 try:
                     user_mems, proj_mems = self.mm.fetch_mem0_context(
-                        user_id, project_id, user_content
+                        user_id, project_id, user_content, participants=participants
                     )
                     recent_msgs = self.mm.get_recent_messages(db, thread.id)
                 finally:
@@ -798,6 +806,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         thread.id,
                         user_content,
                         response,
+                        participants=participants,
                     )
 
                     # Log response to monitor
@@ -893,6 +902,46 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         if self.user:
             content = re.sub(rf"<@!?{self.user.id}>", "", content)
         return content.strip()
+
+    def _extract_participants(
+        self,
+        messages: list[CachedMessage],
+        current_author: discord.User | discord.Member | None = None,
+    ) -> list[dict]:
+        """Extract unique participants from a message chain.
+
+        Args:
+            messages: List of CachedMessage from the conversation
+            current_author: The author of the current message (to ensure they're included)
+
+        Returns:
+            List of {"id": str, "name": str} for each participant (excludes bots)
+        """
+        seen_ids = set()
+        participants = []
+
+        # Add current author first if provided
+        if current_author and not current_author.bot:
+            author_id = str(current_author.id)
+            if author_id not in seen_ids:
+                seen_ids.add(author_id)
+                participants.append({
+                    "id": author_id,
+                    "name": current_author.display_name,
+                })
+
+        # Extract from cached messages
+        for msg in messages:
+            if msg.is_bot or not msg.user_id:
+                continue
+            if msg.user_id not in seen_ids:
+                seen_ids.add(msg.user_id)
+                participants.append({
+                    "id": msg.user_id,
+                    "name": msg.username or msg.user_id,
+                })
+
+        return participants
 
     async def _fetch_channel_history(
         self, channel, limit: int = CHANNEL_HISTORY_LIMIT
@@ -1810,6 +1859,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         thread_id: str,
         user_message: str,
         assistant_reply: str,
+        participants: list[dict] | None = None,
     ):
         """Store the exchange in Clara's memory system.
 
@@ -1820,6 +1870,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             thread_id: Thread ID for message storage
             user_message: The user's message
             assistant_reply: Clara's response
+            participants: List of {"id": str, "name": str} for people in the conversation
         """
         db = SessionLocal()
         try:
@@ -1843,7 +1894,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Add to mem0 for per-user memory extraction
             self.mm.add_to_mem0(
-                memory_user_id, project_id, recent_msgs, user_message, assistant_reply
+                memory_user_id,
+                project_id,
+                recent_msgs,
+                user_message,
+                assistant_reply,
+                participants=participants,
             )
             print(f"[discord] Stored exchange (thread: {thread_owner_id[:20]}...)")
 
