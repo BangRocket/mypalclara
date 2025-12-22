@@ -11,10 +11,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from db import init_db, SessionLocal
+from db import SessionLocal
 from models import Project, Session, Message
-from memory_manager import MemoryManager, load_initial_profile
-from llm_backends import make_llm
+from clara_core import init_platform, MemoryManager
 
 load_dotenv()
 
@@ -57,6 +56,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# MemoryManager is now a singleton accessed via get_instance()
+# Kept for backward compatibility with code that references 'mm' directly
 mm: MemoryManager = None
 
 
@@ -100,14 +101,13 @@ def startup():
     """Initialize database and memory manager on startup."""
     global mm
     print("[api] Starting up...")
-    init_db()
-    print("[api] Database initialized")
-    llm = make_llm()
-    print("[api] LLM created")
-    mm = MemoryManager(llm_callable=llm)
-    print("[api] MemoryManager initialized")
-    load_initial_profile(USER_ID)
-    print("[api] Initial profile loaded")
+
+    # Initialize the Clara platform (DB, LLM, MemoryManager singleton)
+    init_platform()
+
+    # Get the singleton for backward compatibility
+    mm = MemoryManager.get_instance()
+
     print("[api] Ready to accept requests on http://localhost:8000")
 
 
