@@ -245,11 +245,14 @@ class BotMonitor:
 
     def get_stats(self):
         """Get current statistics."""
+        from clara_core import __version__
+
         uptime = None
         if self.start_time:
             uptime = (datetime.now(UTC) - self.start_time).total_seconds()
 
         return {
+            "version": __version__,
             "bot_user": self.bot_user,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "uptime_seconds": uptime,
@@ -1929,6 +1932,17 @@ def get_stats():
 def get_guilds():
     """Get list of guilds."""
     return {"guilds": list(monitor.guilds.values())}
+
+
+@monitor_app.get("/api/version")
+def get_version():
+    """Get platform version information."""
+    from clara_core import __version__
+    return {
+        "version": __version__,
+        "platform": "mypalclara",
+        "component": "discord-bot",
+    }
 
 
 @monitor_app.get("/api/logs")

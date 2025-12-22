@@ -564,6 +564,20 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/version")
+def version():
+    """Get platform version information."""
+    from clara_core import __version__, get_version
+    return {
+        "version": get_version(),
+        "platform": "mypalclara",
+        "components": {
+            "api": __version__,
+            "clara_core": __version__,
+        }
+    }
+
+
 @app.post("/api/test")
 def test_post(request: ContextRequest):
     """Test endpoint to verify POST requests work."""
