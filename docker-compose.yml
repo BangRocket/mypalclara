@@ -73,6 +73,7 @@ services:
     volumes:
       - mypalclara-data:/data
       - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
+      - ./personality.txt:/app/personality.txt:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -127,6 +128,8 @@ services:
     container_name: mypalclara-discord
     profiles:
       - discord
+    ports:
+      - "8001:8001"  # Monitor dashboard
     environment:
       # Discord
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
@@ -154,10 +157,22 @@ services:
       # User config
       - USER_ID=${USER_ID:-demo-user}
       - DEFAULT_PROJECT=${DEFAULT_PROJECT:-Default Project}
+      # Monitor
+      - DISCORD_MONITOR_PORT=8001
+      - DISCORD_MONITOR_ENABLED=${DISCORD_MONITOR_ENABLED:-true}
+      # Email (optional)
+      - CLARA_EMAIL_ADDRESS=${CLARA_EMAIL_ADDRESS:-}
+      - CLARA_EMAIL_PASSWORD=${CLARA_EMAIL_PASSWORD:-}
+      - CLARA_EMAIL_NOTIFY_USER=${CLARA_EMAIL_NOTIFY_USER:-}
+      - CLARA_EMAIL_NOTIFY=${CLARA_EMAIL_NOTIFY:-false}
+      # API URL for dashboard cross-service stats (optional)
+      - API_URL=http://backend:8000
     volumes:
       - mypalclara-data:/data
       - mypalclara-files:/app/clara_files
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker sandbox
+      - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
+      - ./personality.txt:/app/personality.txt:ro
     restart: unless-stopped
 
 volumes:

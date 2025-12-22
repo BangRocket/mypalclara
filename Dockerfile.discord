@@ -24,6 +24,7 @@ RUN poetry install --only main --no-interaction --no-ansi
 
 # Copy application code
 COPY *.py ./
+COPY clara_core/ ./clara_core/
 
 # Copy user_profile.txt if it exists (optional)
 RUN mkdir -p /app/inputs && touch /app/inputs/user_profile.txt
@@ -33,6 +34,9 @@ COPY inputs/user_profile.tx[t] ./inputs/
 RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
 ENV CLARA_FILES_DIR=/app/clara_files
+
+# Expose monitor dashboard port
+EXPOSE 8001
 
 # Run the Discord bot
 CMD ["python", "discord_bot.py"]
