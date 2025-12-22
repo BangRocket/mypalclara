@@ -10,6 +10,7 @@ import {
 } from "@assistant-ui/react";
 import {
   useChatRuntime,
+  AssistantChatTransport,
 } from "@assistant-ui/react-ai-sdk";
 import { PencilIcon, Check, X } from "lucide-react";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -185,7 +186,9 @@ export const Assistant = () => {
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: () =>
       useChatRuntime({
-        api: "/api/chat",
+        transport: new AssistantChatTransport({
+          api: "/api/chat",
+        }),
       }),
     adapter: {
       ...threadListAdapter,
