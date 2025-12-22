@@ -77,7 +77,7 @@ services:
     volumes:
       - mypalclara-data:/data
       - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
-      - ./personality.txt:/app/personality.txt:ro
+      - ./${BOT_PERSONALITY_FILE:-personality.txt}:/app/${BOT_PERSONALITY_FILE:-personality.txt}:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -257,7 +257,7 @@ services:
       - mypalclara-files:/app/clara_files
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker sandbox
       - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
-      - ./personality.txt:/app/personality.txt:ro
+      - ./${BOT_PERSONALITY_FILE:-personality.txt}:/app/${BOT_PERSONALITY_FILE:-personality.txt}:ro
     depends_on:
       postgres:
         condition: service_healthy
