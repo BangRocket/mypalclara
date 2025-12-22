@@ -24,6 +24,8 @@ RUN poetry install --only main --no-interaction --no-ansi
 # Copy application code
 COPY *.py ./
 COPY clara_core/ ./clara_core/
+COPY src/ ./src/
+COPY VERSION ./
 
 # Copy user_profile.txt if it exists (optional)
 RUN mkdir -p /app/inputs && touch /app/inputs/user_profile.txt
