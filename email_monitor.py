@@ -20,8 +20,8 @@ from datetime import datetime, UTC
 from dataclasses import dataclass
 import os
 
-from bot_config import BOT_NAME
-from llm_backends import make_llm
+from config.bot import BOT_NAME
+from clara_core import make_llm
 
 # Email configuration - loaded from environment or hardcoded for now
 EMAIL_ADDRESS = os.environ.get("CLARA_EMAIL_ADDRESS")

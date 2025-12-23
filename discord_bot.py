@@ -40,16 +40,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from db import SessionLocal
-from docker_tools import DOCKER_TOOLS, get_sandbox_manager
-from local_files import LOCAL_FILE_TOOLS, get_file_manager
+from db.models import ChannelSummary, Project, Session
+from sandbox.docker import DOCKER_TOOLS, get_sandbox_manager
+from storage.local_files import LOCAL_FILE_TOOLS, get_file_manager
 from email_monitor import (
     EMAIL_TOOLS,
     handle_email_tool,
     email_check_loop,
     get_email_monitor,
 )
-from models import ChannelSummary, Project, Session
-from logging_config import init_logging, get_logger, set_db_session_factory
+from config.logging import init_logging, get_logger, set_db_session_factory
 
 # Import from clara_core for unified platform
 from clara_core import (
@@ -1749,7 +1749,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         )
 
         def final_call():
-            from llm_backends import TOOL_FORMAT, _convert_messages_to_claude_format
+            from clara_core.llm import TOOL_FORMAT, _convert_messages_to_claude_format
 
             llm = make_llm()  # Use simple LLM for final response
             # Convert messages if using Claude format
@@ -2552,7 +2552,7 @@ async def async_main():
     config_logger.info(f"Allowed roles: {ALLOWED_ROLES or 'all'}")
 
     # Tool calling status check
-    from llm_backends import TOOL_FORMAT, TOOL_MODEL
+    from clara_core.llm import TOOL_FORMAT, TOOL_MODEL
 
     provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
 
@@ -2576,7 +2576,7 @@ async def async_main():
     tools_logger.info(f"Format: {TOOL_FORMAT}")
 
     # Docker sandbox status check
-    from docker_tools import DOCKER_AVAILABLE
+    from sandbox.docker import DOCKER_AVAILABLE
 
     sandbox_mgr = get_sandbox_manager()
     if DOCKER_ENABLED and DOCKER_AVAILABLE and sandbox_mgr.is_available():

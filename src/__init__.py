@@ -1,1 +1,0 @@
-# MyPalClara source modules

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from db import SessionLocal
-from models import Project, Session, Message
+from db.models import Project, Session, Message
 from clara_core import init_platform, MemoryManager
 
 load_dotenv()
@@ -587,7 +587,7 @@ def test_post(request: ContextRequest):
 
 # ============== Memory Management API ==============
 
-from mem0_config import MEM0
+from config.mem0 import MEM0
 
 
 class MemoryUpdateRequest(BaseModel):
