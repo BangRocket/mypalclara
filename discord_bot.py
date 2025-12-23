@@ -556,49 +556,29 @@ Discord uses a flavor of Markdown. Use these to format your messages:
 - -# subtext - smaller text
 
 ## File Attachments
-You can send files to users! When you want to share code, long text, or formatted
-content as a downloadable file, use this special syntax:
 
+**For LARGE content (>50 lines, HTML, JSON, code files) - USE TOOLS:**
+1. `save_to_local` - Save the content to a file
+2. `send_local_file` - Attach the file to your message
+This is the MOST RELIABLE method and handles large files properly.
+
+**For SMALL content (<50 lines) - Use inline syntax:**
+```
 <<<file:filename.ext>>>
 file content here
 <<</file>>>
+```
 
-Examples:
-- `<<<file:script.py>>>` for Python files
-- `<<<file:notes.md>>>` for Markdown documents
-- `<<<file:data.json>>>` for JSON data
-- `<<<file:report.html>>>` for HTML pages
-- `<<<file:output.txt>>>` for plain text
+**NEVER dump large content directly into chat:**
+- NO raw HTML - save and send as file
+- NO large JSON/data - save and send as file
+- NO long code - save and send as file
+- NO base64/binary - save and send as file
 
-Use files when:
-- Code is too long for a code block (>50 lines)
-- User asks for a downloadable file
-- Sharing structured data (JSON, CSV, etc.)
-- Creating formatted documents (HTML, Markdown)
-
-## Discord Etiquette & Message Limits
-- Keep responses concise when possible (Discord is conversational)
-- You can use emojis sparingly when they fit the tone
-- Long responses will be split across multiple messages automatically
-- Users interact by @mentioning you or replying to your messages
-
-**CRITICAL - Never dump large content directly into chat:**
-- **NO raw HTML** - Always use `<<<file:page.html>>>` syntax to attach as file
-- **NO large JSON/data** - Attach as file if more than ~20 lines
-- **NO long code blocks** - Use file attachment for code >50 lines
-- **NO base64/binary data** - Always attach as file
-- **NO full web page content** - Summarize key points, attach full content as file
-
-When generating or processing content that would flood the chat:
-1. Summarize the key points in your message
-2. Attach the full content as a file using `<<<file:name.ext>>>` syntax
-3. Tell the user what's in the attached file
-
-Example: Instead of pasting 500 lines of HTML, say:
-"Here's the webpage structure - I've attached the full HTML file below.
-<<<file:page.html>>>
-<!DOCTYPE html>...
-<<</file>>>"
+## Discord Etiquette
+- Keep responses concise (Discord is conversational)
+- Long responses are split automatically
+- Users interact by @mentioning or replying to you
 
 ## Local File Storage
 You can save files locally that persist across conversations:
@@ -1412,14 +1392,11 @@ You can search and review the full chat history beyond what's in your current co
             cleaned_response, inline_files = self._extract_file_attachments(
                 full_response
             )
-            temp_paths = []
             discord_files = []
 
             # Create Discord files from inline <<<file:>>> syntax
             if inline_files:
-                inline_discord_files, temp_paths = self._create_discord_files(
-                    inline_files
-                )
+                inline_discord_files = self._create_discord_files(inline_files)
                 discord_files.extend(inline_discord_files)
                 logger.debug(f" Extracted {len(inline_files)} inline file(s)")
 
@@ -1466,10 +1443,6 @@ You can search and review the full chat history beyond what's in your current co
                         response_msg = await message.channel.send(chunk)
 
                 logger.info("Sent reply to Discord")
-            finally:
-                # Clean up temp files after sending
-                if temp_paths:
-                    self._cleanup_temp_files(temp_paths)
 
             # Cache the bot's last response message
             if response_msg:
@@ -1525,19 +1498,20 @@ You can search and review the full chat history beyond what's in your current co
             "role": "system",
             "content": (
                 "CRITICAL FILE ATTACHMENT RULES (ALWAYS FOLLOW):\n"
-                "- NEVER paste raw HTML into chat - ALWAYS use <<<file:page.html>>> syntax\n"
-                "- NEVER paste large JSON (>20 lines) - attach as <<<file:data.json>>>\n"
-                "- NEVER paste long code (>50 lines) - attach as <<<file:code.ext>>>\n"
-                "- When user asks to 'provide/create/make a file' - use <<<file:>>> syntax, don't show raw content\n"
-                "- When user asks for 'download/attachment' - use <<<file:>>> syntax\n\n"
+                "For LARGE content (>50 lines, HTML, JSON, code files):\n"
+                "1. Use save_to_local tool to save the file\n"
+                "2. Use send_local_file tool to attach it to your message\n"
+                "This is MORE RELIABLE than <<<file:>>> syntax for large content.\n\n"
+                "For SMALL content (<50 lines):\n"
+                "- Use <<<file:name.ext>>>content<<</file>>> syntax (inline)\n\n"
+                "NEVER paste raw HTML, large JSON, or long code directly into chat.\n"
+                "When user asks for a 'file/download/attachment' - use the tools above.\n\n"
                 "You have access to tools for code execution, file management, and developer integrations. "
                 "When the user asks you to calculate, run code, analyze data, "
                 "fetch URLs, install packages, or do anything computational - "
                 "USE THE TOOLS. Do not just explain what you would do - actually "
                 "call the execute_python or other tools to do it. "
                 "For any math beyond basic arithmetic, USE execute_python. "
-                "You can also save files locally with save_to_local and send "
-                "them to chat with send_local_file. "
                 "For GitHub tasks (repos, issues, PRs, workflows), use the github_* tools. "
                 "For Azure DevOps tasks (work items, PRs, pipelines, repos), use the ado_* tools. "
                 "Summarize results conversationally and attach full output as a file."
@@ -2145,12 +2119,20 @@ You can search and review the full chat history beyond what's in your current co
     def _extract_file_attachments(self, text: str) -> tuple[str, list[tuple[str, str]]]:
         """Extract file attachments from response text.
 
+        Supports multiple formats:
+        - <<<file:name>>>content<<</file>>>
+        - <<<file:name>>>content<<<end>>> or <<<endfile>>>
+        - Markdown code blocks with file hints
+
         Returns:
             tuple: (cleaned_text, list of (filename, content) tuples)
         """
-        # Pattern to match <<<file:filename>>>content<<</file>>>
-        pattern = r"<<<file:([^>]+)>>>(.*?)<<</file>>>"
         files = []
+        cleaned = text
+
+        # Primary pattern: <<<file:filename>>>content<<</file>>>
+        # Also handles <<</file:filename>>> closing variant
+        primary_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
 
         def replace_file(match):
             filename = match.group(1).strip()
@@ -2159,63 +2141,70 @@ You can search and review the full chat history beyond what's in your current co
             files.append((filename, content))
             return f"📎 *Attached: {filename}*"
 
-        cleaned = re.sub(pattern, replace_file, text, flags=re.DOTALL)
+        cleaned = re.sub(primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
 
-        # Debug: check if pattern might be slightly different
-        if not files and "<<<file:" in text:
-            logger.warning("Found <<<file: but pattern didn't match")
-            logger.debug(f"Text snippet: {text[:500]}")
+        # Fallback pattern: <<<file:filename>>>content<<<end>>> or <<<endfile>>>
+        fallback_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
+        cleaned = re.sub(fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+        # Last resort: <<<file:filename>>> followed by content until next <<< or end of major section
+        # This catches cases where Clara forgets the closing tag entirely
+        if "<<<file:" in cleaned.lower() or "<<< file:" in cleaned.lower():
+            unclosed_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)(?=<<<|\Z)"
+
+            def replace_unclosed(match):
+                filename = match.group(1).strip()
+                content = match.group(2).strip()
+                # Only extract if there's substantial content and it looks like a file
+                if len(content) > 10 and not content.startswith("<<<"):
+                    # Don't re-extract if we already got this file
+                    if not any(f[0] == filename for f in files):
+                        logger.debug(f" Matched unclosed file: {filename} ({len(content)} chars)")
+                        files.append((filename, content))
+                        return f"📎 *Attached: {filename}*"
+                return match.group(0)
+
+            cleaned = re.sub(unclosed_pattern, replace_unclosed, cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+        # Debug: check if we still have unmatched file tags
+        remaining_tags = re.findall(r"<<<\s*file\s*:", cleaned, re.IGNORECASE)
+        if remaining_tags:
+            logger.warning(f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction")
+            logger.debug(f"Text snippet: {cleaned[:500]}")
 
         return cleaned, files
 
     def _create_discord_files(
         self, files: list[tuple[str, str]]
-    ) -> tuple[list[discord.File], list[str]]:
-        """Create discord.File objects from extracted files using temp files.
+    ) -> list[discord.File]:
+        """Create discord.File objects from extracted file content.
+
+        Uses BytesIO for in-memory file handling (no temp files needed).
 
         Returns:
-            tuple: (list of discord.File objects, list of temp file paths to clean up)
+            list of discord.File objects
         """
-        import tempfile
-
         discord_files = []
-        temp_paths = []
 
         for filename, content in files:
             if not content:
                 logger.debug(f" Skipping empty file: {filename}")
                 continue
             try:
-                # Get file extension for proper temp file naming
-                ext = ""
-                if "." in filename:
-                    ext = "." + filename.rsplit(".", 1)[-1]
-
-                # Write to temp file (more robust for large files)
-                fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="clara_")
-                temp_paths.append(temp_path)
-
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(content)
-
-                # Create discord.File from the temp file path
-                discord_file = discord.File(fp=temp_path, filename=filename)
+                # Encode content to bytes and wrap in BytesIO
+                content_bytes = content.encode("utf-8")
+                discord_file = discord.File(
+                    fp=io.BytesIO(content_bytes),
+                    filename=filename
+                )
                 discord_files.append(discord_file)
-                logger.debug(f" Created file: {filename} ({len(content)} chars)")
+                logger.debug(f" Created file: {filename} ({len(content_bytes)} bytes)")
 
             except Exception as e:
                 logger.debug(f" Error creating file {filename}: {e}")
 
-        return discord_files, temp_paths
+        return discord_files
 
-    def _cleanup_temp_files(self, temp_paths: list[str]):
-        """Clean up temporary files after sending."""
-        for path in temp_paths:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except Exception as e:
-                logger.debug(f" Error cleaning up temp file {path}: {e}")
 
     async def _store_exchange(
         self,
