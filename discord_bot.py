@@ -1573,6 +1573,7 @@ You can search and review the full chat history beyond what's in your current co
             "get_chat_history": ("📜", "Retrieving chat history"),
             # Email tools
             "check_email": ("📬", "Checking email"),
+            "search_email": ("🔎", "Searching email"),
             "send_email": ("📤", "Sending email"),
             # GitHub tools
             "github_get_me": ("🐙", "Getting GitHub profile"),
