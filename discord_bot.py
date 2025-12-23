@@ -42,12 +42,24 @@ from fastapi.responses import HTMLResponse
 from db import SessionLocal
 from docker_tools import DOCKER_TOOLS, get_sandbox_manager
 from local_files import LOCAL_FILE_TOOLS, get_file_manager
-from email_monitor import EMAIL_TOOLS, handle_email_tool, email_check_loop, get_email_monitor
+from email_monitor import (
+    EMAIL_TOOLS,
+    handle_email_tool,
+    email_check_loop,
+    get_email_monitor,
+)
 from models import ChannelSummary, Project, Session
 from logging_config import init_logging, get_logger, set_db_session_factory
 
 # Import from clara_core for unified platform
-from clara_core import init_platform, MemoryManager, make_llm, make_llm_with_tools
+from clara_core import (
+    init_platform,
+    MemoryManager,
+    make_llm,
+    make_llm_with_tools,
+    ModelTier,
+    get_model_for_tier,
+)
 
 # Initialize logging system
 init_logging()
@@ -127,6 +139,45 @@ MONITOR_PORT = int(os.getenv("DISCORD_MONITOR_PORT", "8001"))
 MONITOR_ENABLED = os.getenv("DISCORD_MONITOR_ENABLED", "true").lower() == "true"
 MAX_LOG_ENTRIES = 100
 
+# Model tier prefixes
+TIER_PREFIXES = {
+    "!high": "high",
+    "!opus": "high",
+    "!mid": "mid",
+    "!sonnet": "mid",
+    "!low": "low",
+    "!haiku": "low",
+    "!fast": "low",
+}
+
+# Tier display names and emojis
+TIER_DISPLAY = {
+    "high": ("🔴", "High (Opus-class)"),
+    "mid": ("🟡", "Mid (Sonnet-class)"),
+    "low": ("🟢", "Low (Haiku-class)"),
+}
+
+
+def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
+    """Detect model tier from message prefix and return cleaned content.
+
+    Supported prefixes:
+        !high, !opus     -> high tier
+        !mid, !sonnet    -> mid tier (default)
+        !low, !haiku, !fast -> low tier
+
+    Returns:
+        (tier, cleaned_content): The detected tier (or None for default) and
+        the message content with the prefix removed.
+    """
+    content_lower = content.lower().strip()
+    for prefix, tier in TIER_PREFIXES.items():
+        if content_lower.startswith(prefix):
+            # Remove the prefix and any leading whitespace
+            cleaned = content[len(prefix) :].lstrip()
+            return tier, cleaned  # type: ignore
+    return None, content
+
 
 @dataclass
 class CachedMessage:
@@ -186,7 +237,9 @@ class TaskQueue:
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
 
-    async def try_acquire(self, message: DiscordMessage, is_dm: bool) -> tuple[bool, int]:
+    async def try_acquire(
+        self, message: DiscordMessage, is_dm: bool
+    ) -> tuple[bool, int]:
         """Try to acquire the channel for processing.
 
         Returns:
@@ -223,7 +276,9 @@ class TaskQueue:
             if channel_id in self._queues and self._queues[channel_id]:
                 next_task = self._queues[channel_id].pop(0)
                 self._active[channel_id] = next_task.message
-                logger.info(f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining")
+                logger.info(
+                    f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining"
+                )
                 return next_task
 
             return None
@@ -599,7 +654,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         user_id, original_filename, content_bytes, channel_id
                     )
                     if save_result.success:
-                        logger.debug(f" Saved attachment to storage: {original_filename}")
+                        logger.debug(
+                            f" Saved attachment to storage: {original_filename}"
+                        )
                 except Exception as e:
                     logger.debug(f" Failed to save attachment locally: {e}")
 
@@ -637,7 +694,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
                 # Truncate if still too long for inline display
                 if len(content) > MAX_CHARS:
-                    content = content[:MAX_CHARS] + "\n... [truncated, full file saved locally]"
+                    content = (
+                        content[:MAX_CHARS]
+                        + "\n... [truncated, full file saved locally]"
+                    )
 
                 attachments.append(
                     {
@@ -773,7 +833,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Notify user their queued request is starting
             wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
-            start_msg = f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+            start_msg = (
+                f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+            )
             try:
                 await next_task.message.reply(start_msg, mention_author=False)
             except Exception as e:
@@ -829,6 +891,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
                 # Get the user's message content
                 raw_content = self._clean_content(message.content)
+
+                # Detect tier override from message prefix (!high, !mid, !low, etc.)
+                tier_override, raw_content = detect_tier_from_message(raw_content)
 
                 # Extract and append file attachments (also saves to local storage)
                 attachments = await self._extract_attachments(message, user_id)
@@ -919,11 +984,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     )
 
                 # Debug: check Docker sandbox status
-                docker_available = DOCKER_ENABLED and get_sandbox_manager().is_available()
-                logger.debug(f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}")
+                docker_available = (
+                    DOCKER_ENABLED and get_sandbox_manager().is_available()
+                )
+                logger.debug(
+                    f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}"
+                )
 
-                # Generate streaming response
-                response = await self._generate_response(message, prompt_messages)
+                # Generate streaming response (with optional tier override)
+                response = await self._generate_response(
+                    message, prompt_messages, tier_override
+                )
 
                 # Store in Clara's memory system
                 # Use thread_owner for message storage, user_id for memories
@@ -1051,10 +1122,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             author_id = str(current_author.id)
             if author_id not in seen_ids:
                 seen_ids.add(author_id)
-                participants.append({
-                    "id": author_id,
-                    "name": current_author.display_name,
-                })
+                participants.append(
+                    {
+                        "id": author_id,
+                        "name": current_author.display_name,
+                    }
+                )
 
         # Extract from cached messages
         for msg in messages:
@@ -1062,10 +1135,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 continue
             if msg.user_id not in seen_ids:
                 seen_ids.add(msg.user_id)
-                participants.append({
-                    "id": msg.user_id,
-                    "name": msg.username or msg.user_id,
-                })
+                participants.append(
+                    {
+                        "id": msg.user_id,
+                        "name": msg.username or msg.user_id,
+                    }
+                )
 
         return participants
 
@@ -1256,13 +1331,38 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             db.close()
 
     async def _generate_response(
-        self, message: DiscordMessage, prompt_messages: list[dict]
+        self,
+        message: DiscordMessage,
+        prompt_messages: list[dict],
+        tier: ModelTier | None = None,
     ) -> str:
-        """Generate response and send to Discord, handling tool calls."""
-        logger.info(f"Generating response for {message.author}...")
+        """Generate response and send to Discord, handling tool calls.
+
+        Args:
+            message: The Discord message to respond to
+            prompt_messages: The conversation history and context
+            tier: Optional model tier override (high/mid/low)
+        """
+        # Log tier info if specified
+        if tier:
+            emoji, display = TIER_DISPLAY.get(tier, ("", tier))
+            logger.info(f"Generating response for {message.author} using {display}...")
+        else:
+            logger.info(f"Generating response for {message.author}...")
         user_id = f"discord-{message.author.id}"
 
         try:
+            # Send tier indicator if tier was explicitly selected
+            if tier:
+                emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
+                model_name = get_model_for_tier(tier)
+                # Extract just the model name without provider prefix
+                short_model = (
+                    model_name.split("/")[-1] if "/" in model_name else model_name
+                )
+                await message.channel.send(
+                    f"-# {emoji} Using {display} ({short_model})", silent=True
+                )
             loop = asyncio.get_event_loop()
             full_response = ""
 
@@ -1282,7 +1382,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Generate with tools
             full_response, files_to_send = await self._generate_with_tools(
-                message, prompt_messages, user_id, loop, active_tools
+                message, prompt_messages, user_id, loop, active_tools, tier
             )
 
             logger.info(f"Got response: {len(full_response)} chars")
@@ -1292,13 +1392,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 full_response = "I'm sorry, I didn't generate a response."
 
             # Extract any file attachments from the response text
-            cleaned_response, inline_files = self._extract_file_attachments(full_response)
+            cleaned_response, inline_files = self._extract_file_attachments(
+                full_response
+            )
             temp_paths = []
             discord_files = []
 
             # Create Discord files from inline <<<file:>>> syntax
             if inline_files:
-                inline_discord_files, temp_paths = self._create_discord_files(inline_files)
+                inline_discord_files, temp_paths = self._create_discord_files(
+                    inline_files
+                )
                 discord_files.extend(inline_discord_files)
                 logger.debug(f" Extracted {len(inline_files)} inline file(s)")
 
@@ -1306,7 +1410,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             if files_to_send:
                 for file_path in files_to_send:
                     if file_path.exists():
-                        discord_files.append(discord.File(fp=str(file_path), filename=file_path.name))
+                        discord_files.append(
+                            discord.File(fp=str(file_path), filename=file_path.name)
+                        )
                         logger.debug(f" Adding local file: {file_path.name}")
 
             # Split the response into chunks and send each
@@ -1362,8 +1468,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         user_id: str,
         loop: asyncio.AbstractEventLoop,
         active_tools: list[dict],
+        tier: ModelTier | None = None,
     ) -> tuple[str, list]:
         """Generate response with tool calling support.
+
+        Args:
+            message: The Discord message to respond to
+            prompt_messages: The conversation history and context
+            user_id: The user ID for sandbox management
+            loop: The event loop for running blocking calls
+            active_tools: List of tool definitions to use
+            tier: Optional model tier override (high/mid/low)
 
         Returns:
             tuple: (response_text, list of file paths to send)
@@ -1429,7 +1544,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Call LLM with tools
             def call_llm():
-                llm = make_llm_with_tools(active_tools)
+                llm = make_llm_with_tools(active_tools, tier=tier)
                 return llm(messages)
 
             completion = await loop.run_in_executor(None, call_llm)
@@ -1443,10 +1558,14 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     logger.info("No tools needed, using main chat LLM")
 
                     # Remove the tool instruction we added
-                    original_messages = [m for m in messages if m.get("content") != tool_instruction["content"]]
+                    original_messages = [
+                        m
+                        for m in messages
+                        if m.get("content") != tool_instruction["content"]
+                    ]
 
                     def main_llm_call():
-                        llm = make_llm()
+                        llm = make_llm(tier=tier)
                         return llm(original_messages)
 
                     result = await loop.run_in_executor(None, main_llm_call)
@@ -1485,8 +1604,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     raw_args = tool_call.function.arguments
                     # Debug: log raw arguments
                     if raw_args:
-                        tools_logger.debug(f"Raw args type: {type(raw_args).__name__}, len: {len(raw_args)}")
-                        preview = raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
+                        tools_logger.debug(
+                            f"Raw args type: {type(raw_args).__name__}, len: {len(raw_args)}"
+                        )
+                        preview = (
+                            raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
+                        )
                         tools_logger.debug(f"Raw args preview: {preview}")
                     else:
                         tools_logger.warning("raw_args is empty/None")
@@ -1497,7 +1620,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     tools_logger.error(f"Raw value: {repr(raw_args)[:500]}")
                     arguments = {}
 
-                tools_logger.info(f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}")
+                tools_logger.info(
+                    f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}"
+                )
 
                 # Get friendly status for this tool
                 emoji, action = tool_status.get(tool_name, ("⚙️", "Working"))
@@ -1505,7 +1630,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 # Build status text with context
                 if tool_name == "execute_python":
                     desc = arguments.get("description", "")
-                    status_text = f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
+                    status_text = (
+                        f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
+                    )
                 elif tool_name == "install_package":
                     pkg = arguments.get("package", "package")
                     status_text = f"{emoji} Installing `{pkg}`..."
@@ -1519,7 +1646,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 elif tool_name == "web_search":
                     query = arguments.get("query", "")[:40]
                     status_text = f"{emoji} Searching: `{query}`..."
-                elif tool_name in ("save_to_local", "read_local_file", "delete_local_file", "send_local_file"):
+                elif tool_name in (
+                    "save_to_local",
+                    "read_local_file",
+                    "delete_local_file",
+                    "send_local_file",
+                ):
                     filename = arguments.get("filename", "file")
                     status_text = f"{emoji} {action}: `{filename}`..."
                 elif tool_name == "download_from_sandbox":
@@ -1551,8 +1683,13 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
                 # Execute the tool - handle both Docker sandbox and local file tools
                 tool_output = await self._execute_tool(
-                    tool_name, arguments, user_id, sandbox_manager, file_manager,
-                    files_to_send, message.channel
+                    tool_name,
+                    arguments,
+                    user_id,
+                    sandbox_manager,
+                    file_manager,
+                    files_to_send,
+                    message.channel,
                 )
 
                 # Add tool result to conversation
@@ -1592,6 +1729,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
         def final_call():
             from llm_backends import TOOL_FORMAT, _convert_messages_to_claude_format
+
             llm = make_llm()  # Use simple LLM for final response
             # Convert messages if using Claude format
             if TOOL_FORMAT == "claude":
@@ -1623,22 +1761,30 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
         # Docker sandbox tools (including web_search which uses Tavily)
         docker_tools = {
-            "execute_python", "install_package", "read_file",
-            "write_file", "list_files", "run_shell", "unzip_file",
-            "web_search", "run_claude_code"
+            "execute_python",
+            "install_package",
+            "read_file",
+            "write_file",
+            "list_files",
+            "run_shell",
+            "unzip_file",
+            "web_search",
+            "run_claude_code",
         }
-        
+
         # Email tools
         email_tools = {"check_email", "send_email"}
 
         if tool_name in docker_tools:
             # Use Docker sandbox manager
-            result = await sandbox_manager.handle_tool_call(user_id, tool_name, arguments)
+            result = await sandbox_manager.handle_tool_call(
+                user_id, tool_name, arguments
+            )
             if result.success:
                 return result.output
             else:
                 return f"Error: {result.error}"
-        
+
         # Email tools
         elif tool_name in email_tools:
             return await handle_email_tool(tool_name, arguments)
@@ -1695,7 +1841,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             sandbox_path = arguments.get("sandbox_path", "")
             local_filename = arguments.get("local_filename", "")
             if not local_filename:
-                local_filename = sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
+                local_filename = (
+                    sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
+                )
 
             # Read from sandbox
             read_result = await sandbox_manager.read_file(user_id, sandbox_path)
@@ -1704,7 +1852,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Save locally (organized by user/channel)
             content = read_result.output
-            save_result = file_manager.save_file(user_id, local_filename, content, channel_id)
+            save_result = file_manager.save_file(
+                user_id, local_filename, content, channel_id
+            )
             return save_result.message
 
         elif tool_name == "upload_to_sandbox":
@@ -1712,7 +1862,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             sandbox_path = arguments.get("sandbox_path", "")
 
             # Read from local storage as bytes (preserves binary files)
-            content, error = file_manager.read_file_bytes(user_id, local_filename, channel_id)
+            content, error = file_manager.read_file_bytes(
+                user_id, local_filename, channel_id
+            )
             if content is None:
                 return f"Error: {error}"
 
@@ -1721,7 +1873,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 sandbox_path = f"/home/user/{local_filename}"
 
             # Write to sandbox (bytes supported)
-            write_result = await sandbox_manager.write_file(user_id, sandbox_path, content)
+            write_result = await sandbox_manager.write_file(
+                user_id, sandbox_path, content
+            )
             if write_result.success:
                 size_kb = len(content) / 1024
                 return f"Uploaded '{local_filename}' ({size_kb:.1f} KB) to sandbox at {sandbox_path}"
@@ -1770,7 +1924,11 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M")
                     author = msg.author.display_name
                     # Truncate long messages
-                    text = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
+                    text = (
+                        msg.content[:200] + "..."
+                        if len(msg.content) > 200
+                        else msg.content
+                    )
                     matches.append(f"[{timestamp}] {author}: {text}")
 
                     # Limit results
@@ -1814,7 +1972,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 author = msg.author.display_name
                 is_bot = " [Clara]" if msg.author == self.user else ""
                 # Truncate long messages
-                text = msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                text = (
+                    msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                )
                 messages.append(f"[{timestamp}] {author}{is_bot}: {text}")
 
                 if len(messages) >= count:
@@ -2057,6 +2217,7 @@ def get_guilds():
 def get_version():
     """Get platform version information."""
     from clara_core import __version__
+
     return {
         "version": __version__,
         "platform": "mypalclara",
@@ -2362,7 +2523,9 @@ async def async_main():
 
     config_logger.info(f"Max message chain: {MAX_MESSAGES}")
     if ALLOWED_CHANNELS:
-        config_logger.info(f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}")
+        config_logger.info(
+            f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}"
+        )
     else:
         config_logger.info("Allowed channels: ALL")
     config_logger.info(f"Allowed roles: {ALLOWED_ROLES or 'all'}")
@@ -2400,9 +2563,13 @@ async def async_main():
     else:
         sandbox_logger.warning("Code execution DISABLED")
         if not DOCKER_AVAILABLE:
-            sandbox_logger.info("  - docker package not installed (run: poetry add docker)")
+            sandbox_logger.info(
+                "  - docker package not installed (run: poetry add docker)"
+            )
         elif not sandbox_mgr.is_available():
-            sandbox_logger.info("  - Docker daemon not running (start Docker Desktop or dockerd)")
+            sandbox_logger.info(
+                "  - Docker daemon not running (start Docker Desktop or dockerd)"
+            )
 
     if MONITOR_ENABLED:
         logger.info(f"Dashboard at http://localhost:{MONITOR_PORT}")
