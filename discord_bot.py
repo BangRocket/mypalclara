@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
+import io
 import json
 import re
 from collections import deque
@@ -50,6 +51,9 @@ from email_monitor import (
     get_email_monitor,
 )
 from config.logging import init_logging, get_logger, set_db_session_factory
+
+# Import modular tools system for GitHub, ADO, etc.
+from tools import init_tools, get_registry, ToolContext
 
 # Import from clara_core for unified platform
 from clara_core import (
@@ -128,8 +132,56 @@ DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
 DOCKER_ENABLED = True  # Docker sandbox is always available if Docker is running
 MAX_TOOL_ITERATIONS = 10  # Max tool call rounds per response
 
-# Combined tools: Docker sandbox + local file management
-ALL_TOOLS = LOCAL_FILE_TOOLS + DOCKER_TOOLS + EMAIL_TOOLS
+# Base tools: Docker sandbox + local file management + email
+BASE_TOOLS = LOCAL_FILE_TOOLS + DOCKER_TOOLS + EMAIL_TOOLS
+
+# Track whether modular tools have been initialized
+_modular_tools_initialized = False
+
+
+async def init_modular_tools() -> None:
+    """Initialize the modular tools system (GitHub, ADO, etc.)."""
+    global _modular_tools_initialized
+    if _modular_tools_initialized:
+        return
+
+    try:
+        results = await init_tools(hot_reload=False)
+        loaded = [name for name, success in results.items() if success]
+        failed = [name for name, success in results.items() if not success]
+
+        if loaded:
+            tools_logger.info(f"Loaded modular tools: {', '.join(loaded)}")
+        if failed:
+            tools_logger.warning(f"Failed to load: {', '.join(failed)}")
+
+        _modular_tools_initialized = True
+    except Exception as e:
+        tools_logger.error(f"Failed to initialize modular tools: {e}")
+
+
+def get_all_tools(include_docker: bool = True) -> list[dict]:
+    """Get all available tools, including modular tools from registry.
+
+    Args:
+        include_docker: Whether to include Docker sandbox tools
+
+    Returns:
+        List of tool definitions in OpenAI format
+    """
+    # Start with base tools
+    if include_docker:
+        tools = list(BASE_TOOLS)
+    else:
+        tools = list(LOCAL_FILE_TOOLS)
+
+    # Add modular tools from registry (GitHub, ADO, etc.)
+    if _modular_tools_initialized:
+        registry = get_registry()
+        modular_tools = registry.get_tools(platform="discord", format="openai")
+        tools.extend(modular_tools)
+
+    return tools
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
@@ -742,6 +794,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
             logger.info(f"Invite URL: {invite}")
+
+        # Initialize modular tools system (GitHub, ADO, etc.)
+        await init_modular_tools()
 
         # Update monitor
         monitor.bot_user = str(self.user)
@@ -1390,13 +1445,13 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             docker_available = DOCKER_ENABLED and sandbox_mgr.is_available()
 
             # Always use tools (local file tools are always available)
-            # Build the active tool list
+            # Build the active tool list dynamically (includes modular tools like GitHub, ADO)
             if docker_available:
-                tools_logger.info("Using tool-calling mode (Docker + local files)")
-                active_tools = ALL_TOOLS
+                tools_logger.info("Using tool-calling mode (Docker + local files + modular)")
+                active_tools = get_all_tools(include_docker=True)
             else:
-                tools_logger.info("Using tool-calling mode (local files only)")
-                active_tools = LOCAL_FILE_TOOLS
+                tools_logger.info("Using tool-calling mode (local files + modular only)")
+                active_tools = get_all_tools(include_docker=False)
 
             # Generate with tools
             full_response, files_to_send = await self._generate_with_tools(
@@ -1428,10 +1483,21 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             if files_to_send:
                 for file_path in files_to_send:
                     if file_path.exists():
-                        discord_files.append(
-                            discord.File(fp=str(file_path), filename=file_path.name)
-                        )
-                        logger.debug(f" Adding local file: {file_path.name}")
+                        try:
+                            # Read file content into memory to avoid timing/handle issues
+                            content = file_path.read_bytes()
+                            if content:
+                                discord_files.append(
+                                    discord.File(
+                                        fp=io.BytesIO(content),
+                                        filename=file_path.name
+                                    )
+                                )
+                                logger.debug(f" Adding local file: {file_path.name} ({len(content)} bytes)")
+                            else:
+                                logger.warning(f" Local file is empty: {file_path.name}")
+                        except Exception as e:
+                            logger.error(f" Failed to read local file {file_path.name}: {e}")
 
             # Split the response into chunks and send each
             chunks = self._split_message(cleaned_response)
@@ -1514,7 +1580,13 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         tool_instruction = {
             "role": "system",
             "content": (
-                "You have access to tools for code execution and file management. "
+                "CRITICAL FILE ATTACHMENT RULES (ALWAYS FOLLOW):\n"
+                "- NEVER paste raw HTML into chat - ALWAYS use <<<file:page.html>>> syntax\n"
+                "- NEVER paste large JSON (>20 lines) - attach as <<<file:data.json>>>\n"
+                "- NEVER paste long code (>50 lines) - attach as <<<file:code.ext>>>\n"
+                "- When user asks to 'provide/create/make a file' - use <<<file:>>> syntax, don't show raw content\n"
+                "- When user asks for 'download/attachment' - use <<<file:>>> syntax\n\n"
+                "You have access to tools for code execution, file management, and developer integrations. "
                 "When the user asks you to calculate, run code, analyze data, "
                 "fetch URLs, install packages, or do anything computational - "
                 "USE THE TOOLS. Do not just explain what you would do - actually "
@@ -1522,8 +1594,8 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 "For any math beyond basic arithmetic, USE execute_python. "
                 "You can also save files locally with save_to_local and send "
                 "them to chat with send_local_file. "
-                "IMPORTANT: Never paste raw HTML, large JSON, or lengthy code directly into chat. "
-                "Always attach large content as files using <<<file:name.ext>>> syntax. "
+                "For GitHub tasks (repos, issues, PRs, workflows), use the github_* tools. "
+                "For Azure DevOps tasks (work items, PRs, pipelines, repos), use the ado_* tools. "
                 "Summarize results conversationally and attach full output as a file."
             ),
         }
@@ -1532,7 +1604,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         # Tool execution tracking
         total_tools_run = 0
 
-        # Tool status messages (Docker + local file tools)
+        # Tool status messages (Docker + local file + modular tools)
         tool_status = {
             # Docker sandbox tools
             "execute_python": ("🐍", "Running Python code"),
@@ -1558,6 +1630,35 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             # Email tools
             "check_email": ("📬", "Checking email"),
             "send_email": ("📤", "Sending email"),
+            # GitHub tools
+            "github_get_me": ("🐙", "Getting GitHub profile"),
+            "github_search_repositories": ("🔍", "Searching GitHub repos"),
+            "github_get_repository": ("📂", "Getting repo details"),
+            "github_list_issues": ("📋", "Listing issues"),
+            "github_get_issue": ("🔖", "Getting issue details"),
+            "github_create_issue": ("➕", "Creating issue"),
+            "github_list_pull_requests": ("🔀", "Listing pull requests"),
+            "github_get_pull_request": ("📑", "Getting PR details"),
+            "github_create_pull_request": ("🔀", "Creating pull request"),
+            "github_list_commits": ("📝", "Listing commits"),
+            "github_get_file_contents": ("📄", "Reading GitHub file"),
+            "github_search_code": ("🔎", "Searching GitHub code"),
+            "github_list_workflow_runs": ("⚙️", "Listing workflow runs"),
+            "github_run_workflow": ("▶️", "Triggering workflow"),
+            # Azure DevOps tools
+            "ado_list_projects": ("🏢", "Listing ADO projects"),
+            "ado_list_repos": ("📂", "Listing ADO repos"),
+            "ado_list_pull_requests": ("🔀", "Listing ADO pull requests"),
+            "ado_get_pull_request": ("📑", "Getting ADO PR details"),
+            "ado_create_pull_request": ("🔀", "Creating ADO pull request"),
+            "ado_list_work_items": ("📋", "Listing work items"),
+            "ado_get_work_item": ("🔖", "Getting work item details"),
+            "ado_create_work_item": ("➕", "Creating work item"),
+            "ado_search_work_items": ("🔎", "Searching work items"),
+            "ado_my_work_items": ("📋", "Getting my work items"),
+            "ado_list_pipelines": ("⚙️", "Listing pipelines"),
+            "ado_list_builds": ("🔨", "Listing builds"),
+            "ado_run_pipeline": ("▶️", "Running pipeline"),
         }
 
         for iteration in range(MAX_TOOL_ITERATIONS):
@@ -1913,6 +2014,23 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 return f"File not found: {filename}"
 
         else:
+            # Try modular tools from registry (GitHub, ADO, etc.)
+            if _modular_tools_initialized:
+                registry = get_registry()
+                if tool_name in registry:
+                    # Build tool context for modular tools
+                    ctx = ToolContext(
+                        user_id=user_id,
+                        channel_id=channel_id,
+                        platform="discord",
+                        extra={"channel": channel},
+                    )
+                    try:
+                        return await registry.execute(tool_name, arguments, ctx)
+                    except Exception as e:
+                        tools_logger.error(f"Modular tool {tool_name} failed: {e}")
+                        return f"Error executing {tool_name}: {e}"
+
             return f"Unknown tool: {tool_name}"
 
     async def _search_chat_history(
