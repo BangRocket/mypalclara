@@ -20,8 +20,8 @@ from datetime import datetime, UTC
 from dataclasses import dataclass
 import os
 
-from bot_config import BOT_NAME
-from llm_backends import make_llm
+from config.bot import BOT_NAME
+from clara_core import make_llm
 
 # Email configuration - loaded from environment or hardcoded for now
 EMAIL_ADDRESS = os.environ.get("CLARA_EMAIL_ADDRESS")
@@ -29,8 +29,9 @@ EMAIL_PASSWORD = os.environ.get("CLARA_EMAIL_PASSWORD")
 IMAP_SERVER = os.getenv("CLARA_IMAP_SERVER", "imap.titan.email")
 IMAP_PORT = int(os.getenv("CLARA_IMAP_PORT", "993"))
 
-# Discord user ID to notify (Joshua's Discord ID)
-NOTIFY_USER_ID = int(os.getenv("CLARA_EMAIL_NOTIFY_USER", "271274659385835521"))
+# Discord user ID to notify (default: None if not set)
+_notify_user_env = os.getenv("CLARA_EMAIL_NOTIFY_USER", "").strip()
+NOTIFY_USER_ID = int(_notify_user_env) if _notify_user_env else None
 
 # Whether to send Discord notifications (default: off)
 NOTIFY_ENABLED = os.getenv("CLARA_EMAIL_NOTIFY", "false").lower() == "true"

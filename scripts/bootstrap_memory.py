@@ -27,7 +27,7 @@ load_dotenv()
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from llm_backends import make_llm
+from clara_core import make_llm
 
 # Namespaces
 NAMESPACES = [
@@ -407,7 +407,7 @@ def link_user_to_person(user_id: str):
 
 def apply_to_mem0(memories: dict, user_id: str, dry_run: bool = False):
     """Upsert memories to mem0 with relationship-rich grouping for graph extraction."""
-    from mem0_config import MEM0
+    from config.mem0 import MEM0
 
     if MEM0 is None:
         print("[bootstrap] Error: mem0 is not initialized")

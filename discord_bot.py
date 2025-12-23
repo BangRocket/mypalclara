@@ -39,44 +39,32 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from db import SessionLocal, init_db
-from docker_tools import DOCKER_TOOLS, get_sandbox_manager
-from llm_backends import make_llm, make_llm_with_tools
-from local_files import LOCAL_FILE_TOOLS, get_file_manager
-from memory_manager import MemoryManager
-from email_monitor import EMAIL_TOOLS, handle_email_tool, email_check_loop, get_email_monitor
+from db import SessionLocal
+from db.models import ChannelSummary, Project, Session
+from sandbox.docker import DOCKER_TOOLS, get_sandbox_manager
+from storage.local_files import LOCAL_FILE_TOOLS, get_file_manager
+from email_monitor import (
+    EMAIL_TOOLS,
+    handle_email_tool,
+    email_check_loop,
+    get_email_monitor,
+)
+from config.logging import init_logging, get_logger, set_db_session_factory
 
-from models import ChannelSummary, Project, Session
+# Import from clara_core for unified platform
+from clara_core import (
+    init_platform,
+    MemoryManager,
+    make_llm,
+    make_llm_with_tools,
+    ModelTier,
+    get_model_for_tier,
+)
 
-
-# ============== Console Colors ==============
-class C:
-    """ANSI color codes for console output."""
-
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-
-    # Colors
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    MAGENTA = "\033[95m"
-    CYAN = "\033[96m"
-    WHITE = "\033[97m"
-    GRAY = "\033[90m"
-
-    # Shortcuts for common patterns
-    OK = GREEN + "✓" + RESET
-    FAIL = RED + "✗" + RESET
-    WARN = YELLOW + "⚠" + RESET
-    INFO = CYAN + "ℹ" + RESET
-
-
-def log(tag: str, msg: str, color: str = C.CYAN) -> None:
-    """Print a colored log message with tag."""
-    print(f"{color}[{tag}]{C.RESET} {msg}")
+# Initialize logging system
+init_logging()
+logger = get_logger("discord")
+tools_logger = get_logger("tools")
 
 # Configuration
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -151,6 +139,45 @@ MONITOR_PORT = int(os.getenv("DISCORD_MONITOR_PORT", "8001"))
 MONITOR_ENABLED = os.getenv("DISCORD_MONITOR_ENABLED", "true").lower() == "true"
 MAX_LOG_ENTRIES = 100
 
+# Model tier prefixes
+TIER_PREFIXES = {
+    "!high": "high",
+    "!opus": "high",
+    "!mid": "mid",
+    "!sonnet": "mid",
+    "!low": "low",
+    "!haiku": "low",
+    "!fast": "low",
+}
+
+# Tier display names and emojis
+TIER_DISPLAY = {
+    "high": ("🔴", "High (Opus-class)"),
+    "mid": ("🟡", "Mid (Sonnet-class)"),
+    "low": ("🟢", "Low (Haiku-class)"),
+}
+
+
+def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
+    """Detect model tier from message prefix and return cleaned content.
+
+    Supported prefixes:
+        !high, !opus     -> high tier
+        !mid, !sonnet    -> mid tier (default)
+        !low, !haiku, !fast -> low tier
+
+    Returns:
+        (tier, cleaned_content): The detected tier (or None for default) and
+        the message content with the prefix removed.
+    """
+    content_lower = content.lower().strip()
+    for prefix, tier in TIER_PREFIXES.items():
+        if content_lower.startswith(prefix):
+            # Remove the prefix and any leading whitespace
+            cleaned = content[len(prefix) :].lstrip()
+            return tier, cleaned  # type: ignore
+    return None, content
+
 
 @dataclass
 class CachedMessage:
@@ -188,6 +215,107 @@ class LogEntry:
             "user": self.user,
             "content": content,
         }
+
+
+@dataclass
+class QueuedTask:
+    """A queued task waiting to be processed."""
+
+    message: DiscordMessage
+    is_dm: bool
+    queued_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    position: int = 0  # Position in queue when added
+
+
+class TaskQueue:
+    """Manages task queuing per channel to prevent concurrent tool usage."""
+
+    def __init__(self):
+        # Active tasks: channel_id -> message being processed
+        self._active: dict[int, DiscordMessage] = {}
+        # Queued tasks: channel_id -> list of queued tasks
+        self._queues: dict[int, list[QueuedTask]] = {}
+        self._lock = asyncio.Lock()
+
+    async def try_acquire(
+        self, message: DiscordMessage, is_dm: bool
+    ) -> tuple[bool, int]:
+        """Try to acquire the channel for processing.
+
+        Returns:
+            (acquired, queue_position): If acquired is True, proceed with task.
+            If False, queue_position indicates position in queue (1-indexed).
+        """
+        channel_id = message.channel.id
+
+        async with self._lock:
+            if channel_id not in self._active:
+                # No active task, acquire immediately
+                self._active[channel_id] = message
+                return True, 0
+
+            # Channel is busy, add to queue
+            if channel_id not in self._queues:
+                self._queues[channel_id] = []
+
+            queue = self._queues[channel_id]
+            position = len(queue) + 1  # 1-indexed position
+            task = QueuedTask(message=message, is_dm=is_dm, position=position)
+            queue.append(task)
+
+            logger.info(f"Queued task for channel {channel_id}, position {position}")
+            return False, position
+
+    async def release(self, channel_id: int) -> QueuedTask | None:
+        """Release the channel and return the next queued task if any."""
+        async with self._lock:
+            if channel_id in self._active:
+                del self._active[channel_id]
+
+            # Check for queued tasks
+            if channel_id in self._queues and self._queues[channel_id]:
+                next_task = self._queues[channel_id].pop(0)
+                self._active[channel_id] = next_task.message
+                logger.info(
+                    f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining"
+                )
+                return next_task
+
+            return None
+
+    async def get_queue_length(self, channel_id: int) -> int:
+        """Get the number of queued tasks for a channel."""
+        async with self._lock:
+            if channel_id in self._queues:
+                return len(self._queues[channel_id])
+            return 0
+
+    async def is_busy(self, channel_id: int) -> bool:
+        """Check if a channel has an active task."""
+        async with self._lock:
+            return channel_id in self._active
+
+    async def get_stats(self) -> dict:
+        """Get queue statistics (async version)."""
+        async with self._lock:
+            return self._get_stats_sync()
+
+    def _get_stats_sync(self) -> dict:
+        """Get queue statistics (sync version, call within lock)."""
+        total_queued = sum(len(q) for q in self._queues.values())
+        return {
+            "active_tasks": len(self._active),
+            "total_queued": total_queued,
+            "channels_busy": list(self._active.keys()),
+        }
+
+    def get_stats_unsafe(self) -> dict:
+        """Get queue statistics without lock (for sync callers, may be slightly stale)."""
+        return self._get_stats_sync()
+
+
+# Global task queue instance
+task_queue = TaskQueue()
 
 
 class BotMonitor:
@@ -245,11 +373,17 @@ class BotMonitor:
 
     def get_stats(self):
         """Get current statistics."""
+        from clara_core import __version__
+
         uptime = None
         if self.start_time:
             uptime = (datetime.now(UTC) - self.start_time).total_seconds()
 
+        # Get queue stats
+        queue_stats = task_queue.get_stats_unsafe()
+
         return {
+            "version": __version__,
             "bot_user": self.bot_user,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "uptime_seconds": uptime,
@@ -258,6 +392,7 @@ class BotMonitor:
             "dm_count": self.dm_count,
             "response_count": self.response_count,
             "error_count": self.error_count,
+            "queue": queue_stats,
         }
 
 
@@ -280,9 +415,9 @@ class ClaraDiscordBot(discord.Client):
         self.msg_cache: dict[int, CachedMessage] = {}
         self.cache_lock = asyncio.Lock()
 
-        # Initialize Clara's backend
-        init_db()
-        self.mm = MemoryManager(llm_callable=self._sync_llm)
+        # Initialize Clara's unified platform (DB, LLM, MemoryManager, ToolRegistry)
+        init_platform()
+        self.mm = MemoryManager.get_instance()
 
     def _sync_llm(self, messages: list[dict]) -> str:
         """Synchronous LLM call for MemoryManager."""
@@ -400,11 +535,29 @@ Use files when:
 - Sharing structured data (JSON, CSV, etc.)
 - Creating formatted documents (HTML, Markdown)
 
-## Discord Etiquette
+## Discord Etiquette & Message Limits
 - Keep responses concise when possible (Discord is conversational)
 - You can use emojis sparingly when they fit the tone
 - Long responses will be split across multiple messages automatically
 - Users interact by @mentioning you or replying to your messages
+
+**CRITICAL - Never dump large content directly into chat:**
+- **NO raw HTML** - Always use `<<<file:page.html>>>` syntax to attach as file
+- **NO large JSON/data** - Attach as file if more than ~20 lines
+- **NO long code blocks** - Use file attachment for code >50 lines
+- **NO base64/binary data** - Always attach as file
+- **NO full web page content** - Summarize key points, attach full content as file
+
+When generating or processing content that would flood the chat:
+1. Summarize the key points in your message
+2. Attach the full content as a file using `<<<file:name.ext>>>` syntax
+3. Tell the user what's in the attached file
+
+Example: Instead of pasting 500 lines of HTML, say:
+"Here's the webpage structure - I've attached the full HTML file below.
+<<<file:page.html>>>
+<!DOCTYPE html>...
+<<</file>>>"
 
 ## Local File Storage
 You can save files locally that persist across conversations:
@@ -519,9 +672,11 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         user_id, original_filename, content_bytes, channel_id
                     )
                     if save_result.success:
-                        print(f"[discord] Saved attachment to storage: {original_filename}")
+                        logger.debug(
+                            f" Saved attachment to storage: {original_filename}"
+                        )
                 except Exception as e:
-                    print(f"[discord] Failed to save attachment locally: {e}")
+                    logger.debug(f" Failed to save attachment locally: {e}")
 
             if ext not in TEXT_EXTENSIONS:
                 # Note: file was still saved locally above
@@ -537,7 +692,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             # Check file size for inline display
             if attachment.size > MAX_FILE_SIZE:
                 size = attachment.size
-                print(f"[discord] Large file saved locally: {filename} ({size} bytes)")
+                logger.debug(f" Large file saved locally: {filename} ({size} bytes)")
                 attachments.append(
                     {
                         "filename": original_filename,
@@ -557,7 +712,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
                 # Truncate if still too long for inline display
                 if len(content) > MAX_CHARS:
-                    content = content[:MAX_CHARS] + "\n... [truncated, full file saved locally]"
+                    content = (
+                        content[:MAX_CHARS]
+                        + "\n... [truncated, full file saved locally]"
+                    )
 
                 attachments.append(
                     {
@@ -565,10 +723,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         "content": content,
                     }
                 )
-                print(f"[discord] Read attachment: {filename} ({len(content)} chars)")
+                logger.debug(f" Read attachment: {filename} ({len(content)} chars)")
 
             except Exception as e:
-                print(f"[discord] Error reading attachment {filename}: {e}")
+                logger.debug(f" Error reading attachment {filename}: {e}")
                 attachments.append(
                     {
                         "filename": attachment.filename,
@@ -580,10 +738,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
     async def on_ready(self):
         """Called when bot is ready."""
-        print(f"\n{C.GREEN}[discord]{C.RESET} {C.BOLD}Logged in as {C.CYAN}{self.user}{C.RESET}")
+        logger.info(f"Logged in as {self.user}")
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
-            print(f"{C.GRAY}[discord]{C.RESET} Invite URL: {C.BLUE}{invite}{C.RESET}")
+            logger.info(f"Invite URL: {invite}")
 
         # Update monitor
         monitor.bot_user = str(self.user)
@@ -592,7 +750,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         monitor.log("system", "Bot", f"Logged in as {self.user}")
         # Start email monitoring background task
         self.loop.create_task(email_check_loop(self))
-        print(f"{C.GREEN}[email]{C.RESET} Email monitoring task started")
+        logger.info("Email monitoring task started")
 
     async def on_guild_join(self, guild):
         """Called when bot joins a guild."""
@@ -607,7 +765,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
     async def on_message(self, message: DiscordMessage):
         """Handle incoming messages."""
         # Debug: log all messages
-        print(f"{C.BLUE}[discord]{C.RESET} Message from {C.CYAN}{message.author}{C.RESET}: {C.GRAY}{message.content[:50]!r}{C.RESET}")
+        logger.debug(f"Message from {message.author}: {message.content[:50]!r}")
 
         # Ignore own messages
         if message.author == self.user:
@@ -626,7 +784,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 and message.reference.resolved.author == self.user
             )
 
-            print(f"[discord] mentioned={is_mentioned}, reply_to_bot={is_reply_to_bot}")
+            logger.debug(f"mentioned={is_mentioned}, reply_to_bot={is_reply_to_bot}")
 
             if not is_mentioned and not is_reply_to_bot:
                 return
@@ -635,7 +793,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             if ALLOWED_CHANNELS:
                 channel_id = str(message.channel.id)
                 if channel_id not in ALLOWED_CHANNELS:
-                    print(f"[discord] Channel {channel_id} not in allowed list")
+                    logger.debug(f"Channel {channel_id} not in allowed list")
                     return
 
             # Check role permissions (only for non-DM)
@@ -644,7 +802,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 if not user_roles.intersection(set(ALLOWED_ROLES)):
                     return
         else:
-            print(f"[discord] DM from {message.author}")
+            logger.info(f"DM from {message.author}")
 
         # Log the incoming message to monitor
         guild_name = message.guild.name if message.guild else None
@@ -658,13 +816,64 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             channel_name,
         )
 
-        # Process the message
-        await self._handle_message(message, is_dm)
+        # Try to acquire channel for processing (queue if busy)
+        await self._process_with_queue(message, is_dm)
+
+    async def _process_with_queue(self, message: DiscordMessage, is_dm: bool):
+        """Process message with queue management."""
+        channel_id = message.channel.id
+
+        # Try to acquire the channel
+        acquired, queue_position = await task_queue.try_acquire(message, is_dm)
+
+        if not acquired:
+            # Channel is busy, notify user their request is queued
+            queue_msg = f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
+            try:
+                await message.reply(queue_msg, mention_author=False)
+            except Exception as e:
+                logger.warning(f"Failed to send queue notification: {e}")
+            return  # The task will be processed when dequeued
+
+        # We have the channel, process the message
+        try:
+            await self._handle_message(message, is_dm)
+        finally:
+            # Release channel and check for queued tasks
+            await self._process_queued_tasks(channel_id)
+
+    async def _process_queued_tasks(self, channel_id: int):
+        """Process any queued tasks for the channel after releasing."""
+        while True:
+            next_task = await task_queue.release(channel_id)
+            if not next_task:
+                break
+
+            # Notify user their queued request is starting
+            wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
+            start_msg = (
+                f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+            )
+            try:
+                await next_task.message.reply(start_msg, mention_author=False)
+            except Exception as e:
+                logger.warning(f"Failed to send start notification: {e}")
+
+            # Process the queued task
+            try:
+                await self._handle_message(next_task.message, next_task.is_dm)
+            except Exception as e:
+                logger.exception(f"Error processing queued task: {e}")
+                try:
+                    err_msg = f"Sorry, I encountered an error processing your queued request: {str(e)[:100]}"
+                    await next_task.message.reply(err_msg, mention_author=False)
+                except Exception:
+                    pass
 
     async def _handle_message(self, message: DiscordMessage, is_dm: bool = False):
         """Process a message and generate a response."""
         content_preview = message.content[:50]
-        print(f"{C.BLUE}[discord]{C.RESET} Handling message from {C.CYAN}{message.author}{C.RESET}: {C.GRAY}{content_preview!r}{C.RESET}")
+        logger.info(f"Handling message from {message.author}: {content_preview!r}")
 
         async with message.channel.typing():
             try:
@@ -682,24 +891,27 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     )
                     n_recent = len(recent_channel_msgs)
                     n_sum = len(channel_summary)
-                    print(f"[discord] Channel: {n_recent} recent, {n_sum}ch summary")
+                    logger.debug(f" Channel: {n_recent} recent, {n_sum}ch summary")
                 else:
                     # DMs: use reply chain, no channel summary
                     recent_channel_msgs = await self._build_message_chain(message)
                     channel_summary = ""
-                    print(f"[discord] DM chain: {len(recent_channel_msgs)} msgs")
+                    logger.debug(f" DM chain: {len(recent_channel_msgs)} msgs")
 
                 # Get thread (shared for channels, per-user for DMs)
                 thread, thread_owner = await self._ensure_thread(message, is_dm)
-                print(f"[discord] Thread: {thread.id} (owner: {thread_owner})")
+                logger.debug(f" Thread: {thread.id} (owner: {thread_owner})")
 
                 # User ID for memories - always per-user, even in shared channels
                 user_id = f"discord-{message.author.id}"
                 project_id = await self._ensure_project(user_id)
-                print(f"[discord] User: {user_id}, Project: {project_id}")
+                logger.debug(f" User: {user_id}, Project: {project_id}")
 
                 # Get the user's message content
                 raw_content = self._clean_content(message.content)
+
+                # Detect tier override from message prefix (!high, !mid, !low, etc.)
+                tier_override, raw_content = detect_tier_from_message(raw_content)
 
                 # Extract and append file attachments (also saves to local storage)
                 attachments = await self._extract_attachments(message, user_id)
@@ -718,7 +930,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                             fname, err = att["filename"], att["error"]
                             attachment_text.append(f"\n\n[File {fname}: {err}]")
                     raw_content += "".join(attachment_text)
-                    print(f"[discord] Added {len(attachments)} file(s) to message")
+                    logger.debug(f" Added {len(attachments)} file(s) to message")
 
                 # For channels, prefix with username so Clara knows who's speaking
                 if not is_dm:
@@ -727,7 +939,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 else:
                     user_content = raw_content
 
-                print(f"[discord] Content length: {len(user_content)} chars")
+                logger.debug(f" Content length: {len(user_content)} chars")
 
                 # Extract participants from conversation for cross-user memory
                 participants = self._extract_participants(
@@ -735,7 +947,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 )
                 if len(participants) > 1:
                     names = [p["name"] for p in participants]
-                    print(f"[discord] Participants: {', '.join(names)}")
+                    logger.debug(f" Participants: {', '.join(names)}")
 
                 # Fetch memories
                 db = SessionLocal()
@@ -790,11 +1002,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     )
 
                 # Debug: check Docker sandbox status
-                docker_available = DOCKER_ENABLED and get_sandbox_manager().is_available()
-                print(f"[discord] Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}")
+                docker_available = (
+                    DOCKER_ENABLED and get_sandbox_manager().is_available()
+                )
+                logger.debug(
+                    f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}"
+                )
 
-                # Generate streaming response
-                response = await self._generate_response(message, prompt_messages)
+                # Generate streaming response (with optional tier override)
+                response = await self._generate_response(
+                    message, prompt_messages, tier_override
+                )
 
                 # Store in Clara's memory system
                 # Use thread_owner for message storage, user_id for memories
@@ -820,10 +1038,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     )
 
             except Exception as e:
-                print(f"{C.RED}[error]{C.RESET} Handling message: {e}")
-                import traceback
-
-                traceback.print_exc()
+                logger.exception(f"Error handling message: {e}")
 
                 # Log error to monitor
                 guild_name = message.guild.name if message.guild else None
@@ -925,10 +1140,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             author_id = str(current_author.id)
             if author_id not in seen_ids:
                 seen_ids.add(author_id)
-                participants.append({
-                    "id": author_id,
-                    "name": current_author.display_name,
-                })
+                participants.append(
+                    {
+                        "id": author_id,
+                        "name": current_author.display_name,
+                    }
+                )
 
         # Extract from cached messages
         for msg in messages:
@@ -936,10 +1153,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 continue
             if msg.user_id not in seen_ids:
                 seen_ids.add(msg.user_id)
-                participants.append({
-                    "id": msg.user_id,
-                    "name": msg.username or msg.user_id,
-                })
+                participants.append(
+                    {
+                        "id": msg.user_id,
+                        "name": msg.username or msg.user_id,
+                    }
+                )
 
         return participants
 
@@ -1014,7 +1233,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     tzinfo=None
                 )
                 db.commit()
-                print(f"[discord] Updated channel summary for {channel_id}")
+                logger.debug(f" Updated channel summary for {channel_id}")
 
             return summary_record.summary or "", recent_messages
         finally:
@@ -1123,20 +1342,45 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 db.add(thread)
                 db.commit()
                 db.refresh(thread)
-                print(f"[discord] Created thread: {thread_title}")
+                logger.debug(f" Created thread: {thread_title}")
 
             return thread, thread_owner
         finally:
             db.close()
 
     async def _generate_response(
-        self, message: DiscordMessage, prompt_messages: list[dict]
+        self,
+        message: DiscordMessage,
+        prompt_messages: list[dict],
+        tier: ModelTier | None = None,
     ) -> str:
-        """Generate response and send to Discord, handling tool calls."""
-        print(f"{C.BLUE}[discord]{C.RESET} Generating response for {C.CYAN}{message.author}{C.RESET}...")
+        """Generate response and send to Discord, handling tool calls.
+
+        Args:
+            message: The Discord message to respond to
+            prompt_messages: The conversation history and context
+            tier: Optional model tier override (high/mid/low)
+        """
+        # Log tier info if specified
+        if tier:
+            emoji, display = TIER_DISPLAY.get(tier, ("", tier))
+            logger.info(f"Generating response for {message.author} using {display}...")
+        else:
+            logger.info(f"Generating response for {message.author}...")
         user_id = f"discord-{message.author.id}"
 
         try:
+            # Send tier indicator if tier was explicitly selected
+            if tier:
+                emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
+                model_name = get_model_for_tier(tier)
+                # Extract just the model name without provider prefix
+                short_model = (
+                    model_name.split("/")[-1] if "/" in model_name else model_name
+                )
+                await message.channel.send(
+                    f"-# {emoji} Using {display} ({short_model})", silent=True
+                )
             loop = asyncio.get_event_loop()
             full_response = ""
 
@@ -1148,44 +1392,50 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             # Always use tools (local file tools are always available)
             # Build the active tool list
             if docker_available:
-                print(f"{C.BLUE}[discord]{C.RESET} Using tool-calling mode {C.GREEN}(Docker + local files){C.RESET}")
+                tools_logger.info("Using tool-calling mode (Docker + local files)")
                 active_tools = ALL_TOOLS
             else:
-                print(f"{C.BLUE}[discord]{C.RESET} Using tool-calling mode {C.YELLOW}(local files only){C.RESET}")
+                tools_logger.info("Using tool-calling mode (local files only)")
                 active_tools = LOCAL_FILE_TOOLS
 
             # Generate with tools
             full_response, files_to_send = await self._generate_with_tools(
-                message, prompt_messages, user_id, loop, active_tools
+                message, prompt_messages, user_id, loop, active_tools, tier
             )
 
-            print(f"{C.GREEN}[discord]{C.RESET} Got response: {C.WHITE}{len(full_response)}{C.RESET} chars")
+            logger.info(f"Got response: {len(full_response)} chars")
 
             if not full_response:
-                print(f"{C.YELLOW}[warning]{C.RESET} Empty response from LLM")
+                logger.warning("Empty response from LLM")
                 full_response = "I'm sorry, I didn't generate a response."
 
             # Extract any file attachments from the response text
-            cleaned_response, inline_files = self._extract_file_attachments(full_response)
+            cleaned_response, inline_files = self._extract_file_attachments(
+                full_response
+            )
             temp_paths = []
             discord_files = []
 
             # Create Discord files from inline <<<file:>>> syntax
             if inline_files:
-                inline_discord_files, temp_paths = self._create_discord_files(inline_files)
+                inline_discord_files, temp_paths = self._create_discord_files(
+                    inline_files
+                )
                 discord_files.extend(inline_discord_files)
-                print(f"[discord] Extracted {len(inline_files)} inline file(s)")
+                logger.debug(f" Extracted {len(inline_files)} inline file(s)")
 
             # Add files from send_local_file tool calls
             if files_to_send:
                 for file_path in files_to_send:
                     if file_path.exists():
-                        discord_files.append(discord.File(fp=str(file_path), filename=file_path.name))
-                        print(f"[discord] Adding local file: {file_path.name}")
+                        discord_files.append(
+                            discord.File(fp=str(file_path), filename=file_path.name)
+                        )
+                        logger.debug(f" Adding local file: {file_path.name}")
 
             # Split the response into chunks and send each
             chunks = self._split_message(cleaned_response)
-            print(f"[discord] Sending {len(chunks)} message(s)")
+            logger.debug(f" Sending {len(chunks)} message(s)")
 
             try:
                 response_msg = None
@@ -1197,7 +1447,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         # First message is a reply
                         if chunk_files:
                             n_files = len(chunk_files)
-                            print(f"[discord] Sending reply with {n_files} file(s)")
+                            logger.debug(f" Sending reply with {n_files} file(s)")
                         response_msg = await message.reply(
                             chunk, mention_author=False, files=chunk_files
                         )
@@ -1205,7 +1455,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         # Subsequent messages are follow-ups in the channel
                         response_msg = await message.channel.send(chunk)
 
-                print(f"{C.GREEN}[discord]{C.RESET} Sent reply to Discord")
+                logger.info("Sent reply to Discord")
             finally:
                 # Clean up temp files after sending
                 if temp_paths:
@@ -1222,10 +1472,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     )
 
         except Exception as e:
-            print(f"{C.RED}[error]{C.RESET} Generating response: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception(f"Generating response: {e}")
             error_msg = f"I had trouble generating a response: {str(e)[:100]}"
             await message.reply(error_msg, mention_author=False)
             return ""
@@ -1239,8 +1486,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         user_id: str,
         loop: asyncio.AbstractEventLoop,
         active_tools: list[dict],
+        tier: ModelTier | None = None,
     ) -> tuple[str, list]:
         """Generate response with tool calling support.
+
+        Args:
+            message: The Discord message to respond to
+            prompt_messages: The conversation history and context
+            user_id: The user ID for sandbox management
+            loop: The event loop for running blocking calls
+            active_tools: List of tool definitions to use
+            tier: Optional model tier override (high/mid/low)
 
         Returns:
             tuple: (response_text, list of file paths to send)
@@ -1265,7 +1521,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 "call the execute_python or other tools to do it. "
                 "For any math beyond basic arithmetic, USE execute_python. "
                 "You can also save files locally with save_to_local and send "
-                "them to chat with send_local_file."
+                "them to chat with send_local_file. "
+                "IMPORTANT: Never paste raw HTML, large JSON, or lengthy code directly into chat. "
+                "Always attach large content as files using <<<file:name.ext>>> syntax. "
+                "Summarize results conversationally and attach full output as a file."
             ),
         }
         messages.insert(0, tool_instruction)
@@ -1302,11 +1561,11 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         }
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            print(f"{C.MAGENTA}[tools]{C.RESET} Iteration {C.WHITE}{iteration + 1}{C.RESET}/{MAX_TOOL_ITERATIONS}")
+            tools_logger.info(f"Iteration {iteration + 1}/{MAX_TOOL_ITERATIONS}")
 
             # Call LLM with tools
             def call_llm():
-                llm = make_llm_with_tools(active_tools)
+                llm = make_llm_with_tools(active_tools, tier=tier)
                 return llm(messages)
 
             completion = await loop.run_in_executor(None, call_llm)
@@ -1317,13 +1576,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 if iteration == 0:
                     # First iteration with no tools - fall back to main chat LLM
                     # This preserves the main LLM's personality for regular chat
-                    print(f"{C.BLUE}[discord]{C.RESET} No tools needed, using {C.CYAN}main chat LLM{C.RESET}")
+                    logger.info("No tools needed, using main chat LLM")
 
                     # Remove the tool instruction we added
-                    original_messages = [m for m in messages if m.get("content") != tool_instruction["content"]]
+                    original_messages = [
+                        m
+                        for m in messages
+                        if m.get("content") != tool_instruction["content"]
+                    ]
 
                     def main_llm_call():
-                        llm = make_llm()
+                        llm = make_llm(tier=tier)
                         return llm(original_messages)
 
                     result = await loop.run_in_executor(None, main_llm_call)
@@ -1334,7 +1597,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Process tool calls
             tool_count = len(response_message.tool_calls)
-            print(f"{C.MAGENTA}[tools]{C.RESET} Processing {C.YELLOW}{tool_count}{C.RESET} tool call(s)")
+            tools_logger.info(f"Processing {tool_count} tool call(s)")
 
             # Add assistant message with tool calls to conversation
             messages.append(
@@ -1362,20 +1625,25 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     raw_args = tool_call.function.arguments
                     # Debug: log raw arguments
                     if raw_args:
-                        print(f"{C.MAGENTA}[tools]{C.RESET} Raw args type: {type(raw_args).__name__}, len: {len(raw_args) if raw_args else 0}")
-                        # Log first 200 chars to avoid spam
-                        preview = raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
-                        print(f"{C.MAGENTA}[tools]{C.RESET} Raw args preview: {preview}")
+                        tools_logger.debug(
+                            f"Raw args type: {type(raw_args).__name__}, len: {len(raw_args)}"
+                        )
+                        preview = (
+                            raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
+                        )
+                        tools_logger.debug(f"Raw args preview: {preview}")
                     else:
-                        print(f"{C.MAGENTA}[tools]{C.RESET} {C.RED}WARNING: raw_args is empty/None{C.RESET}")
+                        tools_logger.warning("raw_args is empty/None")
 
                     arguments = json.loads(raw_args) if raw_args else {}
                 except (json.JSONDecodeError, TypeError) as e:
-                    print(f"{C.MAGENTA}[tools]{C.RESET} {C.RED}JSON parse error: {e}{C.RESET}")
-                    print(f"{C.MAGENTA}[tools]{C.RESET} {C.RED}Raw value: {repr(raw_args)[:500]}{C.RESET}")
+                    tools_logger.error(f"JSON parse error: {e}")
+                    tools_logger.error(f"Raw value: {repr(raw_args)[:500]}")
                     arguments = {}
 
-                print(f"{C.MAGENTA}[tools]{C.RESET} Executing: {C.CYAN}{tool_name}{C.RESET} with {len(arguments)} args: {list(arguments.keys())}")
+                tools_logger.info(
+                    f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}"
+                )
 
                 # Get friendly status for this tool
                 emoji, action = tool_status.get(tool_name, ("⚙️", "Working"))
@@ -1383,7 +1651,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 # Build status text with context
                 if tool_name == "execute_python":
                     desc = arguments.get("description", "")
-                    status_text = f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
+                    status_text = (
+                        f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
+                    )
                 elif tool_name == "install_package":
                     pkg = arguments.get("package", "package")
                     status_text = f"{emoji} Installing `{pkg}`..."
@@ -1397,7 +1667,12 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 elif tool_name == "web_search":
                     query = arguments.get("query", "")[:40]
                     status_text = f"{emoji} Searching: `{query}`..."
-                elif tool_name in ("save_to_local", "read_local_file", "delete_local_file", "send_local_file"):
+                elif tool_name in (
+                    "save_to_local",
+                    "read_local_file",
+                    "delete_local_file",
+                    "send_local_file",
+                ):
                     filename = arguments.get("filename", "file")
                     status_text = f"{emoji} {action}: `{filename}`..."
                 elif tool_name == "download_from_sandbox":
@@ -1425,12 +1700,17 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                         silent=True,
                     )
                 except Exception as e:
-                    print(f"[discord] Failed to send status: {e}")
+                    logger.debug(f" Failed to send status: {e}")
 
                 # Execute the tool - handle both Docker sandbox and local file tools
                 tool_output = await self._execute_tool(
-                    tool_name, arguments, user_id, sandbox_manager, file_manager,
-                    files_to_send, message.channel
+                    tool_name,
+                    arguments,
+                    user_id,
+                    sandbox_manager,
+                    file_manager,
+                    files_to_send,
+                    message.channel,
                 )
 
                 # Add tool result to conversation
@@ -1443,15 +1723,15 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 )
 
                 success = not tool_output.startswith("Error:")
-                status = f"{C.GREEN}success{C.RESET}" if success else f"{C.RED}failed{C.RESET}"
-                print(f"{C.MAGENTA}[tools]{C.RESET} {C.CYAN}{tool_name}{C.RESET} → {status}")
+                status = "success" if success else "failed"
+                tools_logger.info(f"{tool_name} → {status}")
 
             # Show typing indicator while processing
             async with message.channel.typing():
                 await asyncio.sleep(0.1)  # Brief pause
 
         # Max iterations reached - send status and ask LLM to summarize
-        print(f"{C.YELLOW}[tools]{C.RESET} Max iterations reached, requesting summary")
+        tools_logger.warning("Max iterations reached, requesting summary")
 
         try:
             await message.channel.send("-# ⏳ Wrapping up...", silent=True)
@@ -1469,7 +1749,8 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         )
 
         def final_call():
-            from llm_backends import TOOL_FORMAT, _convert_messages_to_claude_format
+            from clara_core.llm import TOOL_FORMAT, _convert_messages_to_claude_format
+
             llm = make_llm()  # Use simple LLM for final response
             # Convert messages if using Claude format
             if TOOL_FORMAT == "claude":
@@ -1501,22 +1782,30 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
         # Docker sandbox tools (including web_search which uses Tavily)
         docker_tools = {
-            "execute_python", "install_package", "read_file",
-            "write_file", "list_files", "run_shell", "unzip_file",
-            "web_search", "run_claude_code"
+            "execute_python",
+            "install_package",
+            "read_file",
+            "write_file",
+            "list_files",
+            "run_shell",
+            "unzip_file",
+            "web_search",
+            "run_claude_code",
         }
-        
+
         # Email tools
         email_tools = {"check_email", "send_email"}
 
         if tool_name in docker_tools:
             # Use Docker sandbox manager
-            result = await sandbox_manager.handle_tool_call(user_id, tool_name, arguments)
+            result = await sandbox_manager.handle_tool_call(
+                user_id, tool_name, arguments
+            )
             if result.success:
                 return result.output
             else:
                 return f"Error: {result.error}"
-        
+
         # Email tools
         elif tool_name in email_tools:
             return await handle_email_tool(tool_name, arguments)
@@ -1573,7 +1862,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             sandbox_path = arguments.get("sandbox_path", "")
             local_filename = arguments.get("local_filename", "")
             if not local_filename:
-                local_filename = sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
+                local_filename = (
+                    sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
+                )
 
             # Read from sandbox
             read_result = await sandbox_manager.read_file(user_id, sandbox_path)
@@ -1582,7 +1873,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
             # Save locally (organized by user/channel)
             content = read_result.output
-            save_result = file_manager.save_file(user_id, local_filename, content, channel_id)
+            save_result = file_manager.save_file(
+                user_id, local_filename, content, channel_id
+            )
             return save_result.message
 
         elif tool_name == "upload_to_sandbox":
@@ -1590,7 +1883,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             sandbox_path = arguments.get("sandbox_path", "")
 
             # Read from local storage as bytes (preserves binary files)
-            content, error = file_manager.read_file_bytes(user_id, local_filename, channel_id)
+            content, error = file_manager.read_file_bytes(
+                user_id, local_filename, channel_id
+            )
             if content is None:
                 return f"Error: {error}"
 
@@ -1599,7 +1894,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 sandbox_path = f"/home/user/{local_filename}"
 
             # Write to sandbox (bytes supported)
-            write_result = await sandbox_manager.write_file(user_id, sandbox_path, content)
+            write_result = await sandbox_manager.write_file(
+                user_id, sandbox_path, content
+            )
             if write_result.success:
                 size_kb = len(content) / 1024
                 return f"Uploaded '{local_filename}' ({size_kb:.1f} KB) to sandbox at {sandbox_path}"
@@ -1648,7 +1945,11 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                     timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M")
                     author = msg.author.display_name
                     # Truncate long messages
-                    text = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
+                    text = (
+                        msg.content[:200] + "..."
+                        if len(msg.content) > 200
+                        else msg.content
+                    )
                     matches.append(f"[{timestamp}] {author}: {text}")
 
                     # Limit results
@@ -1692,7 +1993,9 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 author = msg.author.display_name
                 is_bot = " [Clara]" if msg.author == self.user else ""
                 # Truncate long messages
-                text = msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                text = (
+                    msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                )
                 messages.append(f"[{timestamp}] {author}{is_bot}: {text}")
 
                 if len(messages) >= count:
@@ -1789,7 +2092,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
         def replace_file(match):
             filename = match.group(1).strip()
             content = match.group(2).strip()
-            print(f"[discord] Matched file: {filename} ({len(content)} chars)")
+            logger.debug(f" Matched file: {filename} ({len(content)} chars)")
             files.append((filename, content))
             return f"📎 *Attached: {filename}*"
 
@@ -1797,8 +2100,8 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
         # Debug: check if pattern might be slightly different
         if not files and "<<<file:" in text:
-            print("[discord] WARNING: Found <<<file: but pattern didn't match")
-            print(f"[discord] Text snippet: {text[:500]}")
+            logger.warning("Found <<<file: but pattern didn't match")
+            logger.debug(f"Text snippet: {text[:500]}")
 
         return cleaned, files
 
@@ -1817,7 +2120,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
 
         for filename, content in files:
             if not content:
-                print(f"[discord] Skipping empty file: {filename}")
+                logger.debug(f" Skipping empty file: {filename}")
                 continue
             try:
                 # Get file extension for proper temp file naming
@@ -1835,10 +2138,10 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 # Create discord.File from the temp file path
                 discord_file = discord.File(fp=temp_path, filename=filename)
                 discord_files.append(discord_file)
-                print(f"[discord] Created file: {filename} ({len(content)} chars)")
+                logger.debug(f" Created file: {filename} ({len(content)} chars)")
 
             except Exception as e:
-                print(f"[discord] Error creating file {filename}: {e}")
+                logger.debug(f" Error creating file {filename}: {e}")
 
         return discord_files, temp_paths
 
@@ -1849,7 +2152,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 if os.path.exists(path):
                     os.unlink(path)
             except Exception as e:
-                print(f"[discord] Error cleaning up temp file {path}: {e}")
+                logger.debug(f" Error cleaning up temp file {path}: {e}")
 
     async def _store_exchange(
         self,
@@ -1901,7 +2204,7 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
                 assistant_reply,
                 participants=participants,
             )
-            print(f"[discord] Stored exchange (thread: {thread_owner_id[:20]}...)")
+            logger.debug(f" Stored exchange (thread: {thread_owner_id[:20]}...)")
 
         finally:
             db.close()
@@ -1929,6 +2232,18 @@ def get_stats():
 def get_guilds():
     """Get list of guilds."""
     return {"guilds": list(monitor.guilds.values())}
+
+
+@monitor_app.get("/api/version")
+def get_version():
+    """Get platform version information."""
+    from clara_core import __version__
+
+    return {
+        "version": __version__,
+        "platform": "mypalclara",
+        "component": "discord-bot",
+    }
 
 
 @monitor_app.get("/api/logs")
@@ -2214,26 +2529,30 @@ async def run_monitor_server():
 
 async def async_main():
     """Run both bot and monitoring server."""
+    # Initialize database logging
+    set_db_session_factory(SessionLocal)
+
+    config_logger = get_logger("config")
+    sandbox_logger = get_logger("sandbox")
+
     if not BOT_TOKEN:
-        print(f"{C.RED}[error] DISCORD_BOT_TOKEN environment variable is required{C.RESET}")
-        print(f"{C.GRAY}Get your token from: https://discord.com/developers/applications{C.RESET}")
+        logger.error("DISCORD_BOT_TOKEN environment variable is required")
+        logger.info("Get your token from: https://discord.com/developers/applications")
         return
 
-    print(f"\n{C.BOLD}{C.MAGENTA}╔══════════════════════════════════════╗{C.RESET}")
-    print(f"{C.BOLD}{C.MAGENTA}║      Clara Discord Bot Starting      ║{C.RESET}")
-    print(f"{C.BOLD}{C.MAGENTA}╚══════════════════════════════════════╝{C.RESET}\n")
+    logger.info("Clara Discord Bot Starting")
 
-    print(f"{C.CYAN}[config]{C.RESET} Max message chain: {C.WHITE}{MAX_MESSAGES}{C.RESET}")
+    config_logger.info(f"Max message chain: {MAX_MESSAGES}")
     if ALLOWED_CHANNELS:
-        print(f"{C.CYAN}[config]{C.RESET} Allowed channels ({len(ALLOWED_CHANNELS)}):")
-        for ch in ALLOWED_CHANNELS:
-            print(f"{C.GRAY}  - {ch}{C.RESET}")
+        config_logger.info(
+            f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}"
+        )
     else:
-        print(f"{C.CYAN}[config]{C.RESET} Allowed channels: {C.WHITE}ALL{C.RESET}")
-    print(f"{C.CYAN}[config]{C.RESET} Allowed roles: {C.WHITE}{ALLOWED_ROLES or 'all'}{C.RESET}")
+        config_logger.info("Allowed channels: ALL")
+    config_logger.info(f"Allowed roles: {ALLOWED_ROLES or 'all'}")
 
     # Tool calling status check
-    from llm_backends import TOOL_FORMAT, TOOL_MODEL
+    from clara_core.llm import TOOL_FORMAT, TOOL_MODEL
 
     provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
 
@@ -2251,28 +2570,30 @@ async def async_main():
         tool_base_url = "https://openrouter.ai/api/v1"
         tool_source = "main LLM"
 
-    print(f"{C.GREEN}[tools] ✓ Tool calling ENABLED{C.RESET}")
-    print(f"{C.GRAY}[tools]   Model: {C.CYAN}{TOOL_MODEL}{C.RESET}")
-    print(f"{C.GRAY}[tools]   Endpoint: {C.CYAN}{tool_base_url}{C.RESET} {C.GRAY}({tool_source}){C.RESET}")
-    print(f"{C.GRAY}[tools]   Format: {C.CYAN}{TOOL_FORMAT}{C.RESET}")
+    tools_logger.info("Tool calling ENABLED")
+    tools_logger.info(f"Model: {TOOL_MODEL}")
+    tools_logger.info(f"Endpoint: {tool_base_url} ({tool_source})")
+    tools_logger.info(f"Format: {TOOL_FORMAT}")
 
     # Docker sandbox status check
-    from docker_tools import DOCKER_AVAILABLE
+    from sandbox.docker import DOCKER_AVAILABLE
 
     sandbox_mgr = get_sandbox_manager()
     if DOCKER_ENABLED and DOCKER_AVAILABLE and sandbox_mgr.is_available():
-        print(f"{C.GREEN}[docker] ✓ Code execution ENABLED{C.RESET}")
+        sandbox_logger.info("Code execution ENABLED")
     else:
-        print(f"{C.RED}[docker] ✗ Code execution DISABLED{C.RESET}")
+        sandbox_logger.warning("Code execution DISABLED")
         if not DOCKER_AVAILABLE:
-            print(f"{C.GRAY}[docker]   - docker package not installed{C.RESET}")
-            print(f"{C.GRAY}[docker]   - Run: poetry add docker{C.RESET}")
+            sandbox_logger.info(
+                "  - docker package not installed (run: poetry add docker)"
+            )
         elif not sandbox_mgr.is_available():
-            print(f"{C.GRAY}[docker]   - Docker daemon not running{C.RESET}")
-            print(f"{C.GRAY}[docker]   - Start Docker Desktop or dockerd{C.RESET}")
+            sandbox_logger.info(
+                "  - Docker daemon not running (start Docker Desktop or dockerd)"
+            )
 
     if MONITOR_ENABLED:
-        print(f"{C.CYAN}[monitor]{C.RESET} Dashboard at {C.BLUE}http://localhost:{MONITOR_PORT}{C.RESET}")
+        logger.info(f"Dashboard at http://localhost:{MONITOR_PORT}")
         await asyncio.gather(run_bot(), run_monitor_server())
     else:
         await run_bot()
@@ -2283,7 +2604,7 @@ def main():
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
-        print(f"\n{C.YELLOW}[discord]{C.RESET} Shutting down...")
+        logger.info("Shutting down...")
 
 
 if __name__ == "__main__":

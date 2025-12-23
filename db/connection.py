@@ -7,8 +7,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
-from models import Base
-
 # Support both SQLite (local dev) and PostgreSQL (production)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -39,4 +37,9 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def init_db() -> None:
+    from db.models import Base
     Base.metadata.create_all(bind=engine)
+
+
+def get_engine():
+    return engine
