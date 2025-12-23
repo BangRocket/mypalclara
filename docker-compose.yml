@@ -207,6 +207,8 @@ services:
       # Fast LLM (for quick operations)
       - FAST_LLM_PROVIDER=${FAST_LLM_PROVIDER:-}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
+      # Docker sandbox
+      - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
       # E2B sandbox (alternative to Docker)
       - E2B_API_KEY=${E2B_API_KEY:-}
       - E2B_TIMEOUT=${E2B_TIMEOUT:-300}
@@ -223,7 +225,7 @@ services:
     volumes:
       - mypalclara-data:/data
       - mypalclara-files:/app/clara_files
-      - /var/run/docker.sock:/var/run/docker.sock  # For Docker sandbox
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock  # For Docker sandbox
       - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
       - ./${BOT_PERSONALITY_FILE:-personality.txt}:/app/${BOT_PERSONALITY_FILE:-personality.txt}:ro
     depends_on:
