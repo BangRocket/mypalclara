@@ -219,6 +219,11 @@ services:
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-}
       - S3_REGION=${S3_REGION:-}
+      # GitHub integration
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      # Azure DevOps integration
+      - AZURE_DEVOPS_ORG=${AZURE_DEVOPS_ORG:-}
+      - AZURE_DEVOPS_PAT=${AZURE_DEVOPS_PAT:-}
       # General
       - SKIP_PROFILE_LOAD=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
