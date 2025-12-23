@@ -22,6 +22,9 @@ RUN poetry config virtualenvs.create false
 # Install dependencies (production only)
 RUN poetry install --only main --no-interaction --no-ansi
 
+# Install Playwright browsers and dependencies
+RUN playwright install chromium --with-deps
+
 # Copy application code
 COPY *.py ./
 COPY clara_core/ ./clara_core/
