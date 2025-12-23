@@ -1939,7 +1939,7 @@ You can search and review the full chat history beyond what's in your current co
                         user_id=user_id,
                         channel_id=channel_id,
                         platform="discord",
-                        extra={"channel": channel},
+                        extra={"channel": channel, "files_to_send": files_to_send},
                     )
                     try:
                         return await registry.execute(tool_name, arguments, ctx)
