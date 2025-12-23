@@ -166,6 +166,103 @@ class LogEntry:
         }
 
 
+@dataclass
+class QueuedTask:
+    """A queued task waiting to be processed."""
+
+    message: DiscordMessage
+    is_dm: bool
+    queued_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    position: int = 0  # Position in queue when added
+
+
+class TaskQueue:
+    """Manages task queuing per channel to prevent concurrent tool usage."""
+
+    def __init__(self):
+        # Active tasks: channel_id -> message being processed
+        self._active: dict[int, DiscordMessage] = {}
+        # Queued tasks: channel_id -> list of queued tasks
+        self._queues: dict[int, list[QueuedTask]] = {}
+        self._lock = asyncio.Lock()
+
+    async def try_acquire(self, message: DiscordMessage, is_dm: bool) -> tuple[bool, int]:
+        """Try to acquire the channel for processing.
+
+        Returns:
+            (acquired, queue_position): If acquired is True, proceed with task.
+            If False, queue_position indicates position in queue (1-indexed).
+        """
+        channel_id = message.channel.id
+
+        async with self._lock:
+            if channel_id not in self._active:
+                # No active task, acquire immediately
+                self._active[channel_id] = message
+                return True, 0
+
+            # Channel is busy, add to queue
+            if channel_id not in self._queues:
+                self._queues[channel_id] = []
+
+            queue = self._queues[channel_id]
+            position = len(queue) + 1  # 1-indexed position
+            task = QueuedTask(message=message, is_dm=is_dm, position=position)
+            queue.append(task)
+
+            logger.info(f"Queued task for channel {channel_id}, position {position}")
+            return False, position
+
+    async def release(self, channel_id: int) -> QueuedTask | None:
+        """Release the channel and return the next queued task if any."""
+        async with self._lock:
+            if channel_id in self._active:
+                del self._active[channel_id]
+
+            # Check for queued tasks
+            if channel_id in self._queues and self._queues[channel_id]:
+                next_task = self._queues[channel_id].pop(0)
+                self._active[channel_id] = next_task.message
+                logger.info(f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining")
+                return next_task
+
+            return None
+
+    async def get_queue_length(self, channel_id: int) -> int:
+        """Get the number of queued tasks for a channel."""
+        async with self._lock:
+            if channel_id in self._queues:
+                return len(self._queues[channel_id])
+            return 0
+
+    async def is_busy(self, channel_id: int) -> bool:
+        """Check if a channel has an active task."""
+        async with self._lock:
+            return channel_id in self._active
+
+    async def get_stats(self) -> dict:
+        """Get queue statistics (async version)."""
+        async with self._lock:
+            return self._get_stats_sync()
+
+    def _get_stats_sync(self) -> dict:
+        """Get queue statistics (sync version, call within lock)."""
+        total_queued = sum(len(q) for q in self._queues.values())
+        return {
+            "active_tasks": len(self._active),
+            "total_queued": total_queued,
+            "channels_busy": list(self._active.keys()),
+        }
+
+    def get_stats_unsafe(self) -> dict:
+        """Get queue statistics without lock (for sync callers, may be slightly stale)."""
+        return self._get_stats_sync()
+
+
+# Global task queue instance
+task_queue = TaskQueue()
+
+
 class BotMonitor:
     """Shared state for monitoring the bot."""
 
@@ -227,6 +324,9 @@ class BotMonitor:
         if self.start_time:
             uptime = (datetime.now(UTC) - self.start_time).total_seconds()
 
+        # Get queue stats
+        queue_stats = task_queue.get_stats_unsafe()
+
         return {
             "version": __version__,
             "bot_user": self.bot_user,
@@ -237,6 +337,7 @@ class BotMonitor:
             "dm_count": self.dm_count,
             "response_count": self.response_count,
             "error_count": self.error_count,
+            "queue": queue_stats,
         }
 
 
@@ -637,8 +738,57 @@ When asked "What's 2^100?", use `execute_python` with `print(2**100)` instead of
             channel_name,
         )
 
-        # Process the message
-        await self._handle_message(message, is_dm)
+        # Try to acquire channel for processing (queue if busy)
+        await self._process_with_queue(message, is_dm)
+
+    async def _process_with_queue(self, message: DiscordMessage, is_dm: bool):
+        """Process message with queue management."""
+        channel_id = message.channel.id
+
+        # Try to acquire the channel
+        acquired, queue_position = await task_queue.try_acquire(message, is_dm)
+
+        if not acquired:
+            # Channel is busy, notify user their request is queued
+            queue_msg = f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
+            try:
+                await message.reply(queue_msg, mention_author=False)
+            except Exception as e:
+                logger.warning(f"Failed to send queue notification: {e}")
+            return  # The task will be processed when dequeued
+
+        # We have the channel, process the message
+        try:
+            await self._handle_message(message, is_dm)
+        finally:
+            # Release channel and check for queued tasks
+            await self._process_queued_tasks(channel_id)
+
+    async def _process_queued_tasks(self, channel_id: int):
+        """Process any queued tasks for the channel after releasing."""
+        while True:
+            next_task = await task_queue.release(channel_id)
+            if not next_task:
+                break
+
+            # Notify user their queued request is starting
+            wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
+            start_msg = f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+            try:
+                await next_task.message.reply(start_msg, mention_author=False)
+            except Exception as e:
+                logger.warning(f"Failed to send start notification: {e}")
+
+            # Process the queued task
+            try:
+                await self._handle_message(next_task.message, next_task.is_dm)
+            except Exception as e:
+                logger.exception(f"Error processing queued task: {e}")
+                try:
+                    err_msg = f"Sorry, I encountered an error processing your queued request: {str(e)[:100]}"
+                    await next_task.message.reply(err_msg, mention_author=False)
+                except Exception:
+                    pass
 
     async def _handle_message(self, message: DiscordMessage, is_dm: bool = False):
         """Process a message and generate a response."""
