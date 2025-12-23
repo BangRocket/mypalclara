@@ -77,3 +77,22 @@ class ChannelSummary(Base):
     summary = Column(Text, default="")
     summary_cutoff_at = Column(DateTime, nullable=True)  # newest summarized msg ts
     last_updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class LogEntry(Base):
+    """Persistent log entries stored in the database."""
+
+    __tablename__ = "log_entries"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    timestamp = Column(DateTime, default=utcnow, nullable=False, index=True)
+    level = Column(String(10), nullable=False, index=True)  # INFO, WARNING, ERROR, CRITICAL
+    logger_name = Column(String(100), nullable=False, index=True)  # e.g., "api", "discord"
+    message = Column(Text, nullable=False)
+    module = Column(String(100), nullable=True)
+    function = Column(String(100), nullable=True)
+    line_number = Column(Integer, nullable=True)
+    exception = Column(Text, nullable=True)  # Traceback if error
+    extra_data = Column(Text, nullable=True)  # JSON for additional context
+    user_id = Column(String, nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)

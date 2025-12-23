@@ -22,7 +22,7 @@ USER_ID = os.getenv("USER_ID", "demo-user")
 
 def clear_databases(user_id: str, skip_confirm: bool = False):
     """Clear all mem0 data for a user."""
-    from mem0_config import MEM0, QDRANT_DATA_DIR
+    from config.mem0 import MEM0, QDRANT_DATA_DIR
 
     if MEM0 is None:
         print("Error: mem0 is not initialized")
