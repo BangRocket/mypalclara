@@ -8,11 +8,14 @@ Files can come from Discord attachments or E2B sandbox.
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 LOCAL_FILES_DIR = Path(os.getenv("CLARA_FILES_DIR", "./clara_files"))
@@ -495,12 +498,14 @@ class S3FileManager:
         """Ensure the S3 bucket exists, create if not."""
         try:
             self.s3.head_bucket(Bucket=self.bucket)
-        except Exception:
+            logger.info(f"[s3] Bucket verified: {self.bucket}")
+        except Exception as e:
+            logger.warning(f"[s3] Bucket check failed: {e}")
             try:
                 self.s3.create_bucket(Bucket=self.bucket)
-                print(f"[s3] Created bucket: {self.bucket}")
-            except Exception as e:
-                print(f"[s3] Warning: Could not create bucket {self.bucket}: {e}")
+                logger.info(f"[s3] Created bucket: {self.bucket}")
+            except Exception as e2:
+                logger.error(f"[s3] Could not create bucket {self.bucket}: {e2}")
 
     def _sanitize_filename(self, filename: str) -> str:
         """Sanitize filename for safe storage."""
@@ -529,6 +534,7 @@ class S3FileManager:
         try:
             safe_name = self._sanitize_filename(filename)
             key = self._s3_key(user_id, filename, channel_id)
+            logger.info(f"[s3] Saving file: {safe_name} -> s3://{self.bucket}/{key}")
 
             # Convert to bytes
             if isinstance(content, str):
@@ -537,17 +543,20 @@ class S3FileManager:
                 content_bytes = content
 
             if len(content_bytes) > MAX_FILE_SIZE:
+                logger.warning(f"[s3] File too large: {len(content_bytes)} bytes")
                 return FileResult(
                     success=False,
                     message=f"File too large ({len(content_bytes)} bytes, max {MAX_FILE_SIZE})",
                 )
 
             # Upload to S3
-            self.s3.put_object(
+            logger.debug(f"[s3] Uploading {len(content_bytes)} bytes to {self.endpoint_url}")
+            response = self.s3.put_object(
                 Bucket=self.bucket,
                 Key=key,
                 Body=content_bytes,
             )
+            logger.info(f"[s3] Upload successful: {safe_name} (ETag: {response.get('ETag', 'N/A')})")
 
             file_info = FileInfo(
                 name=safe_name,
@@ -564,6 +573,7 @@ class S3FileManager:
             )
 
         except Exception as e:
+            logger.exception(f"[s3] Failed to save file {filename}: {e}")
             return FileResult(success=False, message=f"Error saving file: {e}")
 
     def list_files(self, user_id: str, channel_id: str | None = None) -> list[FileInfo]:
@@ -577,6 +587,7 @@ class S3FileManager:
         files = []
 
         try:
+            logger.debug(f"[s3] Listing files with prefix: {prefix}")
             response = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
 
             for obj in response.get("Contents", []):
@@ -593,11 +604,12 @@ class S3FileManager:
                     )
                 )
 
+            logger.debug(f"[s3] Found {len(files)} files for prefix {prefix}")
             # Sort by modification time, newest first
             files.sort(key=lambda f: f.created_at, reverse=True)
 
         except Exception as e:
-            print(f"[s3] Error listing files: {e}")
+            logger.exception(f"[s3] Error listing files: {e}")
 
         return files
 
@@ -669,6 +681,7 @@ class S3FileManager:
         try:
             safe_name = self._sanitize_filename(filename)
             key = self._s3_key(user_id, filename, channel_id)
+            logger.info(f"[s3] get_file_path: {filename} -> s3://{self.bucket}/{key}")
 
             # Download to temp location
             safe_user = self._sanitize_id(user_id)
@@ -680,11 +693,13 @@ class S3FileManager:
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_path = temp_dir / safe_name
 
+            logger.debug(f"[s3] Downloading to: {temp_path}")
             self.s3.download_file(self.bucket, key, str(temp_path))
+            logger.info(f"[s3] Downloaded: {safe_name}")
             return temp_path
 
         except Exception as e:
-            print(f"[s3] Error downloading file for path: {e}")
+            logger.error(f"[s3] Failed to download {filename}: {e}")
             return None
 
     def save_from_bytes(
@@ -709,10 +724,10 @@ def get_file_manager() -> FileManager:
     global _file_manager
     if _file_manager is None:
         if S3_ENABLED and S3_ACCESS_KEY and S3_SECRET_KEY:
-            print(f"[storage] Using S3 storage: {S3_ENDPOINT_URL} / {S3_BUCKET}")
+            logger.info(f"[storage] Using S3 storage: {S3_ENDPOINT_URL} / {S3_BUCKET}")
             _file_manager = S3FileManager()
         else:
-            print(f"[storage] Using local storage: {LOCAL_FILES_DIR}")
+            logger.info(f"[storage] Using local storage: {LOCAL_FILES_DIR}")
             _file_manager = LocalFileManager()
     return _file_manager
 
