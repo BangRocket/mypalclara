@@ -42,13 +42,11 @@ from fastapi.responses import HTMLResponse
 
 from db import SessionLocal
 from db.models import ChannelSummary, Project, Session
-from sandbox.docker import DOCKER_TOOLS, get_sandbox_manager
-from storage.local_files import LOCAL_FILE_TOOLS, get_file_manager
+from sandbox.docker import get_sandbox_manager
+from storage.local_files import get_file_manager
 from email_monitor import (
-    EMAIL_TOOLS,
     handle_email_tool,
     email_check_loop,
-    get_email_monitor,
 )
 from config.logging import init_logging, get_logger, set_db_session_factory
 
@@ -132,15 +130,12 @@ DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
 DOCKER_ENABLED = True  # Docker sandbox is always available if Docker is running
 MAX_TOOL_ITERATIONS = 10  # Max tool call rounds per response
 
-# Base tools: Docker sandbox + local file management + email
-BASE_TOOLS = LOCAL_FILE_TOOLS + DOCKER_TOOLS + EMAIL_TOOLS
-
 # Track whether modular tools have been initialized
 _modular_tools_initialized = False
 
 
 async def init_modular_tools() -> None:
-    """Initialize the modular tools system (GitHub, ADO, etc.)."""
+    """Initialize the modular tools system (all tools including Docker, local files, GitHub, ADO, etc.)."""
     global _modular_tools_initialized
     if _modular_tools_initialized:
         return
@@ -151,7 +146,7 @@ async def init_modular_tools() -> None:
         failed = [name for name, success in results.items() if not success]
 
         if loaded:
-            tools_logger.info(f"Loaded modular tools: {', '.join(loaded)}")
+            tools_logger.info(f"Loaded tool modules: {', '.join(loaded)}")
         if failed:
             tools_logger.warning(f"Failed to load: {', '.join(failed)}")
 
@@ -161,27 +156,21 @@ async def init_modular_tools() -> None:
 
 
 def get_all_tools(include_docker: bool = True) -> list[dict]:
-    """Get all available tools, including modular tools from registry.
+    """Get all available tools from the modular registry.
 
     Args:
-        include_docker: Whether to include Docker sandbox tools
+        include_docker: Whether to include Docker sandbox tools (for capability filtering)
 
     Returns:
         List of tool definitions in OpenAI format
     """
-    # Start with base tools
-    if include_docker:
-        tools = list(BASE_TOOLS)
-    else:
-        tools = list(LOCAL_FILE_TOOLS)
+    if not _modular_tools_initialized:
+        tools_logger.warning("Tools not initialized, returning empty list")
+        return []
 
-    # Add modular tools from registry (GitHub, ADO, etc.)
-    if _modular_tools_initialized:
-        registry = get_registry()
-        modular_tools = registry.get_tools(platform="discord", format="openai")
-        tools.extend(modular_tools)
-
-    return tools
+    registry = get_registry()
+    capabilities = {"docker": include_docker}
+    return registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
