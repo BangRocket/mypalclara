@@ -240,6 +240,93 @@ class EmailMonitor:
         except Exception as e:
             return [], str(e)
 
+    def search_emails(
+        self,
+        query: str | None = None,
+        from_addr: str | None = None,
+        subject: str | None = None,
+        since_days: int | None = None,
+        limit: int = 20,
+    ) -> tuple[list[EmailInfo], str | None]:
+        """Search emails with various criteria.
+
+        Args:
+            query: Search in subject and body
+            from_addr: Filter by sender
+            subject: Filter by subject line
+            since_days: Only emails from the last N days
+            limit: Max results to return
+
+        Returns:
+            List of matching emails and optional error
+        """
+        try:
+            mail = self._connect()
+            mail.select("INBOX")
+
+            # Build IMAP search criteria
+            criteria = []
+
+            if from_addr:
+                criteria.append(f'FROM "{from_addr}"')
+
+            if subject:
+                criteria.append(f'SUBJECT "{subject}"')
+
+            if since_days:
+                from datetime import timedelta
+                since_date = (datetime.now(UTC) - timedelta(days=since_days)).strftime("%d-%b-%Y")
+                criteria.append(f'SINCE "{since_date}"')
+
+            if query:
+                # Search in subject OR body - IMAP requires separate searches
+                # We'll search subject first, then body, and combine
+                criteria.append(f'OR SUBJECT "{query}" BODY "{query}"')
+
+            # If no criteria, get recent emails
+            search_string = " ".join(criteria) if criteria else "ALL"
+
+            status, data = mail.search(None, search_string)
+            if status != "OK":
+                mail.logout()
+                return [], f"Search failed: {status}"
+
+            emails = []
+            message_nums = data[0].split()
+
+            # Get last N matches (most recent)
+            for num in message_nums[-limit:]:
+                status, msg_data = mail.fetch(num, "(UID FLAGS RFC822.HEADER)")
+                if status != "OK":
+                    continue
+
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        flags_part = response_part[0].decode()
+                        is_seen = "\\Seen" in flags_part
+
+                        uid_match = re.search(r'UID (\d+)', flags_part)
+                        uid = uid_match.group(1) if uid_match else str(num.decode())
+
+                        msg = email.message_from_bytes(response_part[1])
+                        from_addr_parsed = self._decode_header_value(msg.get("From", ""))
+                        subject_parsed = self._decode_header_value(msg.get("Subject", "(No Subject)"))
+                        date = msg.get("Date", "")
+
+                        emails.append(EmailInfo(
+                            uid=uid,
+                            from_addr=from_addr_parsed,
+                            subject=subject_parsed,
+                            date=date,
+                            is_read=is_seen
+                        ))
+
+            mail.logout()
+            return emails, None
+
+        except Exception as e:
+            return [], str(e)
+
     def get_full_email(self, uid: str) -> tuple[EmailInfo | None, str | None]:
         """Fetch a complete email including body by UID."""
         try:
