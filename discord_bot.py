@@ -125,6 +125,7 @@ ALLOWED_ROLES = [
     r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
 ]
 DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
+DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "America/New_York")
 
 # Docker sandbox configuration
 DOCKER_ENABLED = True  # Docker sandbox is always available if Docker is running
@@ -182,6 +183,23 @@ def _should_auto_continue(response: str) -> bool:
             return True
 
     return False
+
+
+def _get_current_time() -> str:
+    """Get the current time formatted for Clara's context."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(DEFAULT_TIMEZONE)
+        now = datetime.now(tz)
+        # Format: "Thursday, December 26, 2024 at 6:28 PM EST"
+        time_str = now.strftime("%A, %B %d, %Y at %-I:%M %p %Z")
+        return time_str
+    except Exception as e:
+        logger.warning(f"Failed to get timezone {DEFAULT_TIMEZONE}: {e}")
+        # Fallback to UTC
+        now = datetime.now(UTC)
+        return now.strftime("%A, %B %d, %Y at %H:%M UTC")
 
 
 async def init_modular_tools() -> None:
@@ -533,9 +551,15 @@ class ClaraDiscordBot(discord.Client):
         channel_name = getattr(message.channel, "name", "DM")
         guild_name = message.guild.name if message.guild else "Direct Message"
 
+        # Get current time
+        current_time = _get_current_time()
+
         # Build environment context based on DM vs channel
         if is_dm:
             env_context = f"""
+## Current Time
+{current_time}
+
 ## Current Environment
 You are in a **private DM** with {display_name}. This is a one-on-one conversation.
 
@@ -545,6 +569,9 @@ You are in a **private DM** with {display_name}. This is a one-on-one conversati
 - User ID: discord-{user_id}"""
         else:
             env_context = f"""
+## Current Time
+{current_time}
+
 ## Current Environment
 You are in **{guild_name}** server, channel **#{channel_name}**.
 This is a SHARED channel where multiple users can participate.
