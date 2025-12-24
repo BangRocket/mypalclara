@@ -540,160 +540,56 @@ class ClaraDiscordBot(discord.Client):
         proj_mems: list[str],
         is_dm: bool = False,
     ) -> str:
-        """Build Discord-specific system context."""
-        # Get user info
-        author = message.author
-        display_name = author.display_name
-        username = author.name
-        user_id = author.id
+        """Build Discord-specific system context.
 
-        # Get channel/server info
-        channel_name = getattr(message.channel, "name", "DM")
-        guild_name = message.guild.name if message.guild else "Direct Message"
-
-        # Get current time
-        current_time = _get_current_time()
-
-        # Build environment context based on DM vs channel
-        if is_dm:
-            env_context = f"""
-## Current Time
-{current_time}
-
-## Current Environment
-You are in a **private DM** with {display_name}. This is a one-on-one conversation.
-
-## Current User
-- Display name: {display_name}
-- Username: {username}
-- User ID: discord-{user_id}"""
-        else:
-            env_context = f"""
-## Current Time
-{current_time}
-
-## Current Environment
-You are in **{guild_name}** server, channel **#{channel_name}**.
-This is a SHARED channel where multiple users can participate.
-
-## Conversation Context
-- Messages from different users are prefixed with their name: [Username]: message
-- You can see and respond to multiple users in the same conversation
-- The current message is from: **{display_name}** (@{username})
-- Address users by name when responding to specific people
-- You maintain separate memories for each user, even in shared channels
-
-## Current Speaker
-- Display name: {display_name}
-- Username: {username}
-- User ID: discord-{user_id}"""
-
-        # Build context
-        context = f"""{env_context}
-
-## Your Memory System
-You have persistent semantic memory powered by mem0. This means:
-- You remember facts, preferences, and context about each user across conversations
-- Each Discord user has their own isolated memory space (identified by their Discord ID)
-- Memories are automatically extracted from conversations and stored
-- When a user returns, you can recall what you've learned about them
-- You currently have {len(user_mems)} relevant memories about {display_name}
-- You have {len(proj_mems)} relevant project-specific memories
-
-Use your memories naturally in conversation. Reference past discussions when relevant.
-Don't announce that you're "checking memories" - just use the knowledge seamlessly.
-If you remember something about the user, you can mention it naturally.
-
-## Discord Formatting (Markdown)
-Discord uses a flavor of Markdown. Use these to format your messages:
-
-**Text Styling:**
-- **Bold**: `**text**`
-- *Italic*: `*text*` or `_text_`
-- __Underline__: `__text__`
-- ~~Strikethrough~~: `~~text~~`
-- Combine: `***bold italic***`, `__**underline bold**__`
-
-**Structure:**
-- # Header 1, ## Header 2, ### Header 3 (need space after #)
-- > Block quote (single line)
-- >>> Block quote (multi-line, everything after)
-- - or * for bullet lists (need space after)
-- 1. 2. 3. for numbered lists
-
-**Code:**
-- `inline code` with single backticks
-- ```language
-  code block
-  ``` with triple backticks (use python, js, json, etc. for syntax highlighting)
-
-**Other:**
-- ||spoiler text|| - hidden until clicked
-- [link text](https://url) - clickable links
-- -# subtext - smaller text
-
-## File Attachments
-
-**PREFERRED: Use `create_file_attachment` tool to share files!**
-This tool creates AND attaches a file in one step - most reliable method.
-Works for HTML, JSON, code, or any text content.
-
-**Alternative for small content (<50 lines):**
-```
-<<<file:filename.ext>>>
-content
-<<</file>>>
-```
-
-**NEVER paste raw HTML, large JSON, or long code into chat - use tools instead.**
-
-## Discord Etiquette
-- Keep responses concise (Discord is conversational)
+        Organized for prompt caching: static content first, dynamic content last.
+        """
+        # === STATIC CONTENT (cacheable) ===
+        static_parts = [
+            """## Discord Guidelines
+- Use Discord markdown (bold, italic, code blocks)
+- Keep responses concise - Discord is conversational
+- Use `create_file_attachment` for sharing files - NEVER paste large content
 - Long responses are split automatically
-- Users interact by @mentioning or replying to you
 
-## Local File Storage
-You can save files locally that persist across conversations:
-
-**Available Tools:**
-- `save_to_local` - Save content to a local file (persists forever)
-- `list_local_files` - List saved files for this user
-- `read_local_file` - Read a previously saved file
-- `delete_local_file` - Delete a saved file
-- `send_local_file` - Send a saved file to the Discord chat
-
-**Use Cases:**
-- Save important results for later reference
-- Store user preferences or notes
-- Keep generated content that might be needed again
-- Save files from the sandbox permanently (use `download_from_sandbox`)
-
-Each user has their own private file storage.
-
-## Chat History Access
-You can search and review the full chat history beyond what's in your current context:
-
-**Available Tools:**
-- `search_chat_history` - Search for messages containing specific text
-- `get_chat_history` - Retrieve past messages (with optional time filter)
-
-**Use Cases:**
-- User asks "what did we talk about yesterday?"
-- User asks "find that link I shared last week"
-- User wants a summary of past conversations
-- Looking up something specific from earlier discussions
-
-**Note:** Only the current channel's history is accessible.
+## Memory System
+You have persistent memory via mem0. Use memories naturally without announcing "checking memories."
 """
+        ]
 
-        # Add tool capabilities from modular tools system
+        # Add tool prompts (static)
         if _modular_tools_initialized:
             registry = get_registry()
             tool_prompts = registry.get_system_prompts(platform="discord")
             if tool_prompts:
-                context += "\n\n" + tool_prompts
+                static_parts.append(tool_prompts)
 
-        return context.strip()
+        # === DYNAMIC CONTENT ===
+        author = message.author
+        display_name = author.display_name
+        username = author.name
+        user_id = author.id
+        channel_name = getattr(message.channel, "name", "DM")
+        guild_name = message.guild.name if message.guild else "Direct Message"
+        current_time = _get_current_time()
+
+        if is_dm:
+            dynamic_context = f"""## Current Context
+Time: {current_time}
+Environment: Private DM with {display_name} (one-on-one)
+User: {display_name} (@{username}, discord-{user_id})
+Memories: {len(user_mems)} user, {len(proj_mems)} project"""
+        else:
+            dynamic_context = f"""## Current Context
+Time: {current_time}
+Environment: {guild_name} server, #{channel_name} (shared channel)
+Speaker: {display_name} (@{username}, discord-{user_id})
+Memories: {len(user_mems)} user, {len(proj_mems)} project
+
+Note: Messages prefixed with [Username] are from other users. Address people by name."""
+
+        # Combine: static first (cacheable), then dynamic
+        return "\n\n".join(static_parts) + "\n\n" + dynamic_context
 
     async def _extract_attachments(
         self, message: DiscordMessage, user_id: str | None = None
