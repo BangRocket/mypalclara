@@ -46,7 +46,7 @@ services:
       - backend
       - full
     ports:
-      - "8000:8000"
+      - "8010:8000"
     environment:
       # LLM Provider
       - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
@@ -101,7 +101,7 @@ services:
       - frontend
       - full
     ports:
-      - "3000:3000"
+      - "3010:3000"
     environment:
       # LLM Provider
       - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
