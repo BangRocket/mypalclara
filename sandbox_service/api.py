@@ -13,9 +13,8 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from . import __version__
-from .config import API_KEY, MAX_CONTAINERS, validate_config
-from .models import (
+from config import API_KEY, MAX_CONTAINERS, validate_config
+from models import (
     CreateSandboxRequest,
     ExecuteCodeRequest,
     ExecutionResponse,
@@ -28,7 +27,9 @@ from .models import (
     UnzipRequest,
     WriteFileRequest,
 )
-from .sandbox_manager import ExecutionResult, get_manager
+from sandbox_manager import ExecutionResult, get_manager
+
+__version__ = "1.0.0"
 
 
 @asynccontextmanager
@@ -456,6 +457,6 @@ async def general_exception_handler(request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
 
-    from .config import API_HOST, API_PORT
+    from config import API_HOST, API_PORT
 
     uvicorn.run(app, host=API_HOST, port=API_PORT)
