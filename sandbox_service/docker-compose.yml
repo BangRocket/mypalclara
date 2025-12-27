@@ -35,6 +35,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persistent storage for user workspaces
       - sandbox-data:/data/sandboxes
+      # Shared pip cache for faster package installs
+      - pip-cache:/data/pip-cache
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -74,6 +76,8 @@ services:
 volumes:
   sandbox-data:
     name: clara-sandbox-data
+  pip-cache:
+    name: clara-pip-cache
   caddy-data:
     name: clara-caddy-data
   caddy-config:
