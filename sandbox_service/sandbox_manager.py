@@ -18,7 +18,7 @@ from typing import Any
 import docker
 from docker.models.containers import Container
 
-from .config import (
+from config import (
     DATA_DIR,
     DEFAULT_EXECUTION_TIMEOUT,
     DOCKER_CPU,
