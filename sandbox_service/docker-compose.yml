@@ -1,0 +1,80 @@
+# Clara Sandbox Service - Docker Compose Configuration
+#
+# Usage:
+#   # Build and start with Caddy (production)
+#   docker-compose up -d
+#
+#   # Start without Caddy (development)
+#   docker-compose up -d sandbox-api
+#
+#   # Build the sandbox image
+#   docker-compose build sandbox-image
+
+version: "3.8"
+
+services:
+  # Main API service
+  sandbox-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clara-sandbox-api
+    restart: unless-stopped
+    ports:
+      - "${SANDBOX_API_PORT:-8080}:8080"
+    environment:
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY}
+      - SANDBOX_DOCKER_IMAGE=${SANDBOX_DOCKER_IMAGE:-clara-sandbox:latest}
+      - SANDBOX_DOCKER_TIMEOUT=${SANDBOX_DOCKER_TIMEOUT:-900}
+      - SANDBOX_DOCKER_MEMORY=${SANDBOX_DOCKER_MEMORY:-512m}
+      - SANDBOX_DOCKER_CPU=${SANDBOX_DOCKER_CPU:-1.0}
+      - SANDBOX_MAX_CONTAINERS=${SANDBOX_MAX_CONTAINERS:-50}
+      - SANDBOX_DATA_DIR=/data/sandboxes
+    volumes:
+      # Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent storage for user workspaces
+      - sandbox-data:/data/sandboxes
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Caddy reverse proxy (for production with HTTPS)
+  caddy:
+    image: caddy:2-alpine
+    container_name: clara-sandbox-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SANDBOX_DOMAIN=${SANDBOX_DOMAIN:-localhost}
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - sandbox-api
+    profiles:
+      - production
+
+  # Build-only service for the sandbox container image
+  sandbox-image:
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    image: clara-sandbox:latest
+    profiles:
+      - build
+
+volumes:
+  sandbox-data:
+    name: clara-sandbox-data
+  caddy-data:
+    name: clara-caddy-data
+  caddy-config:
+    name: clara-caddy-config
