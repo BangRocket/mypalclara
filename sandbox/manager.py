@@ -151,6 +151,35 @@ class UnifiedSandboxManager:
             )
         return await manager.install_package(user_id, package)
 
+    async def ensure_packages(
+        self,
+        user_id: str,
+        packages: list[str],
+    ) -> ExecutionResult:
+        """Ensure multiple packages are installed (batch install).
+
+        Only installs packages that aren't already tracked.
+        """
+        manager = self._get_manager()
+        if not manager:
+            return ExecutionResult(
+                success=False,
+                output="",
+                error="No sandbox backend available",
+            )
+        # ensure_packages is only available on local backend
+        if hasattr(manager, "ensure_packages"):
+            return await manager.ensure_packages(user_id, packages)
+        # Fall back to individual installs for remote
+        for pkg in packages:
+            result = await manager.install_package(user_id, pkg)
+            if not result.success:
+                return result
+        return ExecutionResult(
+            success=True,
+            output=f"All {len(packages)} packages installed",
+        )
+
     async def read_file(
         self,
         user_id: str,
@@ -235,7 +264,7 @@ class UnifiedSandboxManager:
             return ExecutionResult(
                 success=False,
                 output="",
-                error="Web search not available on remote sandbox. Use local web_search tool.",
+                error="Web search not available on remote sandbox.",
             )
 
     async def handle_tool_call(

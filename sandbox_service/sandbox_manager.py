@@ -27,6 +27,7 @@ from config import (
     DOCKER_TIMEOUT,
     MAX_CONTAINERS,
     MAX_EXECUTION_TIMEOUT,
+    PIP_CACHE_DIR,
 )
 
 
@@ -39,6 +40,9 @@ class ContainerSession:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
     execution_count: int = 0
+    # Package tracking for token efficiency
+    base_packages: set[str] = field(default_factory=set)  # Pre-installed in Docker image
+    installed_packages: set[str] = field(default_factory=set)  # All available packages
 
 
 @dataclass
@@ -142,18 +146,60 @@ class SandboxManager:
                 container = await self._create_container(container_name, workspace)
 
             if container:
-                self._sessions[user_id] = ContainerSession(
+                session = ContainerSession(
                     container=container,
                     user_id=user_id,
                 )
+                self._sessions[user_id] = session
+                # Initialize package tracking (async, but don't block)
+                asyncio.create_task(self._init_package_tracking(session))
 
             return container
+
+    def _ensure_pip_cache(self) -> str:
+        """Ensure pip cache directory exists and return path."""
+        os.makedirs(PIP_CACHE_DIR, exist_ok=True)
+        return PIP_CACHE_DIR
+
+    async def _init_package_tracking(self, session: ContainerSession) -> None:
+        """Initialize package tracking for a session.
+
+        Detects pre-installed packages to avoid redundant pip install calls.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            exit_code, output = await loop.run_in_executor(
+                None,
+                lambda: session.container.exec_run(
+                    ["pip", "list", "--format=freeze"],
+                    demux=True,
+                ),
+            )
+
+            if exit_code == 0 and output[0]:
+                stdout = output[0].decode("utf-8")
+                # Parse package names (format: package==version)
+                packages = set()
+                for line in stdout.strip().split("\n"):
+                    if "==" in line:
+                        pkg_name = line.split("==")[0].lower().strip()
+                        packages.add(pkg_name)
+
+                session.base_packages = packages.copy()
+                session.installed_packages = packages.copy()
+                print(
+                    f"[SandboxManager] Tracked {len(packages)} pre-installed packages "
+                    f"for {session.user_id}"
+                )
+        except Exception as e:
+            print(f"[SandboxManager] Failed to init package tracking: {e}")
 
     async def _create_container(
         self, name: str, workspace_path: str
     ) -> Container | None:
         """Create a new sandbox container."""
         loop = asyncio.get_event_loop()
+        pip_cache = self._ensure_pip_cache()
         try:
             container = await loop.run_in_executor(
                 None,
@@ -166,6 +212,11 @@ class SandboxManager:
                     working_dir="/workspace",
                     volumes={
                         workspace_path: {"bind": "/workspace", "mode": "rw"},
+                        # Shared pip cache for faster installs
+                        pip_cache: {"bind": "/home/sandbox/.cache/pip", "mode": "rw"},
+                    },
+                    environment={
+                        "PIP_CACHE_DIR": "/home/sandbox/.cache/pip",
                     },
                     mem_limit=DOCKER_MEMORY,
                     cpu_period=100000,
@@ -368,8 +419,70 @@ class SandboxManager:
     async def install_package(
         self, user_id: str, package: str, timeout: int = 120
     ) -> ExecutionResult:
-        """Install a pip package in the sandbox."""
-        return await self.run_shell(user_id, f"pip install {package}", timeout=timeout)
+        """Install a pip package in the sandbox.
+
+        Uses session-level package tracking to avoid redundant installs.
+        """
+        # Normalize package name (handle extras like requests[socks])
+        pkg_lower = package.lower().split("[")[0].split(">=")[0].split("==")[0].strip()
+
+        # Check if already tracked
+        session = self._sessions.get(user_id)
+        if session and pkg_lower in session.installed_packages:
+            return ExecutionResult(
+                success=True,
+                output=f"Package '{package}' is already installed",
+                execution_time=0.0,
+            )
+
+        # Actually install (quietly to save tokens)
+        result = await self.run_shell(
+            user_id, f"pip install -q {package}", timeout=timeout
+        )
+
+        # Track on success
+        if result.success and session:
+            session.installed_packages.add(pkg_lower)
+
+        return result
+
+    async def ensure_packages(
+        self, user_id: str, packages: list[str], timeout: int = 180
+    ) -> ExecutionResult:
+        """Ensure multiple packages are installed (batch install).
+
+        Only installs packages that aren't already tracked.
+        """
+        session = self._sessions.get(user_id)
+        tracked = session.installed_packages if session else set()
+
+        # Filter to only missing packages
+        missing = []
+        for pkg in packages:
+            pkg_lower = pkg.lower().split("[")[0].split(">=")[0].split("==")[0].strip()
+            if pkg_lower not in tracked:
+                missing.append(pkg)
+
+        if not missing:
+            return ExecutionResult(
+                success=True,
+                output=f"All {len(packages)} packages already installed",
+                execution_time=0.0,
+            )
+
+        # Install only what's needed
+        result = await self.run_shell(
+            user_id, f"pip install -q {' '.join(missing)}", timeout=timeout
+        )
+
+        # Track on success
+        if result.success and session:
+            for pkg in missing:
+                pkg_lower = pkg.lower().split("[")[0].split(">=")[0].split("==")[0].strip()
+                session.installed_packages.add(pkg_lower)
+            result.output = f"Installed {len(missing)} packages: {', '.join(missing)}"
+
+        return result
 
     async def read_file(self, user_id: str, path: str) -> ExecutionResult:
         """Read a file from the sandbox."""

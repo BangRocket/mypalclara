@@ -20,6 +20,7 @@ DOCKER_CPU = float(os.getenv("SANDBOX_DOCKER_CPU", "1.0"))
 
 # Storage Configuration
 DATA_DIR = os.getenv("SANDBOX_DATA_DIR", "/data/sandboxes")
+PIP_CACHE_DIR = os.getenv("SANDBOX_PIP_CACHE_DIR", "/data/pip-cache")
 
 # Limits
 MAX_CONTAINERS = int(os.getenv("SANDBOX_MAX_CONTAINERS", "50"))
