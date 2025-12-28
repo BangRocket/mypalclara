@@ -42,7 +42,7 @@ from fastapi.responses import HTMLResponse
 
 from db import SessionLocal
 from db.models import ChannelSummary, Project, Session
-from sandbox.docker import get_sandbox_manager
+from sandbox.manager import get_sandbox_manager
 from storage.local_files import get_file_manager
 from email_monitor import (
     handle_email_tool,
