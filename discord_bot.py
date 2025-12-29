@@ -244,7 +244,8 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
 DISCORD_MSG_LIMIT = 2000
 
 # Monitor configuration
-MONITOR_PORT = int(os.getenv("DISCORD_MONITOR_PORT", "8001"))
+# Railway sets PORT env var - use it if available, otherwise fall back to DISCORD_MONITOR_PORT
+MONITOR_PORT = int(os.getenv("PORT", os.getenv("DISCORD_MONITOR_PORT", "8001")))
 MONITOR_ENABLED = os.getenv("DISCORD_MONITOR_ENABLED", "true").lower() == "true"
 MAX_LOG_ENTRIES = 100
 
@@ -2311,6 +2312,18 @@ def get_logs(limit: int = 50, event_type: str | None = None):
     if event_type:
         logs = [entry for entry in logs if entry.event_type == event_type]
     return {"logs": [entry.to_dict() for entry in logs[:limit]]}
+
+
+@monitor_app.get("/health")
+def health_check():
+    """Health check endpoint for Railway and other platforms."""
+    stats = monitor.get_stats()
+    return {
+        "status": "healthy",
+        "bot_connected": stats.get("bot_user") is not None,
+        "uptime_seconds": stats.get("uptime_seconds", 0),
+        "guilds": stats.get("guild_count", 0),
+    }
 
 
 DASHBOARD_HTML = """
