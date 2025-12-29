@@ -36,10 +36,6 @@ COPY tools/ ./tools/
 COPY personalities/ ./personalities/
 COPY VERSION ./
 
-# Copy user_profile.txt if it exists (optional)
-RUN mkdir -p /app/inputs && touch /app/inputs/user_profile.txt
-COPY inputs/user_profile.tx[t] ./inputs/
-
 # Create directories for persistent data
 RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
