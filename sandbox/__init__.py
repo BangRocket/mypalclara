@@ -3,7 +3,6 @@
 Provides sandboxed code execution via:
 - Local Docker containers
 - Remote sandbox API (self-hosted VPS)
-- E2B cloud sandbox (legacy)
 
 Usage:
     from sandbox import get_sandbox_manager
