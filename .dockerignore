@@ -19,6 +19,7 @@ poetry.lock
 # Environment
 .env
 .env.local
+.env.remote
 .env.*.local
 
 # Database (will be volume mounted)
