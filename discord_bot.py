@@ -2313,6 +2313,18 @@ def get_logs(limit: int = 50, event_type: str | None = None):
     return {"logs": [entry.to_dict() for entry in logs[:limit]]}
 
 
+@monitor_app.get("/health")
+def health_check():
+    """Health check endpoint for Railway and other platforms."""
+    stats = monitor.get_stats()
+    return {
+        "status": "healthy",
+        "bot_connected": stats.get("bot_user") is not None,
+        "uptime_seconds": stats.get("uptime_seconds", 0),
+        "guilds": stats.get("guild_count", 0),
+    }
+
+
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
