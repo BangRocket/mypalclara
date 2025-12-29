@@ -244,7 +244,8 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
 DISCORD_MSG_LIMIT = 2000
 
 # Monitor configuration
-MONITOR_PORT = int(os.getenv("DISCORD_MONITOR_PORT", "8001"))
+# Railway sets PORT env var - use it if available, otherwise fall back to DISCORD_MONITOR_PORT
+MONITOR_PORT = int(os.getenv("PORT", os.getenv("DISCORD_MONITOR_PORT", "8001")))
 MONITOR_ENABLED = os.getenv("DISCORD_MONITOR_ENABLED", "true").lower() == "true"
 MAX_LOG_ENTRIES = 100
 
