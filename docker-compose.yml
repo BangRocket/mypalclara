@@ -36,99 +36,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  backend:
-    image: ${REGISTRY:-}mypalclara-backend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mypalclara-backend
-    profiles:
-      - backend
-      - full
-    ports:
-      - "8010:8000"
-    environment:
-      # LLM Provider
-      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
-      # OpenRouter (when LLM_PROVIDER=openrouter)
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4}
-      - OPENROUTER_SITE=${OPENROUTER_SITE:-http://localhost:3000}
-      - OPENROUTER_TITLE=${OPENROUTER_TITLE:-MyPalClara}
-      # NanoGPT (when LLM_PROVIDER=nanogpt)
-      - NANOGPT_API_KEY=${NANOGPT_API_KEY}
-      - NANOGPT_MODEL=${NANOGPT_MODEL:-moonshotai/Kimi-K2-Instruct-0905}
-      - NANOGPT_MEM0_MODEL=${NANOGPT_MEM0_MODEL:-openai/gpt-oss-120b}
-      # Custom OpenAI (when LLM_PROVIDER=openai)
-      - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
-      - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - CUSTOM_OPENAI_MODEL=${CUSTOM_OPENAI_MODEL:-gpt-4o}
-      # OpenAI (for embeddings)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # PostgreSQL (hardcoded for Docker - ignores .env localhost values)
-      - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
-      - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
-      # Mem0 Provider
-      - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
-      - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
-      # User config
-      - USER_ID=${USER_ID:-demo-user}
-      - DEFAULT_PROJECT=${DEFAULT_PROJECT:-Default Project}
-    volumes:
-      - mypalclara-data:/data
-      - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
-      - ./${BOT_PERSONALITY_FILE:-personality.txt}:/app/${BOT_PERSONALITY_FILE:-personality.txt}:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      postgres-vectors:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-
-  frontend:
-    image: ${REGISTRY:-}mypalclara-frontend:latest
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: mypalclara-frontend
-    profiles:
-      - frontend
-      - full
-    ports:
-      - "3010:3000"
-    environment:
-      # LLM Provider
-      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
-      # OpenRouter (when LLM_PROVIDER=openrouter)
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4}
-      - OPENROUTER_SITE=${OPENROUTER_SITE:-http://localhost:3000}
-      - OPENROUTER_TITLE=${OPENROUTER_TITLE:-MyPalClara}
-      # NanoGPT (when LLM_PROVIDER=nanogpt)
-      - NANOGPT_API_KEY=${NANOGPT_API_KEY}
-      - NANOGPT_MODEL=${NANOGPT_MODEL:-moonshotai/Kimi-K2-Instruct-0905}
-      # Backend URL (server-side, internal Docker network)
-      - BACKEND_URL=http://backend:8000
-      # OpenAI (for embeddings - if needed)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-
-  # Discord bot (optional - run with: docker-compose --profile discord up)
+  # Discord bot
   discord-bot:
     image: ${REGISTRY:-}mypalclara-discord:latest
     build:
@@ -196,8 +104,6 @@ services:
       - CLARA_EMAIL_PASSWORD=${CLARA_EMAIL_PASSWORD:-}
       - CLARA_EMAIL_NOTIFY_USER=${CLARA_EMAIL_NOTIFY_USER:-}
       - CLARA_EMAIL_NOTIFY=${CLARA_EMAIL_NOTIFY:-false}
-      # API URL for dashboard cross-service stats (optional)
-      - API_URL=http://backend:8000
       # Graph memory (optional)
       - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-neo4j}
@@ -209,9 +115,11 @@ services:
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
       # Docker sandbox
       - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
-      # E2B sandbox (alternative to Docker)
-      - E2B_API_KEY=${E2B_API_KEY:-}
-      - E2B_TIMEOUT=${E2B_TIMEOUT:-300}
+      # Remote sandbox (VPS)
+      - SANDBOX_MODE=${SANDBOX_MODE:-auto}
+      - SANDBOX_API_URL=${SANDBOX_API_URL:-}
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:-}
+      - SANDBOX_TIMEOUT=${SANDBOX_TIMEOUT:-60}
       # S3 storage (optional)
       - S3_ENABLED=${S3_ENABLED:-false}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
