@@ -1,8 +1,15 @@
 FROM python:3.12-slim
 
-# Install PostgreSQL client tools (pg_dump, psql)
+# Install PostgreSQL 18 client from official PostgreSQL repo
+# This ensures we have pg_dump compatible with PG 18 servers
 RUN apt-get update && apt-get install -y \
-    postgresql-client \
+    curl \
+    gnupg \
+    lsb-release \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
