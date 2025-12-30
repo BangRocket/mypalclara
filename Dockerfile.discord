@@ -33,6 +33,7 @@ COPY db/ ./db/
 COPY sandbox/ ./sandbox/
 COPY storage/ ./storage/
 COPY tools/ ./tools/
+COPY vendor/ ./vendor/
 COPY personalities/ ./personalities/
 COPY VERSION ./
 
