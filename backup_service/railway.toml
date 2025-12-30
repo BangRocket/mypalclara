@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[build.nixpacks]
+aptPkgs = ["postgresql-client"]
+
+[deploy]
+startCommand = "python backup.py"
+# Run as cron job - daily at 3:00 AM UTC
+cronSchedule = "0 3 * * *"
