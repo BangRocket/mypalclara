@@ -18,7 +18,7 @@ except ImportError:
         print("Failed to install 'litellm'. Please install it manually using 'pip install litellm'.")
         sys.exit(1)
 
-from mem0 import Memory, MemoryClient
+from vendor.mem0 import Memory, MemoryClient
 from vendor.mem0.configs.prompts import MEMORY_ANSWER_PROMPT
 from vendor.mem0.memory.telemetry import capture_client_event, capture_event
 

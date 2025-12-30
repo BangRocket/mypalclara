@@ -45,7 +45,7 @@ class VectorStoreConfig(BaseModel):
             raise ValueError(f"Unsupported vector store provider: {provider}")
 
         module = __import__(
-            f"mem0.configs.vector_stores.{provider}",
+            f"vendor.mem0.configs.vector_stores.{provider}",
             fromlist=[self._provider_configs[provider]],
         )
         config_class = getattr(module, self._provider_configs[provider])

@@ -33,23 +33,23 @@ class LlmFactory:
 
     # Provider mappings with their config classes
     provider_to_class = {
-        "ollama": ("mem0.llms.ollama.OllamaLLM", OllamaConfig),
-        "openai": ("mem0.llms.openai.OpenAILLM", OpenAIConfig),
-        "groq": ("mem0.llms.groq.GroqLLM", BaseLlmConfig),
-        "together": ("mem0.llms.together.TogetherLLM", BaseLlmConfig),
-        "aws_bedrock": ("mem0.llms.aws_bedrock.AWSBedrockLLM", BaseLlmConfig),
-        "litellm": ("mem0.llms.litellm.LiteLLM", BaseLlmConfig),
-        "azure_openai": ("mem0.llms.azure_openai.AzureOpenAILLM", AzureOpenAIConfig),
-        "openai_structured": ("mem0.llms.openai_structured.OpenAIStructuredLLM", OpenAIConfig),
-        "anthropic": ("mem0.llms.anthropic.AnthropicLLM", AnthropicConfig),
-        "azure_openai_structured": ("mem0.llms.azure_openai_structured.AzureOpenAIStructuredLLM", AzureOpenAIConfig),
-        "gemini": ("mem0.llms.gemini.GeminiLLM", BaseLlmConfig),
-        "deepseek": ("mem0.llms.deepseek.DeepSeekLLM", DeepSeekConfig),
-        "xai": ("mem0.llms.xai.XAILLM", BaseLlmConfig),
-        "sarvam": ("mem0.llms.sarvam.SarvamLLM", BaseLlmConfig),
-        "lmstudio": ("mem0.llms.lmstudio.LMStudioLLM", LMStudioConfig),
-        "vllm": ("mem0.llms.vllm.VllmLLM", VllmConfig),
-        "langchain": ("mem0.llms.langchain.LangchainLLM", BaseLlmConfig),
+        "ollama": ("vendor.mem0.llms.ollama.OllamaLLM", OllamaConfig),
+        "openai": ("vendor.mem0.llms.openai.OpenAILLM", OpenAIConfig),
+        "groq": ("vendor.mem0.llms.groq.GroqLLM", BaseLlmConfig),
+        "together": ("vendor.mem0.llms.together.TogetherLLM", BaseLlmConfig),
+        "aws_bedrock": ("vendor.mem0.llms.aws_bedrock.AWSBedrockLLM", BaseLlmConfig),
+        "litellm": ("vendor.mem0.llms.litellm.LiteLLM", BaseLlmConfig),
+        "azure_openai": ("vendor.mem0.llms.azure_openai.AzureOpenAILLM", AzureOpenAIConfig),
+        "openai_structured": ("vendor.mem0.llms.openai_structured.OpenAIStructuredLLM", OpenAIConfig),
+        "anthropic": ("vendor.mem0.llms.anthropic.AnthropicLLM", AnthropicConfig),
+        "azure_openai_structured": ("vendor.mem0.llms.azure_openai_structured.AzureOpenAIStructuredLLM", AzureOpenAIConfig),
+        "gemini": ("vendor.mem0.llms.gemini.GeminiLLM", BaseLlmConfig),
+        "deepseek": ("vendor.mem0.llms.deepseek.DeepSeekLLM", DeepSeekConfig),
+        "xai": ("vendor.mem0.llms.xai.XAILLM", BaseLlmConfig),
+        "sarvam": ("vendor.mem0.llms.sarvam.SarvamLLM", BaseLlmConfig),
+        "lmstudio": ("vendor.mem0.llms.lmstudio.LMStudioLLM", LMStudioConfig),
+        "vllm": ("vendor.mem0.llms.vllm.VllmLLM", VllmConfig),
+        "langchain": ("vendor.mem0.llms.langchain.LangchainLLM", BaseLlmConfig),
     }
 
     @classmethod
@@ -135,17 +135,17 @@ class LlmFactory:
 
 class EmbedderFactory:
     provider_to_class = {
-        "openai": "mem0.embeddings.openai.OpenAIEmbedding",
-        "ollama": "mem0.embeddings.ollama.OllamaEmbedding",
-        "huggingface": "mem0.embeddings.huggingface.HuggingFaceEmbedding",
-        "azure_openai": "mem0.embeddings.azure_openai.AzureOpenAIEmbedding",
-        "gemini": "mem0.embeddings.gemini.GoogleGenAIEmbedding",
-        "vertexai": "mem0.embeddings.vertexai.VertexAIEmbedding",
-        "together": "mem0.embeddings.together.TogetherEmbedding",
-        "lmstudio": "mem0.embeddings.lmstudio.LMStudioEmbedding",
-        "langchain": "mem0.embeddings.langchain.LangchainEmbedding",
-        "aws_bedrock": "mem0.embeddings.aws_bedrock.AWSBedrockEmbedding",
-        "fastembed": "mem0.embeddings.fastembed.FastEmbedEmbedding",
+        "openai": "vendor.mem0.embeddings.openai.OpenAIEmbedding",
+        "ollama": "vendor.mem0.embeddings.ollama.OllamaEmbedding",
+        "huggingface": "vendor.mem0.embeddings.huggingface.HuggingFaceEmbedding",
+        "azure_openai": "vendor.mem0.embeddings.azure_openai.AzureOpenAIEmbedding",
+        "gemini": "vendor.mem0.embeddings.gemini.GoogleGenAIEmbedding",
+        "vertexai": "vendor.mem0.embeddings.vertexai.VertexAIEmbedding",
+        "together": "vendor.mem0.embeddings.together.TogetherEmbedding",
+        "lmstudio": "vendor.mem0.embeddings.lmstudio.LMStudioEmbedding",
+        "langchain": "vendor.mem0.embeddings.langchain.LangchainEmbedding",
+        "aws_bedrock": "vendor.mem0.embeddings.aws_bedrock.AWSBedrockEmbedding",
+        "fastembed": "vendor.mem0.embeddings.fastembed.FastEmbedEmbedding",
     }
 
     @classmethod
@@ -163,29 +163,29 @@ class EmbedderFactory:
 
 class VectorStoreFactory:
     provider_to_class = {
-        "qdrant": "mem0.vector_stores.qdrant.Qdrant",
-        "chroma": "mem0.vector_stores.chroma.ChromaDB",
-        "pgvector": "mem0.vector_stores.pgvector.PGVector",
-        "milvus": "mem0.vector_stores.milvus.MilvusDB",
-        "upstash_vector": "mem0.vector_stores.upstash_vector.UpstashVector",
-        "azure_ai_search": "mem0.vector_stores.azure_ai_search.AzureAISearch",
-        "azure_mysql": "mem0.vector_stores.azure_mysql.AzureMySQL",
-        "pinecone": "mem0.vector_stores.pinecone.PineconeDB",
-        "mongodb": "mem0.vector_stores.mongodb.MongoDB",
-        "redis": "mem0.vector_stores.redis.RedisDB",
-        "valkey": "mem0.vector_stores.valkey.ValkeyDB",
-        "databricks": "mem0.vector_stores.databricks.Databricks",
-        "elasticsearch": "mem0.vector_stores.elasticsearch.ElasticsearchDB",
-        "vertex_ai_vector_search": "mem0.vector_stores.vertex_ai_vector_search.GoogleMatchingEngine",
-        "opensearch": "mem0.vector_stores.opensearch.OpenSearchDB",
-        "supabase": "mem0.vector_stores.supabase.Supabase",
-        "weaviate": "mem0.vector_stores.weaviate.Weaviate",
-        "faiss": "mem0.vector_stores.faiss.FAISS",
-        "langchain": "mem0.vector_stores.langchain.Langchain",
-        "s3_vectors": "mem0.vector_stores.s3_vectors.S3Vectors",
-        "baidu": "mem0.vector_stores.baidu.BaiduDB",
-        "cassandra": "mem0.vector_stores.cassandra.CassandraDB",
-        "neptune": "mem0.vector_stores.neptune_analytics.NeptuneAnalyticsVector",
+        "qdrant": "vendor.mem0.vector_stores.qdrant.Qdrant",
+        "chroma": "vendor.mem0.vector_stores.chroma.ChromaDB",
+        "pgvector": "vendor.mem0.vector_stores.pgvector.PGVector",
+        "milvus": "vendor.mem0.vector_stores.milvus.MilvusDB",
+        "upstash_vector": "vendor.mem0.vector_stores.upstash_vector.UpstashVector",
+        "azure_ai_search": "vendor.mem0.vector_stores.azure_ai_search.AzureAISearch",
+        "azure_mysql": "vendor.mem0.vector_stores.azure_mysql.AzureMySQL",
+        "pinecone": "vendor.mem0.vector_stores.pinecone.PineconeDB",
+        "mongodb": "vendor.mem0.vector_stores.mongodb.MongoDB",
+        "redis": "vendor.mem0.vector_stores.redis.RedisDB",
+        "valkey": "vendor.mem0.vector_stores.valkey.ValkeyDB",
+        "databricks": "vendor.mem0.vector_stores.databricks.Databricks",
+        "elasticsearch": "vendor.mem0.vector_stores.elasticsearch.ElasticsearchDB",
+        "vertex_ai_vector_search": "vendor.mem0.vector_stores.vertex_ai_vector_search.GoogleMatchingEngine",
+        "opensearch": "vendor.mem0.vector_stores.opensearch.OpenSearchDB",
+        "supabase": "vendor.mem0.vector_stores.supabase.Supabase",
+        "weaviate": "vendor.mem0.vector_stores.weaviate.Weaviate",
+        "faiss": "vendor.mem0.vector_stores.faiss.FAISS",
+        "langchain": "vendor.mem0.vector_stores.langchain.Langchain",
+        "s3_vectors": "vendor.mem0.vector_stores.s3_vectors.S3Vectors",
+        "baidu": "vendor.mem0.vector_stores.baidu.BaiduDB",
+        "cassandra": "vendor.mem0.vector_stores.cassandra.CassandraDB",
+        "neptune": "vendor.mem0.vector_stores.neptune_analytics.NeptuneAnalyticsVector",
     }
 
     @classmethod
@@ -212,11 +212,11 @@ class GraphStoreFactory:
     """
 
     provider_to_class = {
-        "memgraph": "mem0.memory.memgraph_memory.MemoryGraph",
-        "neptune": "mem0.graphs.neptune.neptunegraph.MemoryGraph",
-        "neptunedb": "mem0.graphs.neptune.neptunedb.MemoryGraph",
-        "kuzu": "mem0.memory.kuzu_memory.MemoryGraph",
-        "default": "mem0.memory.graph_memory.MemoryGraph",
+        "memgraph": "vendor.mem0.memory.memgraph_memory.MemoryGraph",
+        "neptune": "vendor.mem0.graphs.neptune.neptunegraph.MemoryGraph",
+        "neptunedb": "vendor.mem0.graphs.neptune.neptunedb.MemoryGraph",
+        "kuzu": "vendor.mem0.memory.kuzu_memory.MemoryGraph",
+        "default": "vendor.mem0.memory.graph_memory.MemoryGraph",
     }
 
     @classmethod
@@ -237,11 +237,11 @@ class RerankerFactory:
 
     # Provider mappings with their config classes
     provider_to_class = {
-        "cohere": ("mem0.reranker.cohere_reranker.CohereReranker", CohereRerankerConfig),
-        "sentence_transformer": ("mem0.reranker.sentence_transformer_reranker.SentenceTransformerReranker", SentenceTransformerRerankerConfig),
-        "zero_entropy": ("mem0.reranker.zero_entropy_reranker.ZeroEntropyReranker", ZeroEntropyRerankerConfig),
-        "llm_reranker": ("mem0.reranker.llm_reranker.LLMReranker", LLMRerankerConfig),
-        "huggingface": ("mem0.reranker.huggingface_reranker.HuggingFaceReranker", HuggingFaceRerankerConfig),
+        "cohere": ("vendor.mem0.reranker.cohere_reranker.CohereReranker", CohereRerankerConfig),
+        "sentence_transformer": ("vendor.mem0.reranker.sentence_transformer_reranker.SentenceTransformerReranker", SentenceTransformerRerankerConfig),
+        "zero_entropy": ("vendor.mem0.reranker.zero_entropy_reranker.ZeroEntropyReranker", ZeroEntropyRerankerConfig),
+        "llm_reranker": ("vendor.mem0.reranker.llm_reranker.LLMReranker", LLMRerankerConfig),
+        "huggingface": ("vendor.mem0.reranker.huggingface_reranker.HuggingFaceReranker", HuggingFaceRerankerConfig),
     }
 
     @classmethod
