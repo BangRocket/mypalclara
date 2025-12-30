@@ -2349,6 +2349,134 @@ def health_check():
     }
 
 
+# ============== Google OAuth Endpoints ==============
+
+
+@monitor_app.get("/oauth/google/callback", response_class=HTMLResponse)
+async def google_oauth_callback(
+    code: str | None = None, state: str | None = None, error: str | None = None
+):
+    """Handle Google OAuth callback - exchange code for tokens."""
+    from tools.google_oauth import (
+        decode_state,
+        exchange_code_for_tokens,
+        is_configured,
+    )
+
+    if not is_configured():
+        return _oauth_error_html("Google OAuth not configured on this server.")
+
+    if error:
+        return _oauth_error_html(f"Google authorization denied: {error}")
+
+    if not code or not state:
+        return _oauth_error_html("Missing authorization code or state.")
+
+    try:
+        user_id = decode_state(state)
+        await exchange_code_for_tokens(code, user_id)
+        return _oauth_success_html()
+    except Exception as e:
+        logger.error(f"Google OAuth error: {e}")
+        return _oauth_error_html(f"Failed to connect: {e}")
+
+
+@monitor_app.get("/oauth/google/status/{user_id}")
+def google_oauth_status(user_id: str):
+    """Check if a user has connected their Google account."""
+    from tools.google_oauth import is_configured, is_user_connected
+
+    return {
+        "configured": is_configured(),
+        "connected": is_user_connected(user_id) if is_configured() else False,
+    }
+
+
+def _oauth_success_html() -> str:
+    """HTML page for successful OAuth connection."""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Connected - Clara</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: #252542;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .success { color: #43b581; font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #7289da; margin-bottom: 10px; }
+        p { color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="success">✓</div>
+        <h1>Google Connected!</h1>
+        <p>Your Google account is now connected to Clara. You can close this window and return to Discord.</p>
+    </div>
+</body>
+</html>
+"""
+
+
+def _oauth_error_html(message: str) -> str:
+    """HTML page for OAuth error."""
+    import html
+
+    safe_message = html.escape(message)
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Failed - Clara</title>
+    <style>
+        body {{
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }}
+        .card {{
+            background: #252542;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+        }}
+        .error {{ color: #f04747; font-size: 48px; margin-bottom: 20px; }}
+        h1 {{ color: #f04747; margin-bottom: 10px; }}
+        p {{ color: #aaa; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="error">✗</div>
+        <h1>Connection Failed</h1>
+        <p>{safe_message}</p>
+    </div>
+</body>
+</html>
+"""
+
+
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
