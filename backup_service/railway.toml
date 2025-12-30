@@ -1,0 +1,7 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Run as cron job - daily at 3:00 AM UTC
+cronSchedule = "0 3 * * *"
