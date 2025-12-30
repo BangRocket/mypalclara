@@ -6,7 +6,7 @@ from typing import List, Optional, Union
 
 import httpx
 
-import mem0
+import vendor.mem0 as mem0
 
 try:
     import litellm
@@ -19,8 +19,8 @@ except ImportError:
         sys.exit(1)
 
 from mem0 import Memory, MemoryClient
-from mem0.configs.prompts import MEMORY_ANSWER_PROMPT
-from mem0.memory.telemetry import capture_client_event, capture_event
+from vendor.mem0.configs.prompts import MEMORY_ANSWER_PROMPT
+from vendor.mem0.memory.telemetry import capture_client_event, capture_event
 
 logger = logging.getLogger(__name__)
 

@@ -3,11 +3,11 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from mem0.embeddings.configs import EmbedderConfig
-from mem0.graphs.configs import GraphStoreConfig
-from mem0.llms.configs import LlmConfig
-from mem0.vector_stores.configs import VectorStoreConfig
-from mem0.configs.rerankers.config import RerankerConfig
+from vendor.mem0.embeddings.configs import EmbedderConfig
+from vendor.mem0.graphs.configs import GraphStoreConfig
+from vendor.mem0.llms.configs import LlmConfig
+from vendor.mem0.vector_stores.configs import VectorStoreConfig
+from vendor.mem0.configs.rerankers.config import RerankerConfig
 
 # Set up the directory path
 home_dir = os.path.expanduser("~")

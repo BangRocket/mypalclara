@@ -5,9 +5,9 @@ try:
 except ImportError:
     raise ImportError("The 'ollama' library is required. Please install it using 'pip install ollama'.")
 
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.configs.llms.ollama import OllamaConfig
-from mem0.llms.base import LLMBase
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.ollama import OllamaConfig
+from vendor.mem0.llms.base import LLMBase
 
 
 class OllamaLLM(LLMBase):

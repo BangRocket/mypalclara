@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from mem0.embeddings.base import EmbeddingBase
+from vendor.mem0.embeddings.base import EmbeddingBase
 
 
 class MockEmbeddings(EmbeddingBase):

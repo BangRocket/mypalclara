@@ -1,9 +1,9 @@
 from typing import List, Dict, Any, Union
 import numpy as np
 
-from mem0.reranker.base import BaseReranker
-from mem0.configs.rerankers.base import BaseRerankerConfig
-from mem0.configs.rerankers.huggingface import HuggingFaceRerankerConfig
+from vendor.mem0.reranker.base import BaseReranker
+from vendor.mem0.configs.rerankers.base import BaseRerankerConfig
+from vendor.mem0.configs.rerankers.huggingface import HuggingFaceRerankerConfig
 
 try:
     from transformers import AutoTokenizer, AutoModelForSequenceClassification

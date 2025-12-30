@@ -6,9 +6,9 @@ try:
 except ImportError:
     raise ImportError("The 'anthropic' library is required. Please install it using 'pip install anthropic'.")
 
-from mem0.configs.llms.anthropic import AnthropicConfig
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.llms.base import LLMBase
+from vendor.mem0.configs.llms.anthropic import AnthropicConfig
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.llms.base import LLMBase
 
 
 class AnthropicLLM(LLMBase):
