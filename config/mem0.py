@@ -302,6 +302,9 @@ OUTPUT FORMAT (JSON only):
 }
 """
 
+# Collection name - explicit env var to prevent accidental changes
+MEM0_COLLECTION_NAME = os.getenv("MEM0_COLLECTION_NAME", "clara_memories")
+
 # Build vector store config - pgvector for production, Qdrant for local dev
 if MEM0_DATABASE_URL:
     # PostgreSQL with pgvector
@@ -314,10 +317,11 @@ if MEM0_DATABASE_URL:
         "provider": "pgvector",
         "config": {
             "connection_string": pgvector_url,
-            "collection_name": "clara_memories",
+            "collection_name": MEM0_COLLECTION_NAME,
         },
     }
     print(f"[mem0] Vector store: pgvector at {pgvector_url.split('@')[1] if '@' in pgvector_url else 'configured'}")
+    print(f"[mem0] Collection: {MEM0_COLLECTION_NAME}")
 else:
     # Fallback to Qdrant for local development
     vector_store_config = {
