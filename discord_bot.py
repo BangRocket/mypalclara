@@ -12,6 +12,7 @@ Environment variables:
     DISCORD_CLIENT_ID - Discord client ID (for invite link)
     DISCORD_MAX_MESSAGES - Max messages in conversation chain (default: 25)
     DISCORD_MAX_CHARS - Max chars per message content (default: 100000)
+    DISCORD_ALLOWED_SERVERS - Comma-separated server IDs (supersedes channels)
     DISCORD_ALLOWED_CHANNELS - Comma-separated channel IDs (optional, empty = all)
     DISCORD_ALLOWED_ROLES - Comma-separated role IDs (optional, empty = all)
 """
@@ -59,6 +60,8 @@ from clara_core import (
     MemoryManager,
     make_llm,
     make_llm_with_tools,
+    make_llm_with_tools_anthropic,
+    anthropic_to_openai_response,
     ModelTier,
     get_model_for_tier,
 )
@@ -120,6 +123,11 @@ ALLOWED_CHANNELS = [
     ch.strip()
     for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",")
     if ch.strip()
+]
+ALLOWED_SERVERS = [
+    s.strip()
+    for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",")
+    if s.strip()
 ]
 ALLOWED_ROLES = [
     r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
@@ -737,8 +745,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             if not is_mentioned and not is_reply_to_bot:
                 return
 
-            # Check channel permissions (only for non-DM)
-            if ALLOWED_CHANNELS:
+            # Check server/channel permissions (only for non-DM)
+            # Server allowlist supersedes channel allowlist
+            server_id = str(message.guild.id) if message.guild else None
+            server_allowed = server_id and server_id in ALLOWED_SERVERS
+
+            if not server_allowed and ALLOWED_CHANNELS:
                 channel_id = str(message.channel.id)
                 if channel_id not in ALLOWED_CHANNELS:
                     logger.debug(f"Channel {channel_id} not in allowed list")
@@ -1591,15 +1603,40 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             tools_logger.info(f"Iteration {iteration + 1}/{MAX_TOOL_ITERATIONS}")
 
             # Call LLM with tools
-            def call_llm():
-                llm = make_llm_with_tools(active_tools, tier=tier)
-                return llm(messages)
+            # Use native Anthropic SDK when LLM_PROVIDER=anthropic
+            provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
 
-            completion = await loop.run_in_executor(None, call_llm)
-            response_message = completion.choices[0].message
+            def call_llm():
+                if provider == "anthropic":
+                    llm = make_llm_with_tools_anthropic(active_tools, tier=tier)
+                    anthropic_response = llm(messages)
+                    # Convert to OpenAI-like dict for unified processing
+                    return anthropic_to_openai_response(anthropic_response)
+                else:
+                    llm = make_llm_with_tools(active_tools, tier=tier)
+                    completion = llm(messages)
+                    msg = completion.choices[0].message
+                    # Convert to dict for unified processing
+                    return {
+                        "content": msg.content,
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in (msg.tool_calls or [])
+                        ] if msg.tool_calls else None,
+                    }
+
+            response_message = await loop.run_in_executor(None, call_llm)
 
             # Check if there are tool calls
-            if not response_message.tool_calls:
+            if not response_message.get("tool_calls"):
                 if iteration == 0:
                     # First iteration with no tools - fall back to main chat LLM
                     # This preserves the main LLM's personality for regular chat
@@ -1620,36 +1657,22 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     return result or "", files_to_send
                 else:
                     # Tools were used in previous iterations, return tool model's response
-                    return response_message.content or "", files_to_send
+                    return response_message.get("content") or "", files_to_send
 
             # Process tool calls
-            tool_count = len(response_message.tool_calls)
+            tool_calls = response_message.get("tool_calls", [])
+            tool_count = len(tool_calls)
             tools_logger.info(f"Processing {tool_count} tool call(s)")
 
             # Add assistant message with tool calls to conversation
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": response_message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in response_message.tool_calls
-                    ],
-                }
-            )
+            # response_message is already in the right format
+            messages.append(response_message)
 
             # Execute each tool call and add results
-            for tool_call in response_message.tool_calls:
-                tool_name = tool_call.function.name
+            for tool_call in tool_calls:
+                tool_name = tool_call["function"]["name"]
                 try:
-                    raw_args = tool_call.function.arguments
+                    raw_args = tool_call["function"]["arguments"]
                     # Debug: log raw arguments
                     if raw_args:
                         tools_logger.debug(
@@ -1744,7 +1767,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tool_call.id,
+                        "tool_call_id": tool_call["id"],
                         "content": tool_output,
                     }
                 )
@@ -2614,6 +2637,12 @@ async def async_main():
     logger.info("Clara Discord Bot Starting")
 
     config_logger.info(f"Max message chain: {MAX_MESSAGES}")
+    if ALLOWED_SERVERS:
+        config_logger.info(
+            f"Allowed servers ({len(ALLOWED_SERVERS)}): {', '.join(ALLOWED_SERVERS)}"
+        )
+    else:
+        config_logger.info("Allowed servers: NONE (using channel list)")
     if ALLOWED_CHANNELS:
         config_logger.info(
             f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}"
