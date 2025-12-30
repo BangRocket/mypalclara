@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -34,6 +35,7 @@ COPY sandbox/ ./sandbox/
 COPY storage/ ./storage/
 COPY tools/ ./tools/
 COPY personalities/ ./personalities/
+COPY scripts/ ./scripts/
 COPY VERSION ./
 
 # Create directories for persistent data
