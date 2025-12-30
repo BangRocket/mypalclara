@@ -6,5 +6,7 @@ aptPkgs = ["postgresql-client"]
 
 [deploy]
 startCommand = "python backup.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
 # Run as cron job - daily at 3:00 AM UTC
 cronSchedule = "0 3 * * *"
