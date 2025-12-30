@@ -4,7 +4,7 @@ from typing import Dict, Optional, Union
 
 import httpx
 
-from mem0.configs.base import AzureConfig
+from vendor.mem0.configs.base import AzureConfig
 
 
 class BaseEmbedderConfig(ABC):

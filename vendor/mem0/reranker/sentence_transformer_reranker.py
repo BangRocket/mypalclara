@@ -1,9 +1,9 @@
 from typing import List, Dict, Any, Union
 import numpy as np
 
-from mem0.reranker.base import BaseReranker
-from mem0.configs.rerankers.base import BaseRerankerConfig
-from mem0.configs.rerankers.sentence_transformer import SentenceTransformerRerankerConfig
+from vendor.mem0.reranker.base import BaseReranker
+from vendor.mem0.configs.rerankers.base import BaseRerankerConfig
+from vendor.mem0.configs.rerankers.sentence_transformer import SentenceTransformerRerankerConfig
 
 try:
     from sentence_transformers import SentenceTransformer

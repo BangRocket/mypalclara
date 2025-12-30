@@ -1,22 +1,22 @@
 import importlib
 from typing import Dict, Optional, Union
 
-from mem0.configs.embeddings.base import BaseEmbedderConfig
-from mem0.configs.llms.anthropic import AnthropicConfig
-from mem0.configs.llms.azure import AzureOpenAIConfig
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.configs.llms.deepseek import DeepSeekConfig
-from mem0.configs.llms.lmstudio import LMStudioConfig
-from mem0.configs.llms.ollama import OllamaConfig
-from mem0.configs.llms.openai import OpenAIConfig
-from mem0.configs.llms.vllm import VllmConfig
-from mem0.configs.rerankers.base import BaseRerankerConfig
-from mem0.configs.rerankers.cohere import CohereRerankerConfig
-from mem0.configs.rerankers.sentence_transformer import SentenceTransformerRerankerConfig
-from mem0.configs.rerankers.zero_entropy import ZeroEntropyRerankerConfig
-from mem0.configs.rerankers.llm import LLMRerankerConfig
-from mem0.configs.rerankers.huggingface import HuggingFaceRerankerConfig
-from mem0.embeddings.mock import MockEmbeddings
+from vendor.mem0.configs.embeddings.base import BaseEmbedderConfig
+from vendor.mem0.configs.llms.anthropic import AnthropicConfig
+from vendor.mem0.configs.llms.azure import AzureOpenAIConfig
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.deepseek import DeepSeekConfig
+from vendor.mem0.configs.llms.lmstudio import LMStudioConfig
+from vendor.mem0.configs.llms.ollama import OllamaConfig
+from vendor.mem0.configs.llms.openai import OpenAIConfig
+from vendor.mem0.configs.llms.vllm import VllmConfig
+from vendor.mem0.configs.rerankers.base import BaseRerankerConfig
+from vendor.mem0.configs.rerankers.cohere import CohereRerankerConfig
+from vendor.mem0.configs.rerankers.sentence_transformer import SentenceTransformerRerankerConfig
+from vendor.mem0.configs.rerankers.zero_entropy import ZeroEntropyRerankerConfig
+from vendor.mem0.configs.rerankers.llm import LLMRerankerConfig
+from vendor.mem0.configs.rerankers.huggingface import HuggingFaceRerankerConfig
+from vendor.mem0.embeddings.mock import MockEmbeddings
 
 
 def load_class(class_type):

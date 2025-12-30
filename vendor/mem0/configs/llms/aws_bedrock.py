@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Optional
 
-from mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.base import BaseLlmConfig
 
 
 class AWSBedrockConfig(BaseLlmConfig):

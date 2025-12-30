@@ -9,8 +9,8 @@ import valkey
 from pydantic import BaseModel
 from valkey.exceptions import ResponseError
 
-from mem0.memory.utils import extract_json
-from mem0.vector_stores.base import VectorStoreBase
+from vendor.mem0.memory.utils import extract_json
+from vendor.mem0.vector_stores.base import VectorStoreBase
 
 logger = logging.getLogger(__name__)
 

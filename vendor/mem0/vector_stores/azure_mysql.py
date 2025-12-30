@@ -21,7 +21,7 @@ try:
 except ImportError:
     AZURE_IDENTITY_AVAILABLE = False
 
-from mem0.vector_stores.base import VectorStoreBase
+from vendor.mem0.vector_stores.base import VectorStoreBase
 
 logger = logging.getLogger(__name__)
 

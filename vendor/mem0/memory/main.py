@@ -14,18 +14,18 @@ from typing import Any, Dict, Optional
 import pytz
 from pydantic import ValidationError
 
-from mem0.configs.base import MemoryConfig, MemoryItem
-from mem0.configs.enums import MemoryType
-from mem0.configs.prompts import (
+from vendor.mem0.configs.base import MemoryConfig, MemoryItem
+from vendor.mem0.configs.enums import MemoryType
+from vendor.mem0.configs.prompts import (
     PROCEDURAL_MEMORY_SYSTEM_PROMPT,
     get_update_memory_messages,
 )
-from mem0.exceptions import ValidationError as Mem0ValidationError
-from mem0.memory.base import MemoryBase
-from mem0.memory.setup import mem0_dir, setup_config
-from mem0.memory.storage import SQLiteManager
-from mem0.memory.telemetry import capture_event
-from mem0.memory.utils import (
+from vendor.mem0.exceptions import ValidationError as Mem0ValidationError
+from vendor.mem0.memory.base import MemoryBase
+from vendor.mem0.memory.setup import mem0_dir, setup_config
+from vendor.mem0.memory.storage import SQLiteManager
+from vendor.mem0.memory.telemetry import capture_event
+from vendor.mem0.memory.utils import (
     extract_json,
     get_fact_retrieval_messages,
     parse_messages,
@@ -33,7 +33,7 @@ from mem0.memory.utils import (
     process_telemetry_filters,
     remove_code_blocks,
 )
-from mem0.utils.factory import (
+from vendor.mem0.utils.factory import (
     EmbedderFactory,
     GraphStoreFactory,
     LlmFactory,

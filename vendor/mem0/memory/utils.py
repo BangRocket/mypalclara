@@ -1,7 +1,7 @@
 import hashlib
 import re
 
-from mem0.configs.prompts import (
+from vendor.mem0.configs.prompts import (
     FACT_RETRIEVAL_PROMPT,
     USER_MEMORY_EXTRACTION_PROMPT,
     AGENT_MEMORY_EXTRACTION_PROMPT,

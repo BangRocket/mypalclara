@@ -1,10 +1,10 @@
 import re
 from typing import List, Dict, Any, Union
 
-from mem0.reranker.base import BaseReranker
-from mem0.utils.factory import LlmFactory
-from mem0.configs.rerankers.base import BaseRerankerConfig
-from mem0.configs.rerankers.llm import LLMRerankerConfig
+from vendor.mem0.reranker.base import BaseReranker
+from vendor.mem0.utils.factory import LlmFactory
+from vendor.mem0.configs.rerankers.base import BaseRerankerConfig
+from vendor.mem0.configs.rerankers.llm import LLMRerankerConfig
 
 
 class LLMReranker(BaseReranker):

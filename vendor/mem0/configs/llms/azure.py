@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
-from mem0.configs.base import AzureConfig
-from mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.base import AzureConfig
+from vendor.mem0.configs.llms.base import BaseLlmConfig
 
 
 class AzureOpenAIConfig(BaseLlmConfig):

@@ -6,9 +6,9 @@ try:
 except ImportError:
     raise ImportError("The 'litellm' library is required. Please install it using 'pip install litellm'.")
 
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.llms.base import LLMBase
-from mem0.memory.utils import extract_json
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.llms.base import LLMBase
+from vendor.mem0.memory.utils import extract_json
 
 
 class LiteLLM(LLMBase):

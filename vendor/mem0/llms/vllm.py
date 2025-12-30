@@ -4,10 +4,10 @@ from typing import Dict, List, Optional, Union
 
 from openai import OpenAI
 
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.configs.llms.vllm import VllmConfig
-from mem0.llms.base import LLMBase
-from mem0.memory.utils import extract_json
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.vllm import VllmConfig
+from vendor.mem0.llms.base import LLMBase
+from vendor.mem0.memory.utils import extract_json
 
 
 class VllmLLM(LLMBase):

@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict, Any
 
-from mem0.reranker.base import BaseReranker
+from vendor.mem0.reranker.base import BaseReranker
 
 try:
     import cohere

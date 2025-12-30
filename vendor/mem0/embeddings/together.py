@@ -3,8 +3,8 @@ from typing import Literal, Optional
 
 from together import Together
 
-from mem0.configs.embeddings.base import BaseEmbedderConfig
-from mem0.embeddings.base import EmbeddingBase
+from vendor.mem0.configs.embeddings.base import BaseEmbedderConfig
+from vendor.mem0.embeddings.base import EmbeddingBase
 
 
 class TogetherEmbedding(EmbeddingBase):

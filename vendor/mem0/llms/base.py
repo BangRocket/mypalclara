@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union
 
-from mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.base import BaseLlmConfig
 
 
 class LLMBase(ABC):

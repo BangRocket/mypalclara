@@ -14,7 +14,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from mem0.vector_stores.base import VectorStoreBase
+from vendor.mem0.vector_stores.base import VectorStoreBase
 
 logger = logging.getLogger(__name__)
 

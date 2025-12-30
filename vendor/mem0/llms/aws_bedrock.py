@@ -9,10 +9,10 @@ try:
 except ImportError:
     raise ImportError("The 'boto3' library is required. Please install it using 'pip install boto3'.")
 
-from mem0.configs.llms.base import BaseLlmConfig
-from mem0.configs.llms.aws_bedrock import AWSBedrockConfig
-from mem0.llms.base import LLMBase
-from mem0.memory.utils import extract_json
+from vendor.mem0.configs.llms.base import BaseLlmConfig
+from vendor.mem0.configs.llms.aws_bedrock import AWSBedrockConfig
+from vendor.mem0.llms.base import LLMBase
+from vendor.mem0.memory.utils import extract_json
 
 logger = logging.getLogger(__name__)
 
