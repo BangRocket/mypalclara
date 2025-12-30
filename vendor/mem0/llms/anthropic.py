@@ -77,6 +77,8 @@ class AnthropicLLM(LLMBase):
                 filtered_messages.append(message)
 
         params = self._get_supported_params(messages=messages, **kwargs)
+        # Claude models don't allow both temperature and top_p - use only temperature
+        params.pop("top_p", None)
         params.update(
             {
                 "model": self.config.model,
