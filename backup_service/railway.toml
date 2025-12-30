@@ -1,11 +1,8 @@
 [build]
-builder = "nixpacks"
-
-[build.nixpacks]
-aptPkgs = ["postgresql-client"]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python backup.py"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 # Run as cron job - daily at 3:00 AM UTC
