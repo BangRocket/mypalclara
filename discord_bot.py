@@ -12,6 +12,7 @@ Environment variables:
     DISCORD_CLIENT_ID - Discord client ID (for invite link)
     DISCORD_MAX_MESSAGES - Max messages in conversation chain (default: 25)
     DISCORD_MAX_CHARS - Max chars per message content (default: 100000)
+    DISCORD_ALLOWED_SERVERS - Comma-separated server IDs (supersedes channels)
     DISCORD_ALLOWED_CHANNELS - Comma-separated channel IDs (optional, empty = all)
     DISCORD_ALLOWED_ROLES - Comma-separated role IDs (optional, empty = all)
 """
@@ -122,6 +123,11 @@ ALLOWED_CHANNELS = [
     ch.strip()
     for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",")
     if ch.strip()
+]
+ALLOWED_SERVERS = [
+    s.strip()
+    for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",")
+    if s.strip()
 ]
 ALLOWED_ROLES = [
     r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
@@ -739,8 +745,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             if not is_mentioned and not is_reply_to_bot:
                 return
 
-            # Check channel permissions (only for non-DM)
-            if ALLOWED_CHANNELS:
+            # Check server/channel permissions (only for non-DM)
+            # Server allowlist supersedes channel allowlist
+            server_id = str(message.guild.id) if message.guild else None
+            server_allowed = server_id and server_id in ALLOWED_SERVERS
+
+            if not server_allowed and ALLOWED_CHANNELS:
                 channel_id = str(message.channel.id)
                 if channel_id not in ALLOWED_CHANNELS:
                     logger.debug(f"Channel {channel_id} not in allowed list")
@@ -2627,6 +2637,12 @@ async def async_main():
     logger.info("Clara Discord Bot Starting")
 
     config_logger.info(f"Max message chain: {MAX_MESSAGES}")
+    if ALLOWED_SERVERS:
+        config_logger.info(
+            f"Allowed servers ({len(ALLOWED_SERVERS)}): {', '.join(ALLOWED_SERVERS)}"
+        )
+    else:
+        config_logger.info("Allowed servers: NONE (using channel list)")
     if ALLOWED_CHANNELS:
         config_logger.info(
             f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}"
