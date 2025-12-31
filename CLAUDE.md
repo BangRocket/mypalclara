@@ -276,7 +276,8 @@ Clara can interact with Azure DevOps projects, repos, work items, and pipelines:
 Clara can interact with Google Sheets, Drive, and Docs using per-user OAuth 2.0:
 - `GOOGLE_CLIENT_ID` - OAuth 2.0 client ID from Google Cloud Console
 - `GOOGLE_CLIENT_SECRET` - OAuth 2.0 client secret
-- `GOOGLE_REDIRECT_URI` - Callback URL (e.g., https://your-app.up.railway.app/oauth/google/callback)
+- `GOOGLE_REDIRECT_URI` - Callback URL (e.g., https://your-api.up.railway.app/oauth/google/callback)
+- `CLARA_API_URL` - API service URL for OAuth redirects (e.g., https://your-api.up.railway.app)
 
 **Connection Tools** (users must connect before using other tools):
 - `google_connect` - Generate OAuth URL to connect Google account
@@ -322,7 +323,8 @@ Standalone FastAPI service for OAuth callbacks and API endpoints. Runs separatel
 
 **Endpoints:**
 - `GET /health` - Health check
-- `GET /oauth/google/authorize/{user_id}` - Get OAuth authorization URL
+- `GET /oauth/google/authorize/{user_id}` - Get OAuth authorization URL (JSON)
+- `GET /oauth/google/start/{user_id}` - Redirect to Google OAuth (for Discord buttons)
 - `GET /oauth/google/callback` - OAuth callback handler
 - `GET /oauth/google/status/{user_id}` - Check connection status
 - `POST /oauth/google/disconnect/{user_id}` - Disconnect account
