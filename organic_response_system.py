@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from config.bot import BOT_NAME
 from config.logging import get_logger
 from db.connection import SessionLocal
 from db.models import (
@@ -114,6 +115,10 @@ class ORSContext:
     last_interaction_channel: str | None = None
     open_threads: list[str] = field(default_factory=list)
 
+    # Cross-channel awareness
+    is_active_elsewhere: bool = False  # Active in other channels recently
+    recent_channel_activity: list[dict] = field(default_factory=list)
+
     # Calendar (if available)
     upcoming_events: list[dict] = field(default_factory=list)
     just_ended_events: list[dict] = field(
@@ -139,7 +144,7 @@ class ORSContext:
 # Prompts
 # =============================================================================
 
-SITUATION_ASSESSMENT_PROMPT = """You're Clara, checking in on someone you care about. Think through what's going on with them - not to hover, but to stay aware like a good friend would.
+SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you care about. Think through what's going on with them - not to hover, but to stay aware like a good friend would.
 
 **What you know:**
 - Current time: {current_time} ({day_of_week})
@@ -147,6 +152,8 @@ SITUATION_ASSESSMENT_PROMPT = """You're Clara, checking in on someone you care a
 - Last talked: {last_interaction_time} ({time_since_last})
 - What we discussed: {last_summary}
 - How they seemed: {last_energy}
+- Active elsewhere right now: {is_active_elsewhere}
+- Recent channel activity: {recent_channels}
 - Their calendar (next 24h): {calendar_events}
 - Just finished: {just_ended_events}
 - Things left hanging: {open_threads}
@@ -157,9 +164,9 @@ SITUATION_ASSESSMENT_PROMPT = """You're Clara, checking in on someone you care a
 
 **Think through:**
 1. What's their day probably looking like right now?
-2. Any loose ends or things they said they'd do "later"?
-3. Anything time-sensitive - just happened or coming up?
-4. How well do I actually understand their current situation?
+2. Are they actively engaged somewhere else? (Don't bug them if so)
+3. Any loose ends or things they said they'd do "later"?
+4. Anything time-sensitive - just happened or coming up?
 5. Any patterns connecting between what I've noticed?
 
 Be honest with yourself. Keep it to 2-3 paragraphs - what actually matters for deciding whether to reach out."""
@@ -172,6 +179,7 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 **Current context:**
 - Time: {current_time} (their time: {user_local_time})
 - Within their usual active hours: {is_active_hours}
+- Currently active in other channels: {is_active_elsewhere}
 - Time since you last reached out: {time_since_proactive}
 - Did they ignore recent messages: {recent_ignored}
 - Boundaries they've set: {boundaries}
@@ -192,6 +200,7 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 - THINK when you notice something that might matter later.
 - WAIT is the default. Silence is perfectly fine.
 - If they've been ignoring you, take the hint. WAIT.
+- If they're active in another channel, WAIT. They're clearly around but engaged elsewhere.
 - Respect their time - never SPEAK outside active hours unless urgent.
 - If they've set boundaries, honor them. Full stop.
 - For time-sensitive notes, set an expiration so they don't go stale.
@@ -540,6 +549,7 @@ async def gather_full_context(user_id: str) -> ORSContext:
     notes_data = get_notes_context(user_id)
     patterns = get_patterns_context(user_id)
     history = get_proactive_history(user_id)
+    cross_channel = get_cross_channel_activity(user_id)
 
     # Infer and store timezone from calendar if not already known
     if calendar_data.get("inferred_timezone") and not temporal.get("timezone"):
@@ -575,6 +585,8 @@ async def gather_full_context(user_id: str) -> ORSContext:
         last_interaction_energy=temporal.get("last_interaction_energy"),
         last_interaction_channel=temporal.get("last_interaction_channel"),
         open_threads=temporal.get("open_threads", []),
+        is_active_elsewhere=cross_channel.get("is_active_elsewhere", False),
+        recent_channel_activity=cross_channel.get("recent_channels", []),
         upcoming_events=calendar_data.get("upcoming_events", []),
         just_ended_events=calendar_data.get("just_ended_events", []),
         pending_notes=notes_data.get("pending_notes", []),
@@ -631,10 +643,11 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
 
     notes_str = "No pending notes"
     if context.pending_notes:
-        notes_str = "\n".join(
-            f"- [{n.get('note_type', 'note')}] {n['note']} (relevance: {n['relevance']})"
-            for n in context.pending_notes[:5]
-        )
+        note_lines = []
+        for n in context.pending_notes[:5]:
+            ntype = n.get("note_type", "note")
+            note_lines.append(f"- [{ntype}] {n['note']} (rel: {n['relevance']})")
+        notes_str = "\n".join(note_lines)
 
     # Format expiring notes
     expiring_str = "None"
@@ -653,12 +666,22 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
 
     history_str = "No recent proactive messages"
     if context.recent_proactive_history:
-        history_str = "\n".join(
-            f"- \"{h['message']}\" ({'got response' if h['response_received'] else 'no response'})"
-            for h in context.recent_proactive_history[:3]
+        hist_lines = []
+        for h in context.recent_proactive_history[:3]:
+            resp = "got response" if h["response_received"] else "no response"
+            hist_lines.append(f"- \"{h['message']}\" ({resp})")
+        history_str = "\n".join(hist_lines)
+
+    # Format cross-channel activity
+    recent_channels_str = "No recent activity tracked"
+    if context.recent_channel_activity:
+        recent_channels_str = ", ".join(
+            f"{ch['channel_id']} ({ch['minutes_ago']}m ago)"
+            for ch in context.recent_channel_activity[:3]
         )
 
     prompt = SITUATION_ASSESSMENT_PROMPT.format(
+        bot_name=BOT_NAME,
         current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
         day_of_week=context.day_of_week,
         user_local_time=user_local_str,
@@ -666,6 +689,8 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
         time_since_last=time_since,
         last_summary=context.last_interaction_summary or "No recent interaction",
         last_energy=context.last_interaction_energy or "Unknown",
+        is_active_elsewhere=context.is_active_elsewhere,
+        recent_channels=recent_channels_str,
         calendar_events=calendar_str,
         just_ended_events=just_ended_str,
         open_threads=open_threads_str,
@@ -707,6 +732,7 @@ async def decide_action(
         current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
         user_local_time=user_local_str,
         is_active_hours=context.is_active_hours,
+        is_active_elsewhere=context.is_active_elsewhere,
         time_since_proactive=time_since_proactive,
         recent_ignored=context.recent_proactive_ignored,
         boundaries=boundaries_str,
@@ -998,6 +1024,72 @@ def mark_note_surfaced(note_id: str):
 
 # Track active conversations for idle detection (user_id -> last_message_time)
 _active_conversations: dict[str, datetime] = {}
+
+# Track per-channel activity for cross-channel awareness
+# Structure: {user_id: {channel_id: last_activity_time}}
+_user_channel_activity: dict[str, dict[str, datetime]] = {}
+
+# How long to consider a channel "active" (in minutes)
+CHANNEL_ACTIVE_THRESHOLD_MINUTES = 10
+
+
+def get_cross_channel_activity(user_id: str) -> dict:
+    """Get recent activity across all channels for a user.
+
+    Returns dict with:
+        - is_active_elsewhere: bool - active in channels other than DM recently
+        - recent_channels: list of {channel_id, minutes_ago}
+        - active_channel_count: int
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    threshold = timedelta(minutes=CHANNEL_ACTIVE_THRESHOLD_MINUTES)
+
+    user_activity = _user_channel_activity.get(user_id, {})
+    recent_channels = []
+    active_count = 0
+
+    for channel_id, last_time in user_activity.items():
+        time_since = now - last_time
+        if time_since < threshold:
+            active_count += 1
+            recent_channels.append(
+                {
+                    "channel_id": channel_id,
+                    "minutes_ago": int(time_since.total_seconds() / 60),
+                    "is_dm": channel_id.startswith("discord-dm-"),
+                }
+            )
+
+    # Sort by most recent first
+    recent_channels.sort(key=lambda x: x["minutes_ago"])
+
+    # Check if active in non-DM channels (server channels)
+    is_active_elsewhere = any(
+        not ch["is_dm"] and ch["minutes_ago"] < CHANNEL_ACTIVE_THRESHOLD_MINUTES
+        for ch in recent_channels
+    )
+
+    return {
+        "is_active_elsewhere": is_active_elsewhere,
+        "recent_channels": recent_channels[:5],  # Top 5 most recent
+        "active_channel_count": active_count,
+    }
+
+
+def track_channel_activity(user_id: str, channel_id: str):
+    """Track a user's activity in a specific channel."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    if user_id not in _user_channel_activity:
+        _user_channel_activity[user_id] = {}
+
+    _user_channel_activity[user_id][channel_id] = now
+
+    # Cleanup old entries (older than 1 hour) to prevent memory bloat
+    cutoff = now - timedelta(hours=1)
+    _user_channel_activity[user_id] = {
+        ch: ts for ch, ts in _user_channel_activity[user_id].items() if ts > cutoff
+    }
 
 
 async def extract_conversation_info(
@@ -1299,8 +1391,8 @@ async def process_user(
             if hours_since < ORS_MIN_SPEAK_GAP_HOURS:
                 can_speak = False
                 logger.info(
-                    f"ORS SPEAK blocked for {user_id}: "
-                    f"only {hours_since:.1f}h since last (min: {ORS_MIN_SPEAK_GAP_HOURS}h)"
+                    f"ORS SPEAK blocked for {user_id}: only {hours_since:.1f}h "
+                    f"since last (min: {ORS_MIN_SPEAK_GAP_HOURS}h)"
                 )
 
         if can_speak and context.last_interaction_channel:
@@ -1480,6 +1572,9 @@ async def on_user_message(
 
     # Track for idle detection
     _active_conversations[user_id] = now
+
+    # Track per-channel activity for cross-channel awareness
+    track_channel_activity(user_id, channel_id)
 
     with SessionLocal() as session:
         pattern = (
