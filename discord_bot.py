@@ -917,8 +917,13 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Start proactive conversation engine (if enabled)
         if proactive_enabled():
-            llm = make_llm(tier="mid")  # Use mid tier for proactive decisions
-            self.loop.create_task(proactive_check_loop(self, llm))
+            sync_llm = make_llm(tier="mid")  # Use mid tier for proactive decisions
+
+            # Wrap sync LLM in async for ORS
+            async def async_llm(messages: list[dict[str, str]]) -> str:
+                return sync_llm(messages)
+
+            self.loop.create_task(proactive_check_loop(self, async_llm))
             logger.info("Proactive conversation engine started")
 
     async def on_guild_join(self, guild):
