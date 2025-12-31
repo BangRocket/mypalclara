@@ -1436,14 +1436,18 @@ async def ors_main_loop(
     # Track last maintenance time
     last_maintenance = datetime.now(UTC).replace(tzinfo=None)
 
+    logger.info("ORS entering main loop")
+
     while True:
         try:
             now = datetime.now(UTC).replace(tzinfo=None)
+            logger.info(f"ORS loop iteration at {now.isoformat()}")
 
             # Get active users
             users = get_active_users()
+            logger.info(f"ORS found {len(users)} active users")
             if not users:
-                logger.debug("No active users, sleeping 15 minutes")
+                logger.info("No active users, sleeping 15 minutes")
                 await asyncio.sleep(900)
                 continue
 
@@ -1461,6 +1465,7 @@ async def ors_main_loop(
                 last_maintenance = now
 
             # Process users whose next check time has passed
+            processed_count = 0
             for user_id in users:
                 next_check = next_checks.get(user_id)
 
@@ -1468,16 +1473,21 @@ async def ors_main_loop(
                     continue  # Not time yet for this user
 
                 try:
+                    logger.info(f"ORS processing user: {user_id}")
                     minutes_until_next = await process_user(user_id, client, llm_call)
                     next_checks[user_id] = now + timedelta(minutes=minutes_until_next)
+                    processed_count += 1
+                    logger.info(f"ORS processed {user_id}, next check in {minutes_until_next}m")
                 except Exception as e:
-                    logger.error(f"Error processing user {user_id}: {e}")
+                    logger.error(f"Error processing user {user_id}: {e}", exc_info=True)
                     next_checks[user_id] = now + timedelta(
                         minutes=30
                     )  # Retry in 30 min
 
                 # Small delay between users to avoid rate limits
                 await asyncio.sleep(2)
+
+            logger.info(f"ORS processed {processed_count}/{len(users)} users this iteration")
 
             # Sleep until next user needs checking (or 5 min max)
             if next_checks:
@@ -1486,11 +1496,11 @@ async def ors_main_loop(
             else:
                 sleep_seconds = 300
 
-            logger.debug(f"ORS sleeping {sleep_seconds / 60:.1f} minutes")
+            logger.info(f"ORS sleeping {sleep_seconds / 60:.1f} minutes")
             await asyncio.sleep(sleep_seconds)
 
         except Exception as e:
-            logger.error(f"ORS loop error: {e}")
+            logger.error(f"ORS loop error: {e}", exc_info=True)
             await asyncio.sleep(60)
 
 
