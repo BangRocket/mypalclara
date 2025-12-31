@@ -59,10 +59,10 @@ from email_monitor import (
     email_check_loop,
     handle_email_tool,
 )
-from proactive_engine import (
+from organic_response_system import (
     is_enabled as proactive_enabled,
     on_user_message as proactive_on_user_message,
-    proactive_check_loop,
+    ors_main_loop as proactive_check_loop,
 )
 from sandbox.manager import get_sandbox_manager
 from storage.local_files import get_file_manager
