@@ -143,17 +143,21 @@ class UserInteractionPattern(Base):
     user_id = Column(String, primary_key=True)
     last_interaction_at = Column(DateTime, nullable=True)
     last_interaction_channel = Column(String, nullable=True)
-    last_interaction_summary = Column(Text, nullable=True)  # Brief summary of last convo
-    last_interaction_energy = Column(String, nullable=True)  # high, medium, low
+    last_interaction_summary = Column(Text, nullable=True)  # LLM-extracted summary of last convo
+    last_interaction_energy = Column(String, nullable=True)  # stressed, focused, casual, tired, excited, frustrated
     typical_active_hours = Column(Text, nullable=True)  # JSON: {"weekday": [9,17], "weekend": [10,22]}
+    timezone = Column(String, nullable=True)  # IANA timezone (e.g., "America/New_York")
+    timezone_source = Column(String, nullable=True)  # "calendar", "explicit", "inferred"
     avg_response_time_seconds = Column(Integer, nullable=True)
     explicit_signals = Column(Text, nullable=True)  # JSON: {"do_not_disturb": false, "busy_until": null}
     proactive_success_rate = Column(Integer, nullable=True)  # Percentage (0-100)
     # ORS enhancements
     proactive_response_rate = Column(Integer, nullable=True)  # % of proactive messages acknowledged (0-100)
     preferred_proactive_times = Column(Text, nullable=True)  # JSON: When user responds best to proactive
+    preferred_proactive_types = Column(Text, nullable=True)  # JSON: What kinds of reach-outs work
     topic_receptiveness = Column(Text, nullable=True)  # JSON: Which topics land vs. get ignored
     explicit_boundaries = Column(Text, nullable=True)  # JSON: Things user said not to do
+    open_threads = Column(Text, nullable=True)  # JSON: Unresolved topics from conversations
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
@@ -164,12 +168,14 @@ class ProactiveNote(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, nullable=False, index=True)
-    note = Column(Text, nullable=False)  # The observation/thought (was 'content' in spec)
+    note = Column(Text, nullable=False)  # The observation/thought
+    note_type = Column(String, nullable=True)  # observation, question, follow_up, connection
     source_context = Column(Text, nullable=True)  # JSON: What triggered this note
     connections = Column(Text, nullable=True)  # JSON: List of related note IDs
     relevance_score = Column(Integer, default=100)  # 0-100, decays over time
-    surface_conditions = Column(Text, nullable=True)  # When should this come up (e.g., "Thursday evening")
+    surface_conditions = Column(Text, nullable=True)  # JSON: When should this come up
     surface_at = Column(DateTime, nullable=True)  # Specific time to potentially bring this up
+    expires_at = Column(DateTime, nullable=True)  # Time-sensitive notes expire
     surfaced = Column(String, default="false")  # "true" or "false"
     surfaced_at = Column(DateTime, nullable=True)
     archived = Column(String, default="false")  # "true" or "false" - stale or surfaced notes
