@@ -275,53 +275,6 @@ TIER_DISPLAY = {
     "low": ("🟢", "Low (Haiku-class)"),
 }
 
-# Auto tier selection - use fast model to determine complexity
-AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
-
-# Classification prompt for auto tier selection
-TIER_CLASSIFICATION_PROMPT = """Classify this message's complexity for an AI assistant. Reply with ONLY one word: LOW, MID, or HIGH.
-
-LOW = Simple greetings, quick facts, basic questions, casual chat, short responses expected
-MID = Moderate tasks, explanations, summaries, most coding questions, general assistance
-HIGH = Complex reasoning, long-form writing, difficult coding, multi-step analysis, creative projects
-
-Message: {message}
-
-Classification:"""
-
-
-async def classify_message_complexity(content: str) -> str:
-    """Use fast model to classify message complexity for auto tier selection.
-
-    Returns: "low", "mid", or "high"
-    """
-    import asyncio
-
-    try:
-        # Use fast/low tier model for classification
-        llm = make_llm(tier="low")
-
-        messages = [
-            {"role": "user", "content": TIER_CLASSIFICATION_PROMPT.format(message=content[:500])}
-        ]
-
-        # Run sync LLM call in thread pool
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, llm, messages)
-
-        # Parse response - expect LOW, MID, or HIGH
-        result = response.strip().upper()
-        if "HIGH" in result:
-            return "high"
-        elif "LOW" in result:
-            return "low"
-        else:
-            return "mid"  # Default to mid if unclear
-
-    except Exception as e:
-        logger.warning(f"Auto tier classification failed: {e}, defaulting to mid")
-        return "mid"
-
 
 def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
     """Detect model tier from message prefix and return cleaned content.
@@ -1404,19 +1357,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             prompt_messages: The conversation history and context
             tier: Optional model tier override (high/mid/low)
         """
-        # Auto tier selection - classify message complexity if no explicit tier
-        auto_selected = False
-        if tier is None and AUTO_TIER_ENABLED:
-            # Get the user's message content for classification
-            user_msg = next(
-                (m["content"] for m in reversed(prompt_messages) if m.get("role") == "user"),
-                ""
-            )
-            if user_msg:
-                tier = await classify_message_complexity(user_msg)
-                auto_selected = True
-                logger.info(f"Auto-selected tier '{tier}' for message complexity")
-
         # Log tier info if specified
         if tier:
             emoji, display = TIER_DISPLAY.get(tier, ("", tier))
@@ -1426,7 +1366,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         user_id = f"discord-{message.author.id}"
 
         try:
-            # Send tier indicator if tier was explicitly selected or auto-selected
+            # Send tier indicator if tier was explicitly selected
             if tier:
                 emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
                 model_name = get_model_for_tier(tier)
@@ -1434,9 +1374,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 short_model = (
                     model_name.split("/")[-1] if "/" in model_name else model_name
                 )
-                auto_tag = " (auto)" if auto_selected else ""
                 await message.channel.send(
-                    f"-# {emoji} Using {display}{auto_tag} ({short_model})", silent=True
+                    f"-# {emoji} Using {display} ({short_model})", silent=True
                 )
             loop = asyncio.get_event_loop()
             full_response = ""
@@ -1823,26 +1762,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     files_to_send,
                     message.channel,
                 )
-
-                # Check for special Discord button response
-                try:
-                    button_data = json.loads(tool_output)
-                    if button_data.get("_discord_button"):
-                        # Send a Discord URL button
-                        view = discord.ui.View()
-                        view.add_item(discord.ui.Button(
-                            label=button_data.get("label", "Click Here"),
-                            url=button_data["url"],
-                            emoji=button_data.get("emoji"),
-                        ))
-                        await message.channel.send(
-                            button_data.get("message", ""),
-                            view=view,
-                        )
-                        # Simplify output for LLM context
-                        tool_output = f"OAuth authorization link sent to user via Discord button."
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    pass  # Not a button response, use as-is
 
                 # Add tool result to conversation
                 messages.append(
@@ -2428,134 +2347,6 @@ def health_check():
         "uptime_seconds": stats.get("uptime_seconds", 0),
         "guilds": stats.get("guild_count", 0),
     }
-
-
-# ============== Google OAuth Endpoints ==============
-
-
-@monitor_app.get("/oauth/google/callback", response_class=HTMLResponse)
-async def google_oauth_callback(
-    code: str | None = None, state: str | None = None, error: str | None = None
-):
-    """Handle Google OAuth callback - exchange code for tokens."""
-    from tools.google_oauth import (
-        decode_state,
-        exchange_code_for_tokens,
-        is_configured,
-    )
-
-    if not is_configured():
-        return _oauth_error_html("Google OAuth not configured on this server.")
-
-    if error:
-        return _oauth_error_html(f"Google authorization denied: {error}")
-
-    if not code or not state:
-        return _oauth_error_html("Missing authorization code or state.")
-
-    try:
-        user_id = decode_state(state)
-        await exchange_code_for_tokens(code, user_id)
-        return _oauth_success_html()
-    except Exception as e:
-        logger.error(f"Google OAuth error: {e}")
-        return _oauth_error_html(f"Failed to connect: {e}")
-
-
-@monitor_app.get("/oauth/google/status/{user_id}")
-def google_oauth_status(user_id: str):
-    """Check if a user has connected their Google account."""
-    from tools.google_oauth import is_configured, is_user_connected
-
-    return {
-        "configured": is_configured(),
-        "connected": is_user_connected(user_id) if is_configured() else False,
-    }
-
-
-def _oauth_success_html() -> str:
-    """HTML page for successful OAuth connection."""
-    return """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Google Connected - Clara</title>
-    <style>
-        body {
-            font-family: system-ui, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .card {
-            background: #252542;
-            padding: 40px;
-            border-radius: 12px;
-            text-align: center;
-            max-width: 400px;
-        }
-        .success { color: #43b581; font-size: 48px; margin-bottom: 20px; }
-        h1 { color: #7289da; margin-bottom: 10px; }
-        p { color: #aaa; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="success">✓</div>
-        <h1>Google Connected!</h1>
-        <p>Your Google account is now connected to Clara. You can close this window and return to Discord.</p>
-    </div>
-</body>
-</html>
-"""
-
-
-def _oauth_error_html(message: str) -> str:
-    """HTML page for OAuth error."""
-    import html
-
-    safe_message = html.escape(message)
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Connection Failed - Clara</title>
-    <style>
-        body {{
-            font-family: system-ui, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }}
-        .card {{
-            background: #252542;
-            padding: 40px;
-            border-radius: 12px;
-            text-align: center;
-            max-width: 400px;
-        }}
-        .error {{ color: #f04747; font-size: 48px; margin-bottom: 20px; }}
-        h1 {{ color: #f04747; margin-bottom: 10px; }}
-        p {{ color: #aaa; }}
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="error">✗</div>
-        <h1>Connection Failed</h1>
-        <p>{safe_message}</p>
-    </div>
-</body>
-</html>
-"""
 
 
 DASHBOARD_HTML = """

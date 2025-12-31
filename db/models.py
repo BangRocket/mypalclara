@@ -96,19 +96,3 @@ class LogEntry(Base):
     extra_data = Column(Text, nullable=True)  # JSON for additional context
     user_id = Column(String, nullable=True, index=True)
     session_id = Column(String, nullable=True, index=True)
-
-
-class GoogleOAuthToken(Base):
-    """OAuth 2.0 tokens for Google Workspace integration (per-user)."""
-
-    __tablename__ = "google_oauth_tokens"
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, nullable=False, unique=True, index=True)
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=True)
-    token_type = Column(String, default="Bearer")
-    expires_at = Column(DateTime, nullable=True)
-    scopes = Column(Text, nullable=True)  # JSON array of granted scopes
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
