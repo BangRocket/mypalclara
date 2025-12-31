@@ -143,24 +143,58 @@ class UserInteractionPattern(Base):
     user_id = Column(String, primary_key=True)
     last_interaction_at = Column(DateTime, nullable=True)
     last_interaction_channel = Column(String, nullable=True)
-    last_interaction_summary = Column(Text, nullable=True)  # Brief summary of last convo
-    last_interaction_energy = Column(String, nullable=True)  # high, medium, low
+    last_interaction_summary = Column(Text, nullable=True)  # LLM-extracted summary of last convo
+    last_interaction_energy = Column(String, nullable=True)  # stressed, focused, casual, tired, excited, frustrated
     typical_active_hours = Column(Text, nullable=True)  # JSON: {"weekday": [9,17], "weekend": [10,22]}
+    timezone = Column(String, nullable=True)  # IANA timezone (e.g., "America/New_York")
+    timezone_source = Column(String, nullable=True)  # "calendar", "explicit", "inferred"
     avg_response_time_seconds = Column(Integer, nullable=True)
     explicit_signals = Column(Text, nullable=True)  # JSON: {"do_not_disturb": false, "busy_until": null}
     proactive_success_rate = Column(Integer, nullable=True)  # Percentage (0-100)
+    # ORS enhancements
+    proactive_response_rate = Column(Integer, nullable=True)  # % of proactive messages acknowledged (0-100)
+    preferred_proactive_times = Column(Text, nullable=True)  # JSON: When user responds best to proactive
+    preferred_proactive_types = Column(Text, nullable=True)  # JSON: What kinds of reach-outs work
+    topic_receptiveness = Column(Text, nullable=True)  # JSON: Which topics land vs. get ignored
+    explicit_boundaries = Column(Text, nullable=True)  # JSON: Things user said not to do
+    open_threads = Column(Text, nullable=True)  # JSON: Unresolved topics from conversations
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class ProactiveNote(Base):
-    """Notes for Clara to surface later (pending items, reminders)."""
+    """Internal notes/observations for ORS - accumulated understanding over time."""
 
     __tablename__ = "proactive_notes"
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, nullable=False, index=True)
-    note = Column(Text, nullable=False)
-    surface_at = Column(DateTime, nullable=True)  # When to potentially bring this up
+    note = Column(Text, nullable=False)  # The observation/thought
+    note_type = Column(String, nullable=True)  # observation, question, follow_up, connection
+    source_context = Column(Text, nullable=True)  # JSON: What triggered this note
+    connections = Column(Text, nullable=True)  # JSON: List of related note IDs
+    relevance_score = Column(Integer, default=100)  # 0-100, decays over time
+    surface_conditions = Column(Text, nullable=True)  # JSON: When should this come up
+    surface_at = Column(DateTime, nullable=True)  # Specific time to potentially bring this up
+    expires_at = Column(DateTime, nullable=True)  # Time-sensitive notes expire
     surfaced = Column(String, default="false")  # "true" or "false"
-    created_at = Column(DateTime, default=utcnow)
     surfaced_at = Column(DateTime, nullable=True)
+    archived = Column(String, default="false")  # "true" or "false" - stale or surfaced notes
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ProactiveAssessment(Base):
+    """Situation assessments for ORS continuity - records of THINK state processing."""
+
+    __tablename__ = "proactive_assessments"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    context_snapshot = Column(Text, nullable=True)  # JSON: Full context at time of assessment
+    assessment = Column(Text, nullable=True)  # LLM's read on the situation
+    decision = Column(String, nullable=False)  # WAIT, THINK, or SPEAK
+    reasoning = Column(Text, nullable=True)  # Why this decision was made
+    note_created = Column(String, nullable=True)  # Note ID if THINK created a note
+    message_sent = Column(Text, nullable=True)  # Message text if SPEAK
+    next_check_at = Column(DateTime, nullable=True)  # When to check again
+    created_at = Column(DateTime, default=utcnow, nullable=False, index=True)
