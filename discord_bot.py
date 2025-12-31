@@ -2094,7 +2094,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         tool_output = (
                             "OAuth authorization link sent to user via Discord button."
                         )
-                except (json.JSONDecodeError, KeyError, TypeError):
+                except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                     pass  # Not a button response, use as-is
 
                 # Add tool result to conversation
