@@ -41,30 +41,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from db import SessionLocal
-from db.models import ChannelSummary, Project, Session
-from sandbox.manager import get_sandbox_manager
-from storage.local_files import get_file_manager
-from email_monitor import (
-    handle_email_tool,
-    email_check_loop,
-)
-from config.logging import init_logging, get_logger, set_db_session_factory
-
-# Import modular tools system for GitHub, ADO, etc.
-from tools import init_tools, get_registry, ToolContext
-
 # Import from clara_core for unified platform
 from clara_core import (
-    init_platform,
     MemoryManager,
+    ModelTier,
+    anthropic_to_openai_response,
+    get_model_for_tier,
+    init_platform,
     make_llm,
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
-    anthropic_to_openai_response,
-    ModelTier,
-    get_model_for_tier,
 )
+from config.logging import get_logger, init_logging, set_db_session_factory
+from db import SessionLocal
+from db.models import ChannelSummary, Project, Session
+from email_monitor import (
+    email_check_loop,
+    handle_email_tool,
+)
+from sandbox.manager import get_sandbox_manager
+from storage.local_files import get_file_manager
+
+# Import modular tools system for GitHub, ADO, etc.
+from tools import ToolContext, get_registry, init_tools
 
 # Initialize logging system
 init_logging()
@@ -79,6 +78,16 @@ MAX_CHARS = int(os.getenv("DISCORD_MAX_CHARS", "100000"))
 MAX_FILE_SIZE = int(os.getenv("DISCORD_MAX_FILE_SIZE", "100000"))  # 100KB default
 SUMMARY_AGE_MINUTES = int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30"))
 CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
+
+# Stop phrase configuration - phrases that interrupt running tasks
+# Default phrases that will stop Clara mid-task
+STOP_PHRASES = [
+    phrase.strip().lower()
+    for phrase in os.getenv(
+        "DISCORD_STOP_PHRASES", "clara stop,stop clara,nevermind,never mind"
+    ).split(",")
+    if phrase.strip()
+]
 
 # Supported text file extensions
 TEXT_EXTENSIONS = {
@@ -125,9 +134,7 @@ ALLOWED_CHANNELS = [
     if ch.strip()
 ]
 ALLOWED_SERVERS = [
-    s.strip()
-    for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",")
-    if s.strip()
+    s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()
 ]
 ALLOWED_ROLES = [
     r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
@@ -142,7 +149,9 @@ MAX_TOOL_ITERATIONS = 75  # Max tool call rounds per response
 # Auto-continue configuration
 # When Clara ends with a permission-seeking question, auto-continue without waiting
 AUTO_CONTINUE_ENABLED = os.getenv("DISCORD_AUTO_CONTINUE", "true").lower() == "true"
-AUTO_CONTINUE_MAX = int(os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3"))  # Max auto-continues per conversation
+AUTO_CONTINUE_MAX = int(
+    os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3")
+)  # Max auto-continues per conversation
 
 # Patterns that trigger auto-continue (case-insensitive, checked at end of response)
 AUTO_CONTINUE_PATTERNS = [
@@ -246,7 +255,10 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
 
     registry = get_registry()
     capabilities = {"docker": include_docker}
-    return registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
+    return registry.get_tools(
+        platform="discord", capabilities=capabilities, format="openai"
+    )
+
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
@@ -275,6 +287,127 @@ TIER_DISPLAY = {
     "low": ("🟢", "Low (Haiku-class)"),
 }
 
+# Auto tier selection - use fast model to determine complexity
+AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
+
+# Classification prompt for auto tier selection (by Clara)
+# Note: This prompt considers conversation context when available
+TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze the current message IN CONTEXT of the conversation and decide which model tier should handle it.
+
+## Tiers
+- LOW (Haiku) - Fast, cheap, minimal
+- MID (Sonnet) - Capable, warm, default
+- HIGH (Opus) - Deep, present, human
+
+## Route to LOW when:
+- Simple acknowledgments ("thanks", "got it", "lol") to SIMPLE tasks
+- Single-word answers to LOW-tier questions
+- Messages where overthinking would be weird
+
+## Route to MID when (DEFAULT):
+- General conversation
+- Problem-solving, code, planning, debugging
+- Creative work with clear constraints
+- Multi-step reasoning
+- Questions with concrete answers
+- Helpful assistance that requires thought but not depth
+- Continuations of MID-tier conversations
+- Short answers that are part of a larger MID/HIGH discussion
+
+## Route to HIGH when:
+- Vulnerability or emotional weight in the message
+- Self-reflection, identity, meaning-making
+- Open-ended "why" questions about life/self/purpose
+- Creative work where voice and soul matter more than structure
+- The person seems to need presence, not just answers
+- Nuanced emotional support (not just "I'm stressed" but deeper)
+- Anything where *being seen* matters
+
+## CRITICAL: Context Matters!
+- A short reply like "yes", "ok", or "sounds good" should MATCH the tier of the ongoing conversation
+- If assistant just asked a complex question, a simple answer still needs MID/HIGH to process it properly
+- Look at what the conversation is about, not just the current message length
+- One-word answers to important questions still need capable handling
+
+## Key Signals for HIGH:
+- First-person emotional language ("I feel", "I don't know why I...")
+- Existential or philosophical questions
+- Uncertainty about self, not just facts
+- Requests for genuine opinion/perspective
+- Tone that suggests heaviness or searching
+
+## The Core Question
+When in doubt between MID and HIGH, ask: "Does this person need to be *seen* right now, or do they need something *done*?"
+- Seen → HIGH
+- Done → MID
+{context}
+Current message: {message}
+
+Respond with only one word: LOW, MID, or HIGH"""
+
+
+async def classify_message_complexity(
+    content: str,
+    recent_messages: list[dict] | None = None,
+) -> str:
+    """Use fast model to classify message complexity for auto tier selection.
+
+    Args:
+        content: The current user message to classify
+        recent_messages: Optional list of recent conversation messages for context.
+                        Each should have 'role' and 'content' keys.
+
+    Returns: "low", "mid", or "high"
+    """
+    import asyncio
+
+    try:
+        # Use fast/low tier model for classification
+        llm = make_llm(tier="low")
+
+        # Build context from recent messages (last few exchanges)
+        context_str = ""
+        if recent_messages:
+            # Take up to 4 recent messages (2 exchanges) for context
+            context_msgs = recent_messages[-4:]
+            if context_msgs:
+                context_lines = []
+                for msg in context_msgs:
+                    role = msg.get("role", "unknown")
+                    msg_content = msg.get("content", "")
+                    # Truncate long messages in context
+                    if len(msg_content) > 200:
+                        msg_content = msg_content[:200] + "..."
+                    context_lines.append(f"{role.upper()}: {msg_content}")
+                context_str = "\n\n## Recent conversation:\n" + "\n".join(context_lines)
+
+        messages = [
+            {
+                "role": "user",
+                "content": TIER_CLASSIFICATION_PROMPT.format(
+                    message=content[:500],
+                    context=context_str,
+                ),
+            }
+        ]
+
+        # Run sync LLM call in thread pool
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, llm, messages)
+
+        # Parse response - expect LOW, MID, or HIGH
+        result = response.strip().upper()
+        if "HIGH" in result:
+            return "high"
+        elif "LOW" in result:
+            return "low"
+        else:
+            return "mid"  # Default to mid if unclear
+
+    except Exception as e:
+        logger.warning(f"Auto tier classification failed: {e}, defaulting to mid")
+        return "mid"
+
 
 def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
     """Detect model tier from message prefix and return cleaned content.
@@ -295,6 +428,19 @@ def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
             cleaned = content[len(prefix) :].lstrip()
             return tier, cleaned  # type: ignore
     return None, content
+
+
+def is_stop_phrase(content: str) -> bool:
+    """Check if the message content matches a stop phrase.
+
+    Stop phrases interrupt running tasks. They are checked case-insensitively.
+    """
+    if not STOP_PHRASES:
+        return False
+    content_lower = content.lower().strip()
+    # Remove bot mentions for comparison
+    content_lower = re.sub(r"<@!?\d+>", "", content_lower).strip()
+    return content_lower in STOP_PHRASES
 
 
 @dataclass
@@ -351,6 +497,8 @@ class TaskQueue:
     def __init__(self):
         # Active tasks: channel_id -> message being processed
         self._active: dict[int, DiscordMessage] = {}
+        # Running asyncio tasks: channel_id -> asyncio.Task (for cancellation)
+        self._running_tasks: dict[int, asyncio.Task] = {}
         # Queued tasks: channel_id -> list of queued tasks
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
@@ -430,6 +578,46 @@ class TaskQueue:
     def get_stats_unsafe(self) -> dict:
         """Get queue statistics without lock (for sync callers, may be slightly stale)."""
         return self._get_stats_sync()
+
+    def register_task(self, channel_id: int, task: asyncio.Task):
+        """Register the running asyncio task for a channel (for cancellation support)."""
+        self._running_tasks[channel_id] = task
+
+    def unregister_task(self, channel_id: int):
+        """Unregister the running task for a channel."""
+        self._running_tasks.pop(channel_id, None)
+
+    async def cancel_and_clear(self, channel_id: int) -> bool:
+        """Cancel the running task and clear the queue for a channel.
+
+        Returns True if a task was cancelled, False if nothing was running.
+        """
+        async with self._lock:
+            cancelled = False
+
+            # Cancel the running asyncio task if any
+            if channel_id in self._running_tasks:
+                task = self._running_tasks[channel_id]
+                if not task.done():
+                    task.cancel()
+                    cancelled = True
+                    logger.info(f"Cancelled running task for channel {channel_id}")
+                del self._running_tasks[channel_id]
+
+            # Clear the active message
+            if channel_id in self._active:
+                del self._active[channel_id]
+
+            # Clear the queue
+            if channel_id in self._queues:
+                queue_len = len(self._queues[channel_id])
+                if queue_len > 0:
+                    logger.info(
+                        f"Cleared {queue_len} queued task(s) for channel {channel_id}"
+                    )
+                del self._queues[channel_id]
+
+            return cancelled
 
 
 # Global task queue instance
@@ -637,7 +825,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     {
                         "filename": original_filename,
                         "saved_locally": True,
-                        "note": f"Binary file saved locally. Use `read_local_file` or `send_local_file` to access.",
+                        "note": "Binary file saved locally. Use `read_local_file` or `send_local_file` to access.",
                     }
                 )
                 continue
@@ -776,6 +964,32 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             channel_name,
         )
 
+        # Check for stop phrase - bypass queue and cancel running task
+        if is_stop_phrase(message.content):
+            channel_id = message.channel.id
+            was_cancelled = await task_queue.cancel_and_clear(channel_id)
+            if was_cancelled:
+                await message.reply(
+                    "-# 🛑 Stopping... I've cancelled my current task.",
+                    mention_author=False,
+                )
+                monitor.log(
+                    "system",
+                    message.author.display_name,
+                    "Stopped running task via stop phrase",
+                    guild_name,
+                    channel_name,
+                )
+                logger.info(
+                    f"Stop phrase from {message.author} cancelled task in channel {channel_id}"
+                )
+            else:
+                await message.reply(
+                    "-# I wasn't working on anything, but I'm here!",
+                    mention_author=False,
+                )
+            return
+
         # Try to acquire channel for processing (queue if busy)
         await self._process_with_queue(message, is_dm)
 
@@ -796,9 +1010,20 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             return  # The task will be processed when dequeued
 
         # We have the channel, process the message
-        try:
+        # Wrap in a task so it can be cancelled via stop phrase
+        async def run_handler():
             await self._handle_message(message, is_dm)
+
+        task = asyncio.create_task(run_handler())
+        task_queue.register_task(channel_id, task)
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info(f"Task cancelled for channel {channel_id}")
+            # Don't re-raise - task was intentionally cancelled via stop phrase
         finally:
+            task_queue.unregister_task(channel_id)
             # Release channel and check for queued tasks
             await self._process_queued_tasks(channel_id)
 
@@ -819,9 +1044,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             except Exception as e:
                 logger.warning(f"Failed to send start notification: {e}")
 
-            # Process the queued task
-            try:
+            # Process the queued task (wrapped for cancellation support)
+            async def run_queued_handler():
                 await self._handle_message(next_task.message, next_task.is_dm)
+
+            task = asyncio.create_task(run_queued_handler())
+            task_queue.register_task(channel_id, task)
+
+            try:
+                await task
+            except asyncio.CancelledError:
+                logger.info(f"Queued task cancelled for channel {channel_id}")
+                # Exit the loop - queue was cleared by stop phrase
+                break
             except Exception as e:
                 logger.exception(f"Error processing queued task: {e}")
                 try:
@@ -829,6 +1064,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     await next_task.message.reply(err_msg, mention_author=False)
                 except Exception:
                     pass
+            finally:
+                task_queue.unregister_task(channel_id)
 
     async def _handle_message(
         self,
@@ -1357,6 +1594,30 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             prompt_messages: The conversation history and context
             tier: Optional model tier override (high/mid/low)
         """
+        # Auto tier selection - classify message complexity if no explicit tier
+        auto_selected = False
+        if tier is None and AUTO_TIER_ENABLED:
+            # Get the user's message content for classification
+            user_msg = next(
+                (
+                    m["content"]
+                    for m in reversed(prompt_messages)
+                    if m.get("role") == "user"
+                ),
+                "",
+            )
+            if user_msg:
+                # Extract recent conversation for context (exclude system messages)
+                recent_for_tier = [
+                    m for m in prompt_messages if m.get("role") in ("user", "assistant")
+                ]
+                # Exclude the current message from context (it's passed separately)
+                if recent_for_tier and recent_for_tier[-1].get("content") == user_msg:
+                    recent_for_tier = recent_for_tier[:-1]
+                tier = await classify_message_complexity(user_msg, recent_for_tier)
+                auto_selected = True
+                logger.info(f"Auto-selected tier '{tier}' for message complexity")
+
         # Log tier info if specified
         if tier:
             emoji, display = TIER_DISPLAY.get(tier, ("", tier))
@@ -1366,7 +1627,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         user_id = f"discord-{message.author.id}"
 
         try:
-            # Send tier indicator if tier was explicitly selected
+            # Send tier indicator if tier was explicitly selected or auto-selected
             if tier:
                 emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
                 model_name = get_model_for_tier(tier)
@@ -1374,8 +1635,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 short_model = (
                     model_name.split("/")[-1] if "/" in model_name else model_name
                 )
+                auto_tag = " (auto)" if auto_selected else ""
                 await message.channel.send(
-                    f"-# {emoji} Using {display} ({short_model})", silent=True
+                    f"-# {emoji} Using {display}{auto_tag} ({short_model})", silent=True
                 )
             loop = asyncio.get_event_loop()
             full_response = ""
@@ -1388,10 +1650,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Always use tools (local file tools are always available)
             # Build the active tool list dynamically (includes modular tools like GitHub, ADO)
             if docker_available:
-                tools_logger.info("Using tool-calling mode (Docker + local files + modular)")
+                tools_logger.info(
+                    "Using tool-calling mode (Docker + local files + modular)"
+                )
                 active_tools = get_all_tools(include_docker=True)
             else:
-                tools_logger.info("Using tool-calling mode (local files + modular only)")
+                tools_logger.info(
+                    "Using tool-calling mode (local files + modular only)"
+                )
                 active_tools = get_all_tools(include_docker=False)
 
             # Generate with tools
@@ -1427,15 +1693,20 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             if content:
                                 discord_files.append(
                                     discord.File(
-                                        fp=io.BytesIO(content),
-                                        filename=file_path.name
+                                        fp=io.BytesIO(content), filename=file_path.name
                                     )
                                 )
-                                logger.debug(f" Adding local file: {file_path.name} ({len(content)} bytes)")
+                                logger.debug(
+                                    f" Adding local file: {file_path.name} ({len(content)} bytes)"
+                                )
                             else:
-                                logger.warning(f" Local file is empty: {file_path.name}")
+                                logger.warning(
+                                    f" Local file is empty: {file_path.name}"
+                                )
                         except Exception as e:
-                            logger.error(f" Failed to read local file {file_path.name}: {e}")
+                            logger.error(
+                                f" Failed to read local file {file_path.name}: {e}"
+                            )
 
             # Split the response into chunks and send each
             chunks = self._split_message(cleaned_response)
@@ -1630,7 +1901,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                                 },
                             }
                             for tc in (msg.tool_calls or [])
-                        ] if msg.tool_calls else None,
+                        ]
+                        if msg.tool_calls
+                        else None,
                     }
 
             response_message = await loop.run_in_executor(None, call_llm)
@@ -1763,6 +2036,30 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     message.channel,
                 )
 
+                # Check for special Discord button response
+                try:
+                    button_data = json.loads(tool_output)
+                    if button_data.get("_discord_button"):
+                        # Send a Discord URL button
+                        view = discord.ui.View()
+                        view.add_item(
+                            discord.ui.Button(
+                                label=button_data.get("label", "Click Here"),
+                                url=button_data["url"],
+                                emoji=button_data.get("emoji"),
+                            )
+                        )
+                        await message.channel.send(
+                            button_data.get("message", ""),
+                            view=view,
+                        )
+                        # Simplify output for LLM context
+                        tool_output = (
+                            "OAuth authorization link sent to user via Discord button."
+                        )
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass  # Not a button response, use as-is
+
                 # Add tool result to conversation
                 messages.append(
                     {
@@ -1825,7 +2122,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         Handles Docker sandbox tools, local file tools, and chat history tools.
         """
-        from pathlib import Path
 
         # Get channel_id for file storage organization
         channel_id = str(channel.id) if channel else None
@@ -2162,7 +2458,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Primary pattern: <<<file:filename>>>content<<</file>>>
         # Also handles <<</file:filename>>> closing variant
-        primary_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
+        primary_pattern = (
+            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
+        )
 
         def replace_file(match):
             filename = match.group(1).strip()
@@ -2171,11 +2469,17 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             files.append((filename, content))
             return f"📎 *Attached: {filename}*"
 
-        cleaned = re.sub(primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(
+            primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
 
         # Fallback pattern: <<<file:filename>>>content<<<end>>> or <<<endfile>>>
-        fallback_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
-        cleaned = re.sub(fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
+        fallback_pattern = (
+            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
+        )
+        cleaned = re.sub(
+            fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
 
         # Last resort: <<<file:filename>>> followed by content until next <<< or end of major section
         # This catches cases where Clara forgets the closing tag entirely
@@ -2189,24 +2493,31 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 if len(content) > 10 and not content.startswith("<<<"):
                     # Don't re-extract if we already got this file
                     if not any(f[0] == filename for f in files):
-                        logger.debug(f" Matched unclosed file: {filename} ({len(content)} chars)")
+                        logger.debug(
+                            f" Matched unclosed file: {filename} ({len(content)} chars)"
+                        )
                         files.append((filename, content))
                         return f"📎 *Attached: {filename}*"
                 return match.group(0)
 
-            cleaned = re.sub(unclosed_pattern, replace_unclosed, cleaned, flags=re.DOTALL | re.IGNORECASE)
+            cleaned = re.sub(
+                unclosed_pattern,
+                replace_unclosed,
+                cleaned,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
 
         # Debug: check if we still have unmatched file tags
         remaining_tags = re.findall(r"<<<\s*file\s*:", cleaned, re.IGNORECASE)
         if remaining_tags:
-            logger.warning(f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction")
+            logger.warning(
+                f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction"
+            )
             logger.debug(f"Text snippet: {cleaned[:500]}")
 
         return cleaned, files
 
-    def _create_discord_files(
-        self, files: list[tuple[str, str]]
-    ) -> list[discord.File]:
+    def _create_discord_files(self, files: list[tuple[str, str]]) -> list[discord.File]:
         """Create discord.File objects from extracted file content.
 
         Uses BytesIO for in-memory file handling (no temp files needed).
@@ -2224,8 +2535,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Encode content to bytes and wrap in BytesIO
                 content_bytes = content.encode("utf-8")
                 discord_file = discord.File(
-                    fp=io.BytesIO(content_bytes),
-                    filename=filename
+                    fp=io.BytesIO(content_bytes), filename=filename
                 )
                 discord_files.append(discord_file)
                 logger.debug(f" Created file: {filename} ({len(content_bytes)} bytes)")
@@ -2234,7 +2544,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 logger.debug(f" Error creating file {filename}: {e}")
 
         return discord_files
-
 
     async def _store_exchange(
         self,
@@ -2347,6 +2656,134 @@ def health_check():
         "uptime_seconds": stats.get("uptime_seconds", 0),
         "guilds": stats.get("guild_count", 0),
     }
+
+
+# ============== Google OAuth Endpoints ==============
+
+
+@monitor_app.get("/oauth/google/callback", response_class=HTMLResponse)
+async def google_oauth_callback(
+    code: str | None = None, state: str | None = None, error: str | None = None
+):
+    """Handle Google OAuth callback - exchange code for tokens."""
+    from tools.google_oauth import (
+        decode_state,
+        exchange_code_for_tokens,
+        is_configured,
+    )
+
+    if not is_configured():
+        return _oauth_error_html("Google OAuth not configured on this server.")
+
+    if error:
+        return _oauth_error_html(f"Google authorization denied: {error}")
+
+    if not code or not state:
+        return _oauth_error_html("Missing authorization code or state.")
+
+    try:
+        user_id = decode_state(state)
+        await exchange_code_for_tokens(code, user_id)
+        return _oauth_success_html()
+    except Exception as e:
+        logger.error(f"Google OAuth error: {e}")
+        return _oauth_error_html(f"Failed to connect: {e}")
+
+
+@monitor_app.get("/oauth/google/status/{user_id}")
+def google_oauth_status(user_id: str):
+    """Check if a user has connected their Google account."""
+    from tools.google_oauth import is_configured, is_user_connected
+
+    return {
+        "configured": is_configured(),
+        "connected": is_user_connected(user_id) if is_configured() else False,
+    }
+
+
+def _oauth_success_html() -> str:
+    """HTML page for successful OAuth connection."""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Connected - Clara</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: #252542;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .success { color: #43b581; font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #7289da; margin-bottom: 10px; }
+        p { color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="success">✓</div>
+        <h1>Google Connected!</h1>
+        <p>Your Google account is now connected to Clara. You can close this window and return to Discord.</p>
+    </div>
+</body>
+</html>
+"""
+
+
+def _oauth_error_html(message: str) -> str:
+    """HTML page for OAuth error."""
+    import html
+
+    safe_message = html.escape(message)
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Failed - Clara</title>
+    <style>
+        body {{
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }}
+        .card {{
+            background: #252542;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+        }}
+        .error {{ color: #f04747; font-size: 48px; margin-bottom: 20px; }}
+        h1 {{ color: #f04747; margin-bottom: 10px; }}
+        p {{ color: #aaa; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="error">✗</div>
+        <h1>Connection Failed</h1>
+        <p>{safe_message}</p>
+    </div>
+</body>
+</html>
+"""
 
 
 DASHBOARD_HTML = """
