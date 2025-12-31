@@ -125,9 +125,7 @@ ALLOWED_CHANNELS = [
     if ch.strip()
 ]
 ALLOWED_SERVERS = [
-    s.strip()
-    for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",")
-    if s.strip()
+    s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()
 ]
 ALLOWED_ROLES = [
     r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
@@ -142,7 +140,9 @@ MAX_TOOL_ITERATIONS = 75  # Max tool call rounds per response
 # Auto-continue configuration
 # When Clara ends with a permission-seeking question, auto-continue without waiting
 AUTO_CONTINUE_ENABLED = os.getenv("DISCORD_AUTO_CONTINUE", "true").lower() == "true"
-AUTO_CONTINUE_MAX = int(os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3"))  # Max auto-continues per conversation
+AUTO_CONTINUE_MAX = int(
+    os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3")
+)  # Max auto-continues per conversation
 
 # Patterns that trigger auto-continue (case-insensitive, checked at end of response)
 AUTO_CONTINUE_PATTERNS = [
@@ -246,7 +246,10 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
 
     registry = get_registry()
     capabilities = {"docker": include_docker}
-    return registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
+    return registry.get_tools(
+        platform="discord", capabilities=capabilities, format="openai"
+    )
+
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
@@ -278,16 +281,53 @@ TIER_DISPLAY = {
 # Auto tier selection - use fast model to determine complexity
 AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
 
-# Classification prompt for auto tier selection
-TIER_CLASSIFICATION_PROMPT = """Classify this message's complexity for an AI assistant. Reply with ONLY one word: LOW, MID, or HIGH.
+# Classification prompt for auto tier selection (by Clara)
+TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this message and decide which model tier should handle it.
 
-LOW = Simple greetings, quick facts, basic questions, casual chat, short responses expected
-MID = Moderate tasks, explanations, summaries, most coding questions, general assistance
-HIGH = Complex reasoning, long-form writing, difficult coding, multi-step analysis, creative projects
+## Tiers
+- LOW (Haiku) - Fast, cheap, minimal
+- MID (Sonnet) - Capable, warm, default
+- HIGH (Opus) - Deep, present, human
+
+## Route to LOW when:
+- Simple acknowledgments ("thanks", "got it", "lol")
+- Single-word or very short casual messages
+- Straightforward factual lookups
+- Tool calls with obvious parameters
+- Messages where overthinking would be weird
+
+## Route to MID when (DEFAULT):
+- General conversation
+- Problem-solving, code, planning, debugging
+- Creative work with clear constraints
+- Multi-step reasoning
+- Questions with concrete answers
+- Helpful assistance that requires thought but not depth
+
+## Route to HIGH when:
+- Vulnerability or emotional weight in the message
+- Self-reflection, identity, meaning-making
+- Open-ended "why" questions about life/self/purpose
+- Creative work where voice and soul matter more than structure
+- The person seems to need presence, not just answers
+- Nuanced emotional support (not just "I'm stressed" but deeper)
+- Anything where *being seen* matters
+
+## Key Signals for HIGH:
+- First-person emotional language ("I feel", "I don't know why I...")
+- Existential or philosophical questions
+- Uncertainty about self, not just facts
+- Requests for genuine opinion/perspective
+- Tone that suggests heaviness or searching
+
+## The Core Question
+When in doubt between MID and HIGH, ask: "Does this person need to be *seen* right now, or do they need something *done*?"
+- Seen → HIGH
+- Done → MID
 
 Message: {message}
 
-Classification:"""
+Respond with only one word: LOW, MID, or HIGH"""
 
 
 async def classify_message_complexity(content: str) -> str:
@@ -302,7 +342,10 @@ async def classify_message_complexity(content: str) -> str:
         llm = make_llm(tier="low")
 
         messages = [
-            {"role": "user", "content": TIER_CLASSIFICATION_PROMPT.format(message=content[:500])}
+            {
+                "role": "user",
+                "content": TIER_CLASSIFICATION_PROMPT.format(message=content[:500]),
+            }
         ]
 
         # Run sync LLM call in thread pool
@@ -1409,8 +1452,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if tier is None and AUTO_TIER_ENABLED:
             # Get the user's message content for classification
             user_msg = next(
-                (m["content"] for m in reversed(prompt_messages) if m.get("role") == "user"),
-                ""
+                (
+                    m["content"]
+                    for m in reversed(prompt_messages)
+                    if m.get("role") == "user"
+                ),
+                "",
             )
             if user_msg:
                 tier = await classify_message_complexity(user_msg)
@@ -1449,10 +1496,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Always use tools (local file tools are always available)
             # Build the active tool list dynamically (includes modular tools like GitHub, ADO)
             if docker_available:
-                tools_logger.info("Using tool-calling mode (Docker + local files + modular)")
+                tools_logger.info(
+                    "Using tool-calling mode (Docker + local files + modular)"
+                )
                 active_tools = get_all_tools(include_docker=True)
             else:
-                tools_logger.info("Using tool-calling mode (local files + modular only)")
+                tools_logger.info(
+                    "Using tool-calling mode (local files + modular only)"
+                )
                 active_tools = get_all_tools(include_docker=False)
 
             # Generate with tools
@@ -1488,15 +1539,20 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             if content:
                                 discord_files.append(
                                     discord.File(
-                                        fp=io.BytesIO(content),
-                                        filename=file_path.name
+                                        fp=io.BytesIO(content), filename=file_path.name
                                     )
                                 )
-                                logger.debug(f" Adding local file: {file_path.name} ({len(content)} bytes)")
+                                logger.debug(
+                                    f" Adding local file: {file_path.name} ({len(content)} bytes)"
+                                )
                             else:
-                                logger.warning(f" Local file is empty: {file_path.name}")
+                                logger.warning(
+                                    f" Local file is empty: {file_path.name}"
+                                )
                         except Exception as e:
-                            logger.error(f" Failed to read local file {file_path.name}: {e}")
+                            logger.error(
+                                f" Failed to read local file {file_path.name}: {e}"
+                            )
 
             # Split the response into chunks and send each
             chunks = self._split_message(cleaned_response)
@@ -1691,7 +1747,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                                 },
                             }
                             for tc in (msg.tool_calls or [])
-                        ] if msg.tool_calls else None,
+                        ]
+                        if msg.tool_calls
+                        else None,
                     }
 
             response_message = await loop.run_in_executor(None, call_llm)
@@ -1830,17 +1888,21 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     if button_data.get("_discord_button"):
                         # Send a Discord URL button
                         view = discord.ui.View()
-                        view.add_item(discord.ui.Button(
-                            label=button_data.get("label", "Click Here"),
-                            url=button_data["url"],
-                            emoji=button_data.get("emoji"),
-                        ))
+                        view.add_item(
+                            discord.ui.Button(
+                                label=button_data.get("label", "Click Here"),
+                                url=button_data["url"],
+                                emoji=button_data.get("emoji"),
+                            )
+                        )
                         await message.channel.send(
                             button_data.get("message", ""),
                             view=view,
                         )
                         # Simplify output for LLM context
-                        tool_output = f"OAuth authorization link sent to user via Discord button."
+                        tool_output = (
+                            f"OAuth authorization link sent to user via Discord button."
+                        )
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass  # Not a button response, use as-is
 
@@ -2243,7 +2305,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Primary pattern: <<<file:filename>>>content<<</file>>>
         # Also handles <<</file:filename>>> closing variant
-        primary_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
+        primary_pattern = (
+            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
+        )
 
         def replace_file(match):
             filename = match.group(1).strip()
@@ -2252,11 +2316,17 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             files.append((filename, content))
             return f"📎 *Attached: {filename}*"
 
-        cleaned = re.sub(primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(
+            primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
 
         # Fallback pattern: <<<file:filename>>>content<<<end>>> or <<<endfile>>>
-        fallback_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
-        cleaned = re.sub(fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
+        fallback_pattern = (
+            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
+        )
+        cleaned = re.sub(
+            fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
 
         # Last resort: <<<file:filename>>> followed by content until next <<< or end of major section
         # This catches cases where Clara forgets the closing tag entirely
@@ -2270,24 +2340,31 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 if len(content) > 10 and not content.startswith("<<<"):
                     # Don't re-extract if we already got this file
                     if not any(f[0] == filename for f in files):
-                        logger.debug(f" Matched unclosed file: {filename} ({len(content)} chars)")
+                        logger.debug(
+                            f" Matched unclosed file: {filename} ({len(content)} chars)"
+                        )
                         files.append((filename, content))
                         return f"📎 *Attached: {filename}*"
                 return match.group(0)
 
-            cleaned = re.sub(unclosed_pattern, replace_unclosed, cleaned, flags=re.DOTALL | re.IGNORECASE)
+            cleaned = re.sub(
+                unclosed_pattern,
+                replace_unclosed,
+                cleaned,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
 
         # Debug: check if we still have unmatched file tags
         remaining_tags = re.findall(r"<<<\s*file\s*:", cleaned, re.IGNORECASE)
         if remaining_tags:
-            logger.warning(f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction")
+            logger.warning(
+                f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction"
+            )
             logger.debug(f"Text snippet: {cleaned[:500]}")
 
         return cleaned, files
 
-    def _create_discord_files(
-        self, files: list[tuple[str, str]]
-    ) -> list[discord.File]:
+    def _create_discord_files(self, files: list[tuple[str, str]]) -> list[discord.File]:
         """Create discord.File objects from extracted file content.
 
         Uses BytesIO for in-memory file handling (no temp files needed).
@@ -2305,8 +2382,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Encode content to bytes and wrap in BytesIO
                 content_bytes = content.encode("utf-8")
                 discord_file = discord.File(
-                    fp=io.BytesIO(content_bytes),
-                    filename=filename
+                    fp=io.BytesIO(content_bytes), filename=filename
                 )
                 discord_files.append(discord_file)
                 logger.debug(f" Created file: {filename} ({len(content_bytes)} bytes)")
@@ -2315,7 +2391,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 logger.debug(f" Error creating file {filename}: {e}")
 
         return discord_files
-
 
     async def _store_exchange(
         self,

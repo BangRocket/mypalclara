@@ -21,9 +21,9 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import Column, DateTime, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -51,7 +51,7 @@ GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",  # Read access to all Drive files
-    "https://www.googleapis.com/auth/drive.file",      # Write access to app-created files
+    "https://www.googleapis.com/auth/drive.file",  # Write access to app-created files
     "https://www.googleapis.com/auth/documents",
 ]
 
@@ -61,6 +61,7 @@ Base = declarative_base()
 
 def gen_uuid():
     import uuid
+
     return str(uuid.uuid4())
 
 
@@ -113,6 +114,7 @@ app.add_middleware(
 
 # ============== Health Endpoints ==============
 
+
 @app.get("/health")
 @app.get("/")
 def health():
@@ -120,7 +122,9 @@ def health():
     return {
         "status": "healthy",
         "service": "clara-api",
-        "google_oauth_configured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI),
+        "google_oauth_configured": bool(
+            GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI
+        ),
         "database_connected": engine is not None,
     }
 
@@ -129,11 +133,14 @@ def health():
 def ready():
     """Readiness check."""
     if not engine:
-        return JSONResponse({"ready": False, "reason": "database not configured"}, status_code=503)
+        return JSONResponse(
+            {"ready": False, "reason": "database not configured"}, status_code=503
+        )
     return {"ready": True}
 
 
 # ============== Google OAuth Endpoints ==============
+
 
 def google_is_configured() -> bool:
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI)
@@ -149,7 +156,7 @@ def decode_state(state: str) -> str:
 
 @app.get("/oauth/google/authorize/{user_id}")
 def google_authorize(user_id: str):
-    """Generate Google OAuth authorization URL."""
+    """Generate Google OAuth authorization URL (returns JSON)."""
     if not google_is_configured():
         return JSONResponse({"error": "Google OAuth not configured"}, status_code=503)
 
@@ -168,6 +175,31 @@ def google_authorize(user_id: str):
     return {"authorization_url": auth_url}
 
 
+@app.get("/oauth/google/start/{user_id}")
+def google_start(user_id: str):
+    """Redirect to Google OAuth (for Discord buttons with 512 char URL limit).
+
+    This endpoint provides a short URL that redirects to the full Google OAuth URL.
+    Use this for Discord button URLs instead of the full OAuth URL.
+    """
+    if not google_is_configured():
+        return _error_html("Google OAuth not configured on this server.")
+
+    state = encode_state(user_id)
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(GOOGLE_SCOPES),
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
 @app.get("/oauth/google/callback", response_class=HTMLResponse)
 async def google_callback(
     code: str | None = None,
@@ -175,7 +207,9 @@ async def google_callback(
     error: str | None = None,
 ):
     """Handle Google OAuth callback."""
-    logger.info(f"OAuth callback received: code={bool(code)}, state={bool(state)}, error={error}")
+    logger.info(
+        f"OAuth callback received: code={bool(code)}, state={bool(state)}, error={error}"
+    )
 
     if not google_is_configured():
         return _error_html("Google OAuth not configured on this server.")
@@ -215,16 +249,22 @@ async def google_callback(
         # Store tokens in database
         if SessionLocal:
             expires_in = token_data.get("expires_in", 3600)
-            expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=expires_in)
+            expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+                seconds=expires_in
+            )
 
             with SessionLocal() as session:
-                existing = session.query(GoogleOAuthToken).filter(
-                    GoogleOAuthToken.user_id == user_id
-                ).first()
+                existing = (
+                    session.query(GoogleOAuthToken)
+                    .filter(GoogleOAuthToken.user_id == user_id)
+                    .first()
+                )
 
                 if existing:
                     existing.access_token = token_data["access_token"]
-                    existing.refresh_token = token_data.get("refresh_token", existing.refresh_token)
+                    existing.refresh_token = token_data.get(
+                        "refresh_token", existing.refresh_token
+                    )
                     existing.token_type = token_data.get("token_type", "Bearer")
                     existing.expires_at = expires_at
                     existing.scopes = json.dumps(GOOGLE_SCOPES)
@@ -258,17 +298,25 @@ def google_status(user_id: str):
         return {"configured": False, "connected": False}
 
     if not SessionLocal:
-        return {"configured": True, "connected": False, "error": "database not configured"}
+        return {
+            "configured": True,
+            "connected": False,
+            "error": "database not configured",
+        }
 
     with SessionLocal() as session:
-        token = session.query(GoogleOAuthToken).filter(
-            GoogleOAuthToken.user_id == user_id
-        ).first()
+        token = (
+            session.query(GoogleOAuthToken)
+            .filter(GoogleOAuthToken.user_id == user_id)
+            .first()
+        )
 
         return {
             "configured": True,
             "connected": token is not None,
-            "expires_at": token.expires_at.isoformat() if token and token.expires_at else None,
+            "expires_at": token.expires_at.isoformat()
+            if token and token.expires_at
+            else None,
         }
 
 
@@ -279,9 +327,11 @@ def google_disconnect(user_id: str):
         return JSONResponse({"error": "database not configured"}, status_code=503)
 
     with SessionLocal() as session:
-        token = session.query(GoogleOAuthToken).filter(
-            GoogleOAuthToken.user_id == user_id
-        ).first()
+        token = (
+            session.query(GoogleOAuthToken)
+            .filter(GoogleOAuthToken.user_id == user_id)
+            .first()
+        )
 
         if token:
             session.delete(token)
@@ -292,6 +342,7 @@ def google_disconnect(user_id: str):
 
 
 # ============== HTML Responses ==============
+
 
 def _success_html() -> str:
     return """
@@ -378,5 +429,6 @@ def _error_html(message: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
+
     logger.info(f"Starting Clara API Service on port {PORT}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
