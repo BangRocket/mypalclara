@@ -254,7 +254,21 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
         return []
 
     registry = get_registry()
-    capabilities = {"docker": include_docker}
+
+    # Build capabilities dict based on what's configured
+    capabilities = {
+        "docker": include_docker,
+        "files": True,  # Local files always available (has default path)
+    }
+
+    # Google OAuth - check if credentials are configured
+    if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"):
+        capabilities["google_oauth"] = True
+
+    # Email - check if credentials are configured
+    if os.getenv("CLARA_EMAIL_ADDRESS") and os.getenv("CLARA_EMAIL_PASSWORD"):
+        capabilities["email"] = True
+
     return registry.get_tools(
         platform="discord", capabilities=capabilities, format="openai"
     )
