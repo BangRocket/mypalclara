@@ -53,6 +53,7 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",  # Read access to all Drive files
     "https://www.googleapis.com/auth/drive.file",  # Write access to app-created files
     "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/calendar",  # Full calendar access
 ]
 
 # Database setup
@@ -247,42 +248,49 @@ async def google_callback(
             token_data = response.json()
 
         # Store tokens in database
-        if SessionLocal:
-            expires_in = token_data.get("expires_in", 3600)
-            expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-                seconds=expires_in
+        if not SessionLocal:
+            logger.error("DATABASE_URL not configured - cannot store OAuth tokens!")
+            return _error_html(
+                "Server configuration error: Database not configured. "
+                "Please contact the administrator."
             )
 
-            with SessionLocal() as session:
-                existing = (
-                    session.query(GoogleOAuthToken)
-                    .filter(GoogleOAuthToken.user_id == user_id)
-                    .first()
+        expires_in = token_data.get("expires_in", 3600)
+        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+            seconds=expires_in
+        )
+
+        with SessionLocal() as session:
+            existing = (
+                session.query(GoogleOAuthToken)
+                .filter(GoogleOAuthToken.user_id == user_id)
+                .first()
+            )
+
+            if existing:
+                existing.access_token = token_data["access_token"]
+                existing.refresh_token = token_data.get(
+                    "refresh_token", existing.refresh_token
                 )
+                existing.token_type = token_data.get("token_type", "Bearer")
+                existing.expires_at = expires_at
+                existing.scopes = json.dumps(GOOGLE_SCOPES)
+                existing.updated_at = utcnow()
+                logger.info(f"Updated existing tokens for user: {user_id}")
+            else:
+                new_token = GoogleOAuthToken(
+                    user_id=user_id,
+                    access_token=token_data["access_token"],
+                    refresh_token=token_data.get("refresh_token"),
+                    token_type=token_data.get("token_type", "Bearer"),
+                    expires_at=expires_at,
+                    scopes=json.dumps(GOOGLE_SCOPES),
+                )
+                session.add(new_token)
+                logger.info(f"Created new tokens for user: {user_id}")
 
-                if existing:
-                    existing.access_token = token_data["access_token"]
-                    existing.refresh_token = token_data.get(
-                        "refresh_token", existing.refresh_token
-                    )
-                    existing.token_type = token_data.get("token_type", "Bearer")
-                    existing.expires_at = expires_at
-                    existing.scopes = json.dumps(GOOGLE_SCOPES)
-                    existing.updated_at = utcnow()
-                else:
-                    new_token = GoogleOAuthToken(
-                        user_id=user_id,
-                        access_token=token_data["access_token"],
-                        refresh_token=token_data.get("refresh_token"),
-                        token_type=token_data.get("token_type", "Bearer"),
-                        expires_at=expires_at,
-                        scopes=json.dumps(GOOGLE_SCOPES),
-                    )
-                    session.add(new_token)
-
-                session.commit()
-
-            logger.info(f"Tokens stored for user: {user_id}")
+            session.commit()
+            logger.info(f"Token commit successful for user: {user_id}")
 
         return _success_html()
 
