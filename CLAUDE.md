@@ -196,6 +196,16 @@ docker-compose up -d                # Start API service
 ### Tool Calling LLM
 By default, tool calling uses the **same endpoint and model as your main chat LLM**. This means if you're using a custom endpoint (like clewdr), tool calls go through it too.
 
+**Tool tier minimum**: Tool calls never use the "low" tier (e.g., Haiku). When a message triggers the "low" tier, tool calls automatically use the base model instead (e.g., `CUSTOM_OPENAI_MODEL`). This ensures tools always have sufficient capability for complex operations.
+
+Example configuration:
+```bash
+CUSTOM_OPENAI_MODEL="claude-sonnet-4-5"       # Base model (used for tools when tier=low)
+CUSTOM_OPENAI_MODEL_HIGH="claude-opus-4-5"   # High tier
+CUSTOM_OPENAI_MODEL_MID="claude-sonnet-4-5"  # Mid tier
+CUSTOM_OPENAI_MODEL_LOW="claude-haiku-4-5"   # Low tier (chat only, not for tools)
+```
+
 Optional overrides:
 - `TOOL_API_KEY` - Override API key for tool calls
 - `TOOL_BASE_URL` - Override base URL for tool calls
@@ -204,7 +214,7 @@ Optional overrides:
 
 ### Deprecated
 - `TOOL_FORMAT` - No longer needed. Use `LLM_PROVIDER=anthropic` for native Claude tool calling.
-- `TOOL_MODEL` - No longer used. Tool calls respect tier-based model selection (`!high`, `!mid`, `!low`).
+- `TOOL_MODEL` - No longer used. Tool calls use tier-based model selection, with "low" tier bumped to base model.
 
 To enable Docker sandbox + web search:
 ```bash
