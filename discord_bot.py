@@ -41,30 +41,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from db import SessionLocal
-from db.models import ChannelSummary, Project, Session
-from sandbox.manager import get_sandbox_manager
-from storage.local_files import get_file_manager
-from email_monitor import (
-    handle_email_tool,
-    email_check_loop,
-)
-from config.logging import init_logging, get_logger, set_db_session_factory
-
-# Import modular tools system for GitHub, ADO, etc.
-from tools import init_tools, get_registry, ToolContext
-
 # Import from clara_core for unified platform
 from clara_core import (
-    init_platform,
     MemoryManager,
+    ModelTier,
+    anthropic_to_openai_response,
+    get_model_for_tier,
+    init_platform,
     make_llm,
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
-    anthropic_to_openai_response,
-    ModelTier,
-    get_model_for_tier,
 )
+from config.logging import get_logger, init_logging, set_db_session_factory
+from db import SessionLocal
+from db.models import ChannelSummary, Project, Session
+from email_monitor import (
+    email_check_loop,
+    handle_email_tool,
+)
+from sandbox.manager import get_sandbox_manager
+from storage.local_files import get_file_manager
+
+# Import modular tools system for GitHub, ADO, etc.
+from tools import ToolContext, get_registry, init_tools
 
 # Initialize logging system
 init_logging()
@@ -79,6 +78,16 @@ MAX_CHARS = int(os.getenv("DISCORD_MAX_CHARS", "100000"))
 MAX_FILE_SIZE = int(os.getenv("DISCORD_MAX_FILE_SIZE", "100000"))  # 100KB default
 SUMMARY_AGE_MINUTES = int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30"))
 CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
+
+# Stop phrase configuration - phrases that interrupt running tasks
+# Default phrases that will stop Clara mid-task
+STOP_PHRASES = [
+    phrase.strip().lower()
+    for phrase in os.getenv(
+        "DISCORD_STOP_PHRASES", "clara stop,stop clara,nevermind,never mind"
+    ).split(",")
+    if phrase.strip()
+]
 
 # Supported text file extensions
 TEXT_EXTENSIONS = {
@@ -282,7 +291,8 @@ TIER_DISPLAY = {
 AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
 
 # Classification prompt for auto tier selection (by Clara)
-TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this message and decide which model tier should handle it.
+# Note: This prompt considers conversation context when available
+TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze the current message IN CONTEXT of the conversation and decide which model tier should handle it.
 
 ## Tiers
 - LOW (Haiku) - Fast, cheap, minimal
@@ -290,10 +300,8 @@ TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this messag
 - HIGH (Opus) - Deep, present, human
 
 ## Route to LOW when:
-- Simple acknowledgments ("thanks", "got it", "lol")
-- Single-word or very short casual messages
-- Straightforward factual lookups
-- Tool calls with obvious parameters
+- Simple acknowledgments ("thanks", "got it", "lol") to SIMPLE tasks
+- Single-word answers to LOW-tier questions
 - Messages where overthinking would be weird
 
 ## Route to MID when (DEFAULT):
@@ -303,6 +311,8 @@ TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this messag
 - Multi-step reasoning
 - Questions with concrete answers
 - Helpful assistance that requires thought but not depth
+- Continuations of MID-tier conversations
+- Short answers that are part of a larger MID/HIGH discussion
 
 ## Route to HIGH when:
 - Vulnerability or emotional weight in the message
@@ -312,6 +322,12 @@ TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this messag
 - The person seems to need presence, not just answers
 - Nuanced emotional support (not just "I'm stressed" but deeper)
 - Anything where *being seen* matters
+
+## CRITICAL: Context Matters!
+- A short reply like "yes", "ok", or "sounds good" should MATCH the tier of the ongoing conversation
+- If assistant just asked a complex question, a simple answer still needs MID/HIGH to process it properly
+- Look at what the conversation is about, not just the current message length
+- One-word answers to important questions still need capable handling
 
 ## Key Signals for HIGH:
 - First-person emotional language ("I feel", "I don't know why I...")
@@ -324,14 +340,22 @@ TIER_CLASSIFICATION_PROMPT = """You are a routing assistant. Analyze this messag
 When in doubt between MID and HIGH, ask: "Does this person need to be *seen* right now, or do they need something *done*?"
 - Seen → HIGH
 - Done → MID
-
-Message: {message}
+{context}
+Current message: {message}
 
 Respond with only one word: LOW, MID, or HIGH"""
 
 
-async def classify_message_complexity(content: str) -> str:
+async def classify_message_complexity(
+    content: str,
+    recent_messages: list[dict] | None = None,
+) -> str:
     """Use fast model to classify message complexity for auto tier selection.
+
+    Args:
+        content: The current user message to classify
+        recent_messages: Optional list of recent conversation messages for context.
+                        Each should have 'role' and 'content' keys.
 
     Returns: "low", "mid", or "high"
     """
@@ -341,10 +365,29 @@ async def classify_message_complexity(content: str) -> str:
         # Use fast/low tier model for classification
         llm = make_llm(tier="low")
 
+        # Build context from recent messages (last few exchanges)
+        context_str = ""
+        if recent_messages:
+            # Take up to 4 recent messages (2 exchanges) for context
+            context_msgs = recent_messages[-4:]
+            if context_msgs:
+                context_lines = []
+                for msg in context_msgs:
+                    role = msg.get("role", "unknown")
+                    msg_content = msg.get("content", "")
+                    # Truncate long messages in context
+                    if len(msg_content) > 200:
+                        msg_content = msg_content[:200] + "..."
+                    context_lines.append(f"{role.upper()}: {msg_content}")
+                context_str = "\n\n## Recent conversation:\n" + "\n".join(context_lines)
+
         messages = [
             {
                 "role": "user",
-                "content": TIER_CLASSIFICATION_PROMPT.format(message=content[:500]),
+                "content": TIER_CLASSIFICATION_PROMPT.format(
+                    message=content[:500],
+                    context=context_str,
+                ),
             }
         ]
 
@@ -385,6 +428,19 @@ def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
             cleaned = content[len(prefix) :].lstrip()
             return tier, cleaned  # type: ignore
     return None, content
+
+
+def is_stop_phrase(content: str) -> bool:
+    """Check if the message content matches a stop phrase.
+
+    Stop phrases interrupt running tasks. They are checked case-insensitively.
+    """
+    if not STOP_PHRASES:
+        return False
+    content_lower = content.lower().strip()
+    # Remove bot mentions for comparison
+    content_lower = re.sub(r"<@!?\d+>", "", content_lower).strip()
+    return content_lower in STOP_PHRASES
 
 
 @dataclass
@@ -441,6 +497,8 @@ class TaskQueue:
     def __init__(self):
         # Active tasks: channel_id -> message being processed
         self._active: dict[int, DiscordMessage] = {}
+        # Running asyncio tasks: channel_id -> asyncio.Task (for cancellation)
+        self._running_tasks: dict[int, asyncio.Task] = {}
         # Queued tasks: channel_id -> list of queued tasks
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
@@ -520,6 +578,46 @@ class TaskQueue:
     def get_stats_unsafe(self) -> dict:
         """Get queue statistics without lock (for sync callers, may be slightly stale)."""
         return self._get_stats_sync()
+
+    def register_task(self, channel_id: int, task: asyncio.Task):
+        """Register the running asyncio task for a channel (for cancellation support)."""
+        self._running_tasks[channel_id] = task
+
+    def unregister_task(self, channel_id: int):
+        """Unregister the running task for a channel."""
+        self._running_tasks.pop(channel_id, None)
+
+    async def cancel_and_clear(self, channel_id: int) -> bool:
+        """Cancel the running task and clear the queue for a channel.
+
+        Returns True if a task was cancelled, False if nothing was running.
+        """
+        async with self._lock:
+            cancelled = False
+
+            # Cancel the running asyncio task if any
+            if channel_id in self._running_tasks:
+                task = self._running_tasks[channel_id]
+                if not task.done():
+                    task.cancel()
+                    cancelled = True
+                    logger.info(f"Cancelled running task for channel {channel_id}")
+                del self._running_tasks[channel_id]
+
+            # Clear the active message
+            if channel_id in self._active:
+                del self._active[channel_id]
+
+            # Clear the queue
+            if channel_id in self._queues:
+                queue_len = len(self._queues[channel_id])
+                if queue_len > 0:
+                    logger.info(
+                        f"Cleared {queue_len} queued task(s) for channel {channel_id}"
+                    )
+                del self._queues[channel_id]
+
+            return cancelled
 
 
 # Global task queue instance
@@ -727,7 +825,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     {
                         "filename": original_filename,
                         "saved_locally": True,
-                        "note": f"Binary file saved locally. Use `read_local_file` or `send_local_file` to access.",
+                        "note": "Binary file saved locally. Use `read_local_file` or `send_local_file` to access.",
                     }
                 )
                 continue
@@ -866,6 +964,32 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             channel_name,
         )
 
+        # Check for stop phrase - bypass queue and cancel running task
+        if is_stop_phrase(message.content):
+            channel_id = message.channel.id
+            was_cancelled = await task_queue.cancel_and_clear(channel_id)
+            if was_cancelled:
+                await message.reply(
+                    "-# 🛑 Stopping... I've cancelled my current task.",
+                    mention_author=False,
+                )
+                monitor.log(
+                    "system",
+                    message.author.display_name,
+                    "Stopped running task via stop phrase",
+                    guild_name,
+                    channel_name,
+                )
+                logger.info(
+                    f"Stop phrase from {message.author} cancelled task in channel {channel_id}"
+                )
+            else:
+                await message.reply(
+                    "-# I wasn't working on anything, but I'm here!",
+                    mention_author=False,
+                )
+            return
+
         # Try to acquire channel for processing (queue if busy)
         await self._process_with_queue(message, is_dm)
 
@@ -886,9 +1010,20 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             return  # The task will be processed when dequeued
 
         # We have the channel, process the message
-        try:
+        # Wrap in a task so it can be cancelled via stop phrase
+        async def run_handler():
             await self._handle_message(message, is_dm)
+
+        task = asyncio.create_task(run_handler())
+        task_queue.register_task(channel_id, task)
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info(f"Task cancelled for channel {channel_id}")
+            # Don't re-raise - task was intentionally cancelled via stop phrase
         finally:
+            task_queue.unregister_task(channel_id)
             # Release channel and check for queued tasks
             await self._process_queued_tasks(channel_id)
 
@@ -909,9 +1044,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             except Exception as e:
                 logger.warning(f"Failed to send start notification: {e}")
 
-            # Process the queued task
-            try:
+            # Process the queued task (wrapped for cancellation support)
+            async def run_queued_handler():
                 await self._handle_message(next_task.message, next_task.is_dm)
+
+            task = asyncio.create_task(run_queued_handler())
+            task_queue.register_task(channel_id, task)
+
+            try:
+                await task
+            except asyncio.CancelledError:
+                logger.info(f"Queued task cancelled for channel {channel_id}")
+                # Exit the loop - queue was cleared by stop phrase
+                break
             except Exception as e:
                 logger.exception(f"Error processing queued task: {e}")
                 try:
@@ -919,6 +1064,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     await next_task.message.reply(err_msg, mention_author=False)
                 except Exception:
                     pass
+            finally:
+                task_queue.unregister_task(channel_id)
 
     async def _handle_message(
         self,
@@ -1460,7 +1607,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 "",
             )
             if user_msg:
-                tier = await classify_message_complexity(user_msg)
+                # Extract recent conversation for context (exclude system messages)
+                recent_for_tier = [
+                    m for m in prompt_messages if m.get("role") in ("user", "assistant")
+                ]
+                # Exclude the current message from context (it's passed separately)
+                if recent_for_tier and recent_for_tier[-1].get("content") == user_msg:
+                    recent_for_tier = recent_for_tier[:-1]
+                tier = await classify_message_complexity(user_msg, recent_for_tier)
                 auto_selected = True
                 logger.info(f"Auto-selected tier '{tier}' for message complexity")
 
@@ -1901,7 +2055,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         )
                         # Simplify output for LLM context
                         tool_output = (
-                            f"OAuth authorization link sent to user via Discord button."
+                            "OAuth authorization link sent to user via Discord button."
                         )
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass  # Not a button response, use as-is
@@ -1968,7 +2122,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         Handles Docker sandbox tools, local file tools, and chat history tools.
         """
-        from pathlib import Path
 
         # Get channel_id for file storage organization
         channel_id = str(channel.id) if channel else None
