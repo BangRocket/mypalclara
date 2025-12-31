@@ -275,6 +275,53 @@ TIER_DISPLAY = {
     "low": ("🟢", "Low (Haiku-class)"),
 }
 
+# Auto tier selection - use fast model to determine complexity
+AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
+
+# Classification prompt for auto tier selection
+TIER_CLASSIFICATION_PROMPT = """Classify this message's complexity for an AI assistant. Reply with ONLY one word: LOW, MID, or HIGH.
+
+LOW = Simple greetings, quick facts, basic questions, casual chat, short responses expected
+MID = Moderate tasks, explanations, summaries, most coding questions, general assistance
+HIGH = Complex reasoning, long-form writing, difficult coding, multi-step analysis, creative projects
+
+Message: {message}
+
+Classification:"""
+
+
+async def classify_message_complexity(content: str) -> str:
+    """Use fast model to classify message complexity for auto tier selection.
+
+    Returns: "low", "mid", or "high"
+    """
+    import asyncio
+
+    try:
+        # Use fast/low tier model for classification
+        llm = make_llm(tier="low")
+
+        messages = [
+            {"role": "user", "content": TIER_CLASSIFICATION_PROMPT.format(message=content[:500])}
+        ]
+
+        # Run sync LLM call in thread pool
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, llm, messages)
+
+        # Parse response - expect LOW, MID, or HIGH
+        result = response.strip().upper()
+        if "HIGH" in result:
+            return "high"
+        elif "LOW" in result:
+            return "low"
+        else:
+            return "mid"  # Default to mid if unclear
+
+    except Exception as e:
+        logger.warning(f"Auto tier classification failed: {e}, defaulting to mid")
+        return "mid"
+
 
 def detect_tier_from_message(content: str) -> tuple[ModelTier | None, str]:
     """Detect model tier from message prefix and return cleaned content.
@@ -1357,6 +1404,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             prompt_messages: The conversation history and context
             tier: Optional model tier override (high/mid/low)
         """
+        # Auto tier selection - classify message complexity if no explicit tier
+        auto_selected = False
+        if tier is None and AUTO_TIER_ENABLED:
+            # Get the user's message content for classification
+            user_msg = next(
+                (m["content"] for m in reversed(prompt_messages) if m.get("role") == "user"),
+                ""
+            )
+            if user_msg:
+                tier = await classify_message_complexity(user_msg)
+                auto_selected = True
+                logger.info(f"Auto-selected tier '{tier}' for message complexity")
+
         # Log tier info if specified
         if tier:
             emoji, display = TIER_DISPLAY.get(tier, ("", tier))
@@ -1366,7 +1426,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         user_id = f"discord-{message.author.id}"
 
         try:
-            # Send tier indicator if tier was explicitly selected
+            # Send tier indicator if tier was explicitly selected or auto-selected
             if tier:
                 emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
                 model_name = get_model_for_tier(tier)
@@ -1374,8 +1434,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 short_model = (
                     model_name.split("/")[-1] if "/" in model_name else model_name
                 )
+                auto_tag = " (auto)" if auto_selected else ""
                 await message.channel.send(
-                    f"-# {emoji} Using {display} ({short_model})", silent=True
+                    f"-# {emoji} Using {display}{auto_tag} ({short_model})", silent=True
                 )
             loop = asyncio.get_event_loop()
             full_response = ""
