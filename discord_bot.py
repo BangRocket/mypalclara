@@ -1763,6 +1763,26 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     message.channel,
                 )
 
+                # Check for special Discord button response
+                try:
+                    button_data = json.loads(tool_output)
+                    if button_data.get("_discord_button"):
+                        # Send a Discord URL button
+                        view = discord.ui.View()
+                        view.add_item(discord.ui.Button(
+                            label=button_data.get("label", "Click Here"),
+                            url=button_data["url"],
+                            emoji=button_data.get("emoji"),
+                        ))
+                        await message.channel.send(
+                            button_data.get("message", ""),
+                            view=view,
+                        )
+                        # Simplify output for LLM context
+                        tool_output = f"OAuth authorization link sent to user via Discord button."
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass  # Not a button response, use as-is
+
                 # Add tool result to conversation
                 messages.append(
                     {
