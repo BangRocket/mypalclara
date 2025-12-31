@@ -59,6 +59,11 @@ from email_monitor import (
     email_check_loop,
     handle_email_tool,
 )
+from proactive_engine import (
+    is_enabled as proactive_enabled,
+    on_user_message as proactive_on_user_message,
+    proactive_check_loop,
+)
 from sandbox.manager import get_sandbox_manager
 from storage.local_files import get_file_manager
 
@@ -254,7 +259,21 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
         return []
 
     registry = get_registry()
-    capabilities = {"docker": include_docker}
+
+    # Build capabilities dict based on what's configured
+    capabilities = {
+        "docker": include_docker,
+        "files": True,  # Local files always available (has default path)
+    }
+
+    # Google OAuth - check if credentials are configured
+    if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"):
+        capabilities["google_oauth"] = True
+
+    # Email - check if credentials are configured
+    if os.getenv("CLARA_EMAIL_ADDRESS") and os.getenv("CLARA_EMAIL_PASSWORD"):
+        capabilities["email"] = True
+
     return registry.get_tools(
         platform="discord", capabilities=capabilities, format="openai"
     )
@@ -896,6 +915,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         self.loop.create_task(email_check_loop(self))
         logger.info("Email monitoring task started")
 
+        # Start proactive conversation engine (if enabled)
+        if proactive_enabled():
+            llm = make_llm(tier="mid")  # Use mid tier for proactive decisions
+            self.loop.create_task(proactive_check_loop(self, llm))
+            logger.info("Proactive conversation engine started")
+
     async def on_guild_join(self, guild):
         """Called when bot joins a guild."""
         monitor.update_guilds(self.guilds)
@@ -1116,6 +1141,18 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 user_id = f"discord-{message.author.id}"
                 project_id = await self._ensure_project(user_id)
                 logger.debug(f" User: {user_id}, Project: {project_id}")
+
+                # Track interaction for proactive engine
+                proactive_channel_id = (
+                    f"discord-dm-{message.author.id}"
+                    if is_dm
+                    else f"discord-channel-{message.channel.id}"
+                )
+                await proactive_on_user_message(
+                    user_id=user_id,
+                    channel_id=proactive_channel_id,
+                    message_preview=message.content[:100] if message.content else None,
+                )
 
                 # Get the user's message content (or use auto-continue content)
                 if auto_continue_content:
