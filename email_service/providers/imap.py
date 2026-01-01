@@ -162,25 +162,28 @@ class IMAPProvider(EmailProvider):
         return messages
 
     def _fetch_single_message(
-        self, num: bytes, use_uid: bool = False
+        self, num: bytes, use_uid: bool = False, include_body: bool = False
     ) -> EmailMessage | None:
         """Fetch a single message by number or UID."""
         if not self._mail:
             return None
 
         try:
+            # Include FLAGS to get read status
+            fetch_parts = "(UID FLAGS RFC822)"
             if use_uid:
-                status, msg_data = self._mail.uid("fetch", num, "(UID RFC822)")
+                status, msg_data = self._mail.uid("fetch", num, fetch_parts)
             else:
-                status, msg_data = self._mail.fetch(num, "(UID RFC822)")
+                status, msg_data = self._mail.fetch(num, fetch_parts)
 
             if status != "OK" or not msg_data:
                 return None
 
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
-                    # Extract UID from response
+                    # Extract UID and flags from response
                     uid = self._extract_uid(response_part[0])
+                    is_read = self._extract_seen_flag(response_part[0])
 
                     # Parse email
                     msg = email.message_from_bytes(response_part[1])
@@ -192,6 +195,12 @@ class IMAPProvider(EmailProvider):
                     snippet = self._get_snippet(msg)
                     has_attachments = self._has_attachments(msg)
 
+                    # Get full body if requested
+                    full_body = None
+                    body_html = None
+                    if include_body:
+                        full_body, body_html = self._get_full_body(msg)
+
                     return EmailMessage(
                         uid=uid or num.decode(),
                         from_addr=from_addr,
@@ -199,12 +208,63 @@ class IMAPProvider(EmailProvider):
                         snippet=snippet,
                         received_at=received_at,
                         has_attachments=has_attachments,
+                        is_read=is_read,
+                        full_body=full_body,
+                        body_html=body_html,
                     )
 
         except Exception as e:
             logger.debug(f"Error parsing message: {e}")
 
         return None
+
+    def _extract_seen_flag(self, response_bytes: bytes) -> bool:
+        """Extract SEEN flag from IMAP response to determine read status."""
+        try:
+            response = response_bytes.decode()
+            # Look for FLAGS (...) in response
+            return "\\Seen" in response
+        except Exception:
+            return False
+
+    def _get_full_body(self, msg: email.message.Message) -> tuple[str | None, str | None]:
+        """Extract full plain text and HTML body from message."""
+        plain_body = None
+        html_body = None
+
+        try:
+            if msg.is_multipart():
+                for part in msg.walk():
+                    content_type = part.get_content_type()
+                    # Skip attachments
+                    if part.get("Content-Disposition", "").startswith("attachment"):
+                        continue
+
+                    payload = part.get_payload(decode=True)
+                    if not payload:
+                        continue
+
+                    charset = part.get_content_charset() or "utf-8"
+                    text = payload.decode(charset, errors="replace")
+
+                    if content_type == "text/plain" and not plain_body:
+                        plain_body = text
+                    elif content_type == "text/html" and not html_body:
+                        html_body = text
+            else:
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    charset = msg.get_content_charset() or "utf-8"
+                    text = payload.decode(charset, errors="replace")
+                    content_type = msg.get_content_type()
+                    if "html" in content_type:
+                        html_body = text
+                    else:
+                        plain_body = text
+        except Exception as e:
+            logger.debug(f"Error extracting body: {e}")
+
+        return plain_body, html_body
 
     def _extract_uid(self, response_bytes: bytes) -> str | None:
         """Extract UID from IMAP response."""
@@ -282,3 +342,141 @@ class IMAPProvider(EmailProvider):
             if "attachment" in content_disposition.lower():
                 return True
         return False
+
+    async def search_emails(
+        self,
+        query: str | None = None,
+        from_addr: str | None = None,
+        subject: str | None = None,
+        after: datetime | None = None,
+        before: datetime | None = None,
+        unread_only: bool = False,
+        include_body: bool = False,
+        limit: int = 20,
+    ) -> list[EmailMessage]:
+        """Search emails with IMAP SEARCH criteria."""
+        if not self._mail:
+            if not await self.connect():
+                return []
+
+        try:
+            loop = asyncio.get_event_loop()
+            messages = await loop.run_in_executor(
+                None,
+                lambda: self._search_messages_sync(
+                    query, from_addr, subject, after, before, unread_only, include_body, limit
+                ),
+            )
+            return messages
+        except Exception as e:
+            logger.error(f"Error searching IMAP messages: {e}")
+            return []
+
+    def _search_messages_sync(
+        self,
+        query: str | None,
+        from_addr: str | None,
+        subject: str | None,
+        after: datetime | None,
+        before: datetime | None,
+        unread_only: bool,
+        include_body: bool,
+        limit: int,
+    ) -> list[EmailMessage]:
+        """Synchronous IMAP search (runs in thread pool)."""
+        messages = []
+
+        if not self._mail:
+            return messages
+
+        try:
+            self._mail.select("INBOX")
+
+            # Build IMAP search criteria
+            criteria = []
+
+            if unread_only:
+                criteria.append("UNSEEN")
+
+            if from_addr:
+                # Escape double quotes in from address
+                safe_from = from_addr.replace('"', '\\"')
+                criteria.append(f'FROM "{safe_from}"')
+
+            if subject:
+                safe_subject = subject.replace('"', '\\"')
+                criteria.append(f'SUBJECT "{safe_subject}"')
+
+            if after:
+                # IMAP date format: DD-Mon-YYYY
+                date_str = after.strftime("%d-%b-%Y")
+                criteria.append(f"SINCE {date_str}")
+
+            if before:
+                date_str = before.strftime("%d-%b-%Y")
+                criteria.append(f"BEFORE {date_str}")
+
+            if query:
+                # Full text search in body
+                safe_query = query.replace('"', '\\"')
+                criteria.append(f'TEXT "{safe_query}"')
+
+            # Default to ALL if no criteria
+            search_str = " ".join(criteria) if criteria else "ALL"
+            logger.debug(f"IMAP search: {search_str}")
+
+            status, data = self._mail.uid("search", None, search_str)
+
+            if status != "OK" or not data[0]:
+                return messages
+
+            # Get UIDs (most recent first)
+            uids = data[0].split()
+            uids.reverse()  # Most recent first
+            uids = uids[:limit]  # Limit results
+
+            for uid in uids:
+                try:
+                    msg = self._fetch_single_message(uid, use_uid=True, include_body=include_body)
+                    if msg:
+                        messages.append(msg)
+                except Exception as e:
+                    logger.debug(f"Error fetching message {uid}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"IMAP search error: {e}")
+
+        return messages
+
+    async def get_email_by_id(
+        self,
+        uid: str,
+        include_body: bool = True,
+    ) -> EmailMessage | None:
+        """Get a specific email by its UID."""
+        if not self._mail:
+            if not await self.connect():
+                return None
+
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None,
+                lambda: self._get_email_by_id_sync(uid, include_body),
+            )
+        except Exception as e:
+            logger.error(f"Error getting email by ID: {e}")
+            return None
+
+    def _get_email_by_id_sync(self, uid: str, include_body: bool) -> EmailMessage | None:
+        """Synchronous get email by UID (runs in thread pool)."""
+        if not self._mail:
+            return None
+
+        try:
+            self._mail.select("INBOX")
+            return self._fetch_single_message(uid.encode(), use_uid=True, include_body=include_body)
+        except Exception as e:
+            logger.debug(f"Error fetching email {uid}: {e}")
+            return None
