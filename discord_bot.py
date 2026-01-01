@@ -46,6 +46,7 @@ from clara_core import (
     MemoryManager,
     ModelTier,
     anthropic_to_openai_response,
+    generate_tool_description,
     get_model_for_tier,
     init_platform,
     make_llm,
@@ -2068,11 +2069,22 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Send status message as an interrupt (stays in chat)
                 total_tools_run += 1
                 step_label = f" (step {total_tools_run})" if total_tools_run > 1 else ""
+
+                # Generate Haiku description for tools without custom status
+                haiku_desc = None
                 try:
-                    await message.channel.send(
-                        f"-# {status_text}{step_label}",
-                        silent=True,
-                    )
+                    haiku_desc = await generate_tool_description(tool_name, arguments)
+                except Exception:
+                    pass  # Silently fail - description is optional
+
+                # Build final status message
+                if haiku_desc:
+                    status_msg = f"-# {status_text}{step_label}\n-# ↳ *{haiku_desc}*"
+                else:
+                    status_msg = f"-# {status_text}{step_label}"
+
+                try:
+                    await message.channel.send(status_msg, silent=True)
                 except Exception as e:
                     logger.debug(f" Failed to send status: {e}")
 

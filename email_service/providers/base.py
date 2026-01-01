@@ -23,6 +23,10 @@ class EmailMessage:
     has_attachments: bool = False
     to_addrs: list[str] | None = None
     cc_addrs: list[str] | None = None
+    # Full body content (optional, populated by get_email_by_id or search)
+    full_body: str | None = None  # Plain text body
+    body_html: str | None = None  # HTML body if available
+    is_read: bool | None = None  # Read/unread status
 
 
 class EmailProvider(ABC):
@@ -83,6 +87,64 @@ class EmailProvider(ABC):
             Tuple of (success, error_message)
         """
         pass
+
+    @abstractmethod
+    async def search_emails(
+        self,
+        query: str | None = None,
+        from_addr: str | None = None,
+        subject: str | None = None,
+        after: datetime | None = None,
+        before: datetime | None = None,
+        unread_only: bool = False,
+        include_body: bool = False,
+        limit: int = 20,
+        folder: str = "INBOX",
+    ) -> list[EmailMessage]:
+        """Search emails with filters.
+
+        Args:
+            query: Free text search query
+            from_addr: Filter by sender address/name
+            subject: Filter by subject contains
+            after: Messages after this date
+            before: Messages before this date
+            unread_only: Only return unread messages
+            include_body: Include full body content (slower)
+            limit: Maximum messages to return
+            folder: Folder to search in (IMAP) or label (Gmail)
+
+        Returns:
+            List of matching email messages
+        """
+        pass
+
+    @abstractmethod
+    async def get_email_by_id(
+        self,
+        uid: str,
+        include_body: bool = True,
+        folder: str = "INBOX",
+    ) -> EmailMessage | None:
+        """Get a specific email by its UID.
+
+        Args:
+            uid: Unique identifier of the email
+            include_body: Include full body content
+            folder: Folder containing the email (IMAP only)
+
+        Returns:
+            EmailMessage if found, None otherwise
+        """
+        pass
+
+    async def list_folders(self) -> list[str]:
+        """List available folders/labels.
+
+        Returns:
+            List of folder names (IMAP) or labels (Gmail)
+        """
+        return ["INBOX"]  # Default implementation
 
     async def __aenter__(self) -> EmailProvider:
         """Async context manager entry."""
