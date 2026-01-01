@@ -76,7 +76,10 @@ class GmailProvider(EmailProvider):
             if response.status_code == 200:
                 return True, None
             elif response.status_code == 403:
-                return False, "Gmail access not authorized. Please reconnect Google with email permissions."
+                return (
+                    False,
+                    "Gmail access not authorized. Please reconnect Google.",
+                )
             else:
                 return False, f"Gmail API error: {response.status_code}"
 
@@ -181,7 +184,10 @@ class GmailProvider(EmailProvider):
 
     def _parse_message(self, data: dict, include_body: bool = False) -> EmailMessage:
         """Parse Gmail API message response."""
-        headers = {h["name"].lower(): h["value"] for h in data.get("payload", {}).get("headers", [])}
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in data.get("payload", {}).get("headers", [])
+        }
 
         from_addr = headers.get("from", "")
         subject = headers.get("subject", "(No Subject)")
@@ -225,6 +231,7 @@ class GmailProvider(EmailProvider):
 
         try:
             from email.utils import parsedate_to_datetime
+
             return parsedate_to_datetime(date_str).replace(tzinfo=None)
         except Exception:
             return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -311,6 +318,31 @@ class GmailProvider(EmailProvider):
 
         return plain_body, html_body
 
+    async def list_folders(self) -> list[str]:
+        """List Gmail labels (equivalent to folders)."""
+        if not self._connected:
+            if not await self.connect():
+                return []
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{GMAIL_API_BASE}/users/me/labels",
+                    headers={"Authorization": f"Bearer {self._access_token}"},
+                    timeout=30.0,
+                )
+
+            if response.status_code != 200:
+                return ["INBOX"]
+
+            data = response.json()
+            labels = [label["name"] for label in data.get("labels", [])]
+            return sorted(labels)
+
+        except Exception as e:
+            logger.debug(f"Error listing Gmail labels: {e}")
+            return ["INBOX"]
+
     async def search_emails(
         self,
         query: str | None = None,
@@ -321,6 +353,7 @@ class GmailProvider(EmailProvider):
         unread_only: bool = False,
         include_body: bool = False,
         limit: int = 20,
+        folder: str = "INBOX",
     ) -> list[EmailMessage]:
         """Search emails with filters using Gmail query syntax."""
         if not self._connected:
@@ -328,8 +361,9 @@ class GmailProvider(EmailProvider):
                 return []
 
         try:
-            # Build Gmail query
-            query_parts = ["in:inbox"]
+            # Build Gmail query - use folder/label filter
+            folder_filter = f"in:{folder.lower()}" if folder else "in:inbox"
+            query_parts = [folder_filter]
 
             if query:
                 query_parts.append(query)
@@ -411,6 +445,7 @@ class GmailProvider(EmailProvider):
         self,
         uid: str,
         include_body: bool = True,
+        folder: str = "INBOX",  # Not used for Gmail (IDs are global)
     ) -> EmailMessage | None:
         """Get a specific email by its Gmail message ID."""
         if not self._connected:

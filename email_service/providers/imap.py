@@ -137,7 +137,9 @@ class IMAPProvider(EmailProvider):
             # Build search criteria
             if since_uid:
                 # Fetch messages with UID > since_uid
-                status, data = self._mail.uid("search", None, f"UID {int(since_uid) + 1}:*")
+                status, data = self._mail.uid(
+                    "search", None, f"UID {int(since_uid) + 1}:*"
+                )
             else:
                 # Fetch unseen messages
                 status, data = self._mail.search(None, "UNSEEN")
@@ -189,7 +191,9 @@ class IMAPProvider(EmailProvider):
                     msg = email.message_from_bytes(response_part[1])
 
                     from_addr = self._decode_header_value(msg.get("From", ""))
-                    subject = self._decode_header_value(msg.get("Subject", "(No Subject)"))
+                    subject = self._decode_header_value(
+                        msg.get("Subject", "(No Subject)")
+                    )
                     date_str = msg.get("Date", "")
                     received_at = self._parse_date(date_str)
                     snippet = self._get_snippet(msg)
@@ -227,7 +231,9 @@ class IMAPProvider(EmailProvider):
         except Exception:
             return False
 
-    def _get_full_body(self, msg: email.message.Message) -> tuple[str | None, str | None]:
+    def _get_full_body(
+        self, msg: email.message.Message
+    ) -> tuple[str | None, str | None]:
         """Extract full plain text and HTML body from message."""
         plain_body = None
         html_body = None
@@ -301,6 +307,7 @@ class IMAPProvider(EmailProvider):
         try:
             # Try common formats
             from email.utils import parsedate_to_datetime
+
             return parsedate_to_datetime(date_str).replace(tzinfo=None)
         except Exception:
             return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -343,6 +350,45 @@ class IMAPProvider(EmailProvider):
                 return True
         return False
 
+    async def list_folders(self) -> list[str]:
+        """List all available IMAP folders."""
+        if not self._mail:
+            if not await self.connect():
+                return []
+
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._list_folders_sync)
+        except Exception as e:
+            logger.error(f"Error listing IMAP folders: {e}")
+            return []
+
+    def _list_folders_sync(self) -> list[str]:
+        """Synchronous folder listing."""
+        folders = []
+        if not self._mail:
+            return folders
+
+        try:
+            status, folder_list = self._mail.list()
+            if status != "OK":
+                return folders
+
+            for item in folder_list:
+                if isinstance(item, bytes):
+                    # Parse folder name from response like: b'(\\HasNoChildren) "/" "INBOX"'
+                    decoded = item.decode("utf-8", errors="replace")
+                    # Extract folder name (last quoted string or unquoted name)
+                    match = re.search(r'"([^"]+)"$|(\S+)$', decoded)
+                    if match:
+                        folder_name = match.group(1) or match.group(2)
+                        if folder_name:
+                            folders.append(folder_name)
+        except Exception as e:
+            logger.error(f"Error parsing folder list: {e}")
+
+        return folders
+
     async def search_emails(
         self,
         query: str | None = None,
@@ -353,6 +399,7 @@ class IMAPProvider(EmailProvider):
         unread_only: bool = False,
         include_body: bool = False,
         limit: int = 20,
+        folder: str = "INBOX",
     ) -> list[EmailMessage]:
         """Search emails with IMAP SEARCH criteria."""
         if not self._mail:
@@ -364,7 +411,15 @@ class IMAPProvider(EmailProvider):
             messages = await loop.run_in_executor(
                 None,
                 lambda: self._search_messages_sync(
-                    query, from_addr, subject, after, before, unread_only, include_body, limit
+                    query,
+                    from_addr,
+                    subject,
+                    after,
+                    before,
+                    unread_only,
+                    include_body,
+                    limit,
+                    folder,
                 ),
             )
             return messages
@@ -382,6 +437,7 @@ class IMAPProvider(EmailProvider):
         unread_only: bool,
         include_body: bool,
         limit: int,
+        folder: str = "INBOX",
     ) -> list[EmailMessage]:
         """Synchronous IMAP search (runs in thread pool)."""
         messages = []
@@ -390,7 +446,15 @@ class IMAPProvider(EmailProvider):
             return messages
 
         try:
-            self._mail.select("INBOX")
+            # Select folder (may need quoting for folders with spaces)
+            status, data = self._mail.select(f'"{folder}"' if " " in folder else folder)
+            if status != "OK":
+                logger.error(f"Failed to select folder '{folder}': {data}")
+                return messages
+
+            logger.debug(
+                f"Selected folder '{folder}', {data[0].decode() if data else 0} messages"
+            )
 
             # Build IMAP search criteria
             criteria = []
@@ -437,7 +501,9 @@ class IMAPProvider(EmailProvider):
 
             for uid in uids:
                 try:
-                    msg = self._fetch_single_message(uid, use_uid=True, include_body=include_body)
+                    msg = self._fetch_single_message(
+                        uid, use_uid=True, include_body=include_body
+                    )
                     if msg:
                         messages.append(msg)
                 except Exception as e:
@@ -453,6 +519,7 @@ class IMAPProvider(EmailProvider):
         self,
         uid: str,
         include_body: bool = True,
+        folder: str = "INBOX",
     ) -> EmailMessage | None:
         """Get a specific email by its UID."""
         if not self._mail:
@@ -463,20 +530,27 @@ class IMAPProvider(EmailProvider):
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 None,
-                lambda: self._get_email_by_id_sync(uid, include_body),
+                lambda: self._get_email_by_id_sync(uid, include_body, folder),
             )
         except Exception as e:
             logger.error(f"Error getting email by ID: {e}")
             return None
 
-    def _get_email_by_id_sync(self, uid: str, include_body: bool) -> EmailMessage | None:
+    def _get_email_by_id_sync(
+        self, uid: str, include_body: bool, folder: str = "INBOX"
+    ) -> EmailMessage | None:
         """Synchronous get email by UID (runs in thread pool)."""
         if not self._mail:
             return None
 
         try:
-            self._mail.select("INBOX")
-            return self._fetch_single_message(uid.encode(), use_uid=True, include_body=include_body)
+            status, data = self._mail.select(f'"{folder}"' if " " in folder else folder)
+            if status != "OK":
+                logger.error(f"Failed to select folder '{folder}': {data}")
+                return None
+            return self._fetch_single_message(
+                uid.encode(), use_uid=True, include_body=include_body
+            )
         except Exception as e:
             logger.debug(f"Error fetching email {uid}: {e}")
             return None
