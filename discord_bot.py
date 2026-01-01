@@ -269,6 +269,7 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
     capabilities = {
         "docker": include_docker,
         "files": True,  # Local files always available (has default path)
+        "discord": True,  # Discord-specific tools available in Discord bot
     }
 
     # Google OAuth - check if credentials are configured
@@ -2331,7 +2332,11 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         user_id=user_id,
                         channel_id=channel_id,
                         platform="discord",
-                        extra={"channel": channel, "files_to_send": files_to_send},
+                        extra={
+                            "channel": channel,
+                            "files_to_send": files_to_send,
+                            "bot": self,  # For cross-channel messaging
+                        },
                     )
                     try:
                         return await registry.execute(tool_name, arguments, ctx)
