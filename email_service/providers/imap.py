@@ -164,21 +164,25 @@ class IMAPProvider(EmailProvider):
         return messages
 
     def _fetch_single_message(
-        self, num: bytes, use_uid: bool = False, include_body: bool = False
+        self, num: bytes | str, use_uid: bool = False, include_body: bool = False
     ) -> EmailMessage | None:
         """Fetch a single message by number or UID."""
         if not self._mail:
             return None
 
+        # Ensure num is a string for IMAP commands
+        num_str = num.decode() if isinstance(num, bytes) else str(num)
+
         try:
             # Include FLAGS to get read status
             fetch_parts = "(UID FLAGS RFC822)"
             if use_uid:
-                status, msg_data = self._mail.uid("fetch", num, fetch_parts)
+                status, msg_data = self._mail.uid("fetch", num_str, fetch_parts)
             else:
-                status, msg_data = self._mail.fetch(num, fetch_parts)
+                status, msg_data = self._mail.fetch(num_str, fetch_parts)
 
             if status != "OK" or not msg_data:
+                logger.debug(f"IMAP: Fetch failed for {num_str}: status={status}")
                 return None
 
             for response_part in msg_data:
@@ -206,7 +210,7 @@ class IMAPProvider(EmailProvider):
                         full_body, body_html = self._get_full_body(msg)
 
                     return EmailMessage(
-                        uid=uid or num.decode(),
+                        uid=uid or num_str,
                         from_addr=from_addr,
                         subject=subject,
                         snippet=snippet,
@@ -502,8 +506,8 @@ class IMAPProvider(EmailProvider):
                 logger.info("IMAP: Search returned no results (empty data[0])")
                 return messages
 
-            # Get UIDs (most recent first)
-            uids = data[0].split()
+            # Get UIDs (most recent first) - decode bytes to strings
+            uids = [uid.decode() if isinstance(uid, bytes) else uid for uid in data[0].split()]
             logger.info(f"IMAP: Found {len(uids)} message UIDs")
             uids.reverse()  # Most recent first
             uids = uids[:int(limit)]  # Limit results
