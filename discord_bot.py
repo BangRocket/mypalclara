@@ -59,6 +59,10 @@ from email_monitor import (
     email_check_loop,
     handle_email_tool,
 )
+from email_service.monitor import (
+    email_monitor_loop,
+    is_email_monitoring_enabled,
+)
 from organic_response_system import (
     is_enabled as proactive_enabled,
     on_user_message as proactive_on_user_message,
@@ -911,9 +915,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         monitor.start_time = datetime.now(UTC)
         monitor.update_guilds(self.guilds)
         monitor.log("system", "Bot", f"Logged in as {self.user}")
-        # Start email monitoring background task
+        # Start email monitoring background task (Clara's personal email)
         self.loop.create_task(email_check_loop(self))
         logger.info("Email monitoring task started")
+
+        # Start user email monitoring service (if enabled)
+        if is_email_monitoring_enabled():
+            self.loop.create_task(email_monitor_loop(self))
+            logger.info("User email monitoring service started")
 
         # Start proactive conversation engine (if enabled)
         if proactive_enabled():
