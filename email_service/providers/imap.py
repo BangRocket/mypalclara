@@ -447,14 +447,16 @@ class IMAPProvider(EmailProvider):
 
         try:
             # Select folder (may need quoting for folders with spaces)
-            status, data = self._mail.select(f'"{folder}"' if " " in folder else folder)
+            folder_arg = f'"{folder}"' if " " in folder else folder
+            logger.info(f"IMAP: Selecting folder '{folder_arg}'")
+            status, data = self._mail.select(folder_arg)
+
             if status != "OK":
-                logger.error(f"Failed to select folder '{folder}': {data}")
+                logger.error(f"IMAP: Failed to select folder '{folder}': {data}")
                 return messages
 
-            logger.debug(
-                f"Selected folder '{folder}', {data[0].decode() if data else 0} messages"
-            )
+            msg_count = data[0].decode() if data and data[0] else "0"
+            logger.info(f"IMAP: Folder '{folder}' selected, {msg_count} messages total")
 
             # Build IMAP search criteria
             criteria = []
@@ -487,15 +489,22 @@ class IMAPProvider(EmailProvider):
 
             # Default to ALL if no criteria
             search_str = " ".join(criteria) if criteria else "ALL"
-            logger.debug(f"IMAP search: {search_str}")
+            logger.info(f"IMAP: Search criteria: {search_str}")
 
             status, data = self._mail.uid("search", None, search_str)
+            logger.info(f"IMAP: Search response - status={status}, data={data}")
 
-            if status != "OK" or not data[0]:
+            if status != "OK":
+                logger.warning(f"IMAP: Search failed with status {status}")
+                return messages
+
+            if not data[0]:
+                logger.info("IMAP: Search returned no results (empty data[0])")
                 return messages
 
             # Get UIDs (most recent first)
             uids = data[0].split()
+            logger.info(f"IMAP: Found {len(uids)} message UIDs")
             uids.reverse()  # Most recent first
             uids = uids[:int(limit)]  # Limit results
 
@@ -506,9 +515,13 @@ class IMAPProvider(EmailProvider):
                     )
                     if msg:
                         messages.append(msg)
+                    else:
+                        logger.warning(f"IMAP: Failed to fetch message UID {uid}")
                 except Exception as e:
-                    logger.debug(f"Error fetching message {uid}: {e}")
+                    logger.warning(f"IMAP: Error fetching message {uid}: {e}")
                     continue
+
+            logger.info(f"IMAP: Successfully fetched {len(messages)} of {len(uids)} messages")
 
         except Exception as e:
             logger.error(f"IMAP search error: {e}")
