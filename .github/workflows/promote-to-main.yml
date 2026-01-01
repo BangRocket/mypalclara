@@ -1,0 +1,84 @@
+name: Promote Stage to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "promote" to confirm promotion to main'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    name: Validate Promotion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        if: github.event.inputs.confirm != 'promote'
+        run: |
+          echo "::error::You must type 'promote' to confirm"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check branch is stage
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/stage" ]; then
+            echo "::error::This workflow must be run from the stage branch"
+            exit 1
+          fi
+
+      - name: Show commits to be promoted
+        run: |
+          echo "## Commits to be promoted to main:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          git log origin/main..origin/stage --oneline >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  promote:
+    name: Promote to Main
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --base main --head stage --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists, merging..."
+            gh pr merge $EXISTING_PR --merge --admin
+          else
+            echo "Creating new PR..."
+            gh pr create \
+              --base main \
+              --head stage \
+              --title "Promote stage to main" \
+              --body "Automated promotion from stage to main triggered by @${{ github.actor }}"
+
+            # Get the new PR number and merge
+            NEW_PR=$(gh pr list --base main --head stage --json number --jq '.[0].number')
+            gh pr merge $NEW_PR --merge --admin
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Promotion Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Stage has been promoted to main." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next step: Promote main to prod when ready." >> $GITHUB_STEP_SUMMARY
