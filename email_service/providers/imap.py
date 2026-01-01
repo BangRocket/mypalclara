@@ -176,20 +176,33 @@ class IMAPProvider(EmailProvider):
         try:
             # Include FLAGS to get read status
             fetch_parts = "(UID FLAGS RFC822)"
+            logger.info(f"IMAP: Fetching {num_str} use_uid={use_uid} parts={fetch_parts}")
+
             if use_uid:
                 status, msg_data = self._mail.uid("fetch", num_str, fetch_parts)
             else:
                 status, msg_data = self._mail.fetch(num_str, fetch_parts)
 
-            if status != "OK" or not msg_data:
-                logger.debug(f"IMAP: Fetch failed for {num_str}: status={status}")
+            logger.info(f"IMAP: Fetch response status={status}, msg_data type={type(msg_data)}, len={len(msg_data) if msg_data else 0}")
+
+            if status != "OK":
+                logger.warning(f"IMAP: Fetch failed for {num_str}: status={status}, data={msg_data}")
                 return None
+
+            if not msg_data or msg_data == [None]:
+                logger.warning(f"IMAP: Fetch returned empty/None data for {num_str}")
+                return None
+
+            # Log what we got back
+            for i, part in enumerate(msg_data):
+                logger.debug(f"IMAP: msg_data[{i}] type={type(part)}, is_tuple={isinstance(part, tuple)}")
 
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
                     # Extract UID and flags from response
                     uid = self._extract_uid(response_part[0])
                     is_read = self._extract_seen_flag(response_part[0])
+                    logger.info(f"IMAP: Parsed message uid={uid}, is_read={is_read}")
 
                     # Parse email
                     msg = email.message_from_bytes(response_part[1])
@@ -221,8 +234,11 @@ class IMAPProvider(EmailProvider):
                         body_html=body_html,
                     )
 
+            # If we get here, no tuple was found in msg_data
+            logger.warning(f"IMAP: No tuple found in msg_data for {num_str}, parts: {[type(p) for p in msg_data]}")
+
         except Exception as e:
-            logger.debug(f"Error parsing message: {e}")
+            logger.error(f"IMAP: Exception parsing message {num_str}: {e}", exc_info=True)
 
         return None
 
