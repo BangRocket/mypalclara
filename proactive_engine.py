@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.logging import get_logger
+from db.channel_config import is_ors_enabled
 from db.connection import SessionLocal
 from db.models import (
     ProactiveMessage,
@@ -474,6 +475,13 @@ async def execute_speak_decision(
         return False
 
     channel_id_str = patterns.last_interaction_channel
+
+    # Check if ORS is enabled for this channel (only for guild channels)
+    if channel_id_str.startswith("discord-channel-"):
+        numeric_id = channel_id_str.replace("discord-channel-", "")
+        if not is_ors_enabled(numeric_id):
+            logger.debug(f"ORS disabled for channel {numeric_id}, skipping proactive message")
+            return False
 
     # Extract numeric channel ID
     if channel_id_str.startswith("discord-channel-"):
