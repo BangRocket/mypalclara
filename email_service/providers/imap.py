@@ -147,7 +147,7 @@ class IMAPProvider(EmailProvider):
             if status != "OK" or not data[0]:
                 return messages
 
-            msg_nums = data[0].split()[-limit:]  # Limit results
+            msg_nums = data[0].split()[-int(limit):]  # Limit results
 
             for num in msg_nums:
                 try:
@@ -497,7 +497,7 @@ class IMAPProvider(EmailProvider):
             # Get UIDs (most recent first)
             uids = data[0].split()
             uids.reverse()  # Most recent first
-            uids = uids[:limit]  # Limit results
+            uids = uids[:int(limit)]  # Limit results
 
             for uid in uids:
                 try:
