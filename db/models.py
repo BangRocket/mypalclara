@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 
 def utcnow():
@@ -11,11 +11,11 @@ def utcnow():
 
 from sqlalchemy import (
     Column,
-    String,
     DateTime,
-    Text,
     ForeignKey,
     Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -77,6 +77,20 @@ class ChannelSummary(Base):
     summary = Column(Text, default="")
     summary_cutoff_at = Column(DateTime, nullable=True)  # newest summarized msg ts
     last_updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ChannelConfig(Base):
+    """Per-channel configuration for Clara's behavior."""
+
+    __tablename__ = "channel_configs"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    channel_id = Column(String, nullable=False, unique=True, index=True)
+    guild_id = Column(String, nullable=False, index=True)  # Discord server ID
+    mode = Column(String, default="mention", nullable=False)  # active, mention, off
+    configured_by = Column(String, nullable=True)  # User ID who set this
+    configured_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class LogEntry(Base):

@@ -55,6 +55,14 @@ from clara_core import (
 )
 from config.logging import get_logger, init_logging, set_db_session_factory
 from db import SessionLocal
+from db.channel_config import (
+    CLARA_ADMIN_ROLE,
+    get_channel_mode,
+    get_guild_channels,
+    is_ors_enabled,
+    set_channel_mode,
+    should_respond_to_message,
+)
 from db.models import ChannelSummary, Project, Session
 from email_monitor import (
     email_check_loop,
@@ -66,7 +74,11 @@ from email_service.monitor import (
 )
 from organic_response_system import (
     is_enabled as proactive_enabled,
+)
+from organic_response_system import (
     on_user_message as proactive_on_user_message,
+)
+from organic_response_system import (
     ors_main_loop as proactive_check_loop,
 )
 from sandbox.manager import get_sandbox_manager
@@ -466,6 +478,123 @@ def is_stop_phrase(content: str) -> bool:
     # Remove bot mentions for comparison
     content_lower = re.sub(r"<@!?\d+>", "", content_lower).strip()
     return content_lower in STOP_PHRASES
+
+
+def has_clara_admin_permission(member: discord.Member) -> bool:
+    """Check if a member has Clara-Admin permissions.
+
+    Returns True if member:
+    - Has a role matching CLARA_ADMIN_ROLE name
+    - Has administrator permission
+    - Has manage_channels permission
+    """
+    if member.guild_permissions.administrator:
+        return True
+    if member.guild_permissions.manage_channels:
+        return True
+    for role in member.roles:
+        if role.name == CLARA_ADMIN_ROLE:
+            return True
+    return False
+
+
+async def handle_channel_command(message: DiscordMessage) -> bool:
+    """Handle /clara channel commands.
+
+    Returns True if a command was handled, False otherwise.
+    """
+    # Remove bot mention and clean content
+    content = re.sub(r"<@!?\d+>", "", message.content).strip().lower()
+
+    # Check for channel commands
+    if not content.startswith("channel "):
+        return False
+
+    # Must be in a guild
+    if not message.guild:
+        await message.reply("Channel commands only work in servers, not DMs.")
+        return True
+
+    # Check permission
+    if not isinstance(message.author, discord.Member):
+        return False
+
+    if not has_clara_admin_permission(message.author):
+        await message.reply(
+            f"You need the **{CLARA_ADMIN_ROLE}** role or admin permissions to configure channels.",
+            mention_author=False,
+        )
+        return True
+
+    parts = content.split()
+    if len(parts) < 2:
+        await message.reply(
+            "Usage: `@Clara channel set [active|mention|off]` or `@Clara channel list`",
+            mention_author=False,
+        )
+        return True
+
+    subcommand = parts[1]
+
+    if subcommand == "set" and len(parts) >= 3:
+        mode = parts[2]
+        if mode not in ("active", "mention", "off"):
+            await message.reply(
+                "Invalid mode. Use: `active`, `mention`, or `off`",
+                mention_author=False,
+            )
+            return True
+
+        set_channel_mode(
+            channel_id=str(message.channel.id),
+            guild_id=str(message.guild.id),
+            mode=mode,
+            configured_by=str(message.author.id),
+        )
+
+        mode_descriptions = {
+            "active": "I'll participate actively and may chime in organically.",
+            "mention": "I'll only respond when mentioned directly.",
+            "off": "I'll ignore this channel entirely.",
+        }
+        await message.reply(
+            f"Channel mode set to **{mode}**. {mode_descriptions[mode]}",
+            mention_author=False,
+        )
+        return True
+
+    elif subcommand == "list":
+        configs = get_guild_channels(str(message.guild.id))
+        if not configs:
+            await message.reply(
+                "No channels have been configured yet. Default mode is `mention`.",
+                mention_author=False,
+            )
+            return True
+
+        lines = ["**Channel Configurations:**"]
+        for cfg in configs:
+            lines.append(f"• <#{cfg.channel_id}>: `{cfg.mode}`")
+        await message.reply("\n".join(lines), mention_author=False)
+        return True
+
+    elif subcommand == "status":
+        mode = get_channel_mode(str(message.channel.id))
+        await message.reply(
+            f"This channel is set to **{mode}** mode.",
+            mention_author=False,
+        )
+        return True
+
+    else:
+        await message.reply(
+            "Usage:\n"
+            "• `@Clara channel set [active|mention|off]` - Configure this channel\n"
+            "• `@Clara channel list` - List all configured channels\n"
+            "• `@Clara channel status` - Show this channel's mode",
+            mention_author=False,
+        )
+        return True
 
 
 @dataclass
@@ -960,7 +1089,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         is_dm = message.guild is None
 
         # For DMs: always respond (no mention needed)
-        # For channels: require mention or reply
+        # For channels: require mention or reply, and check channel mode
         if not is_dm:
             is_mentioned = self.user.mentioned_in(message)
             is_reply_to_bot = (
@@ -970,6 +1099,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             )
 
             logger.debug(f"mentioned={is_mentioned}, reply_to_bot={is_reply_to_bot}")
+
+            # Check channel mode configuration
+            channel_id_str = str(message.channel.id)
+            if not should_respond_to_message(channel_id_str, is_mentioned or is_reply_to_bot):
+                logger.debug(f"Channel {channel_id_str} mode blocks this message")
+                return
 
             if not is_mentioned and not is_reply_to_bot:
                 return
@@ -1004,6 +1139,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             guild_name,
             channel_name,
         )
+
+        # Handle channel configuration commands (before regular message processing)
+        if not is_dm and await handle_channel_command(message):
+            return
 
         # Check for stop phrase - bypass queue and cancel running task
         if is_stop_phrase(message.content):
