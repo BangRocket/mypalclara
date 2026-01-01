@@ -66,7 +66,11 @@ from email_service.monitor import (
 )
 from organic_response_system import (
     is_enabled as proactive_enabled,
+)
+from organic_response_system import (
     on_user_message as proactive_on_user_message,
+)
+from organic_response_system import (
     ors_main_loop as proactive_check_loop,
 )
 from sandbox.manager import get_sandbox_manager

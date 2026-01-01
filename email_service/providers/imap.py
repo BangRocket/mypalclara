@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from imap_tools import MailBox, AND, MailboxLoginError
+from imap_tools import AND, MailBox, MailboxLoginError
 
 from config.logging import get_logger
 from email_service.credentials import decrypt_credential

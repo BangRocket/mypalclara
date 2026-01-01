@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 
 def utcnow():
@@ -11,11 +11,11 @@ def utcnow():
 
 from sqlalchemy import (
     Column,
-    String,
     DateTime,
-    Text,
     ForeignKey,
     Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
 

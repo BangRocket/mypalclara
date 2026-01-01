@@ -8,20 +8,20 @@ Provides:
 """
 
 import asyncio
-import imaplib
 import email
+import imaplib
 import json
+import os
 import re
 import smtplib
-from email.header import decode_header
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from datetime import datetime, UTC
 from dataclasses import dataclass
-import os
+from datetime import UTC, datetime
+from email.header import decode_header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
-from config.bot import BOT_NAME
 from clara_core import make_llm
+from config.bot import BOT_NAME
 
 # Email configuration - loaded from environment or hardcoded for now
 EMAIL_ADDRESS = os.environ.get("CLARA_EMAIL_ADDRESS")
@@ -644,11 +644,11 @@ async def email_check_loop(bot):
 
     monitor = get_email_monitor()
     print(f"[email] Starting email monitor for {EMAIL_ADDRESS}")
-    print(f"[email] Auto-respond enabled - Clara will evaluate and respond to emails")
+    print("[email] Auto-respond enabled - Clara will evaluate and respond to emails")
     if NOTIFY_ENABLED:
         print(f"[email] Discord notifications ON - will notify user ID {NOTIFY_USER_ID}")
     else:
-        print(f"[email] Discord notifications OFF (set CLARA_EMAIL_NOTIFY=true to enable)")
+        print("[email] Discord notifications OFF (set CLARA_EMAIL_NOTIFY=true to enable)")
 
     while not bot.is_closed():
         try:

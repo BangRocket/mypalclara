@@ -12,8 +12,6 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
-
-from config import API_KEY, MAX_CONTAINERS, validate_config
 from models import (
     CreateSandboxRequest,
     ExecuteCodeRequest,
@@ -28,6 +26,8 @@ from models import (
     WriteFileRequest,
 )
 from sandbox_manager import ExecutionResult, get_manager
+
+from config import API_KEY, MAX_CONTAINERS, validate_config
 
 __version__ = "1.0.0"
 

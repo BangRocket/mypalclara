@@ -10,7 +10,6 @@ import json
 import os
 from typing import Any
 
-from ._base import ToolContext, ToolDef
 from db.connection import SessionLocal
 from db.models import EmailAccount, EmailAlert, EmailRule
 from email_service.credentials import encrypt_credential, is_encryption_configured
@@ -23,6 +22,8 @@ from email_service.presets import (
 from email_service.providers.gmail import GmailProvider
 from email_service.providers.imap import IMAPProvider
 from tools.google_oauth import is_user_connected
+
+from ._base import ToolContext, ToolDef
 
 # API service base URL for OAuth redirects
 CLARA_API_URL = os.getenv("CLARA_API_URL", "")
@@ -117,8 +118,9 @@ async def email_connect_gmail(args: dict[str, Any], ctx: ToolContext) -> str:
         )
 
     # Get email address from profile
-    from tools.google_oauth import get_valid_token
     import httpx
+
+    from tools.google_oauth import get_valid_token
 
     token = await get_valid_token(user_id)
     async with httpx.AsyncClient() as client:
@@ -738,7 +740,7 @@ async def email_list_folders(args: dict[str, Any], ctx: ToolContext) -> str:
             lines.append(f"- `{folder}`")
 
         lines.append(
-            f'\nUse `email_list_inbox folder="<name>"` to list emails in a specific folder.'
+            '\nUse `email_list_inbox folder="<name>"` to list emails in a specific folder.'
         )
         return "\n".join(lines)
 
@@ -817,6 +819,7 @@ async def email_list_inbox(args: dict[str, Any], ctx: ToolContext) -> str:
 async def email_search(args: dict[str, Any], ctx: ToolContext) -> str:
     """Search emails with filters."""
     from datetime import datetime
+
     from config.logging import get_logger
     logger = get_logger("email.search")
 
