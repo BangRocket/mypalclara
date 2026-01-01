@@ -2,13 +2,16 @@
 
 The ToolLoader discovers, loads, and manages tool modules from the tools/ directory.
 It supports hot-reloading of modules when files are modified.
+
+Supports both:
+- Single file modules: tools/example.py
+- Package modules: tools/example/__init__.py
 """
 
 from __future__ import annotations
 
 import asyncio
 import importlib.util
-import os
 import sys
 import time
 from pathlib import Path
@@ -23,12 +26,15 @@ class ToolLoader:
     """Discovers, loads, and hot-reloads tool modules.
 
     Tool modules are Python files in the tools/ directory that don't start
-    with an underscore. Each module must export:
+    with an underscore, OR subdirectories containing an __init__.py file.
+
+    Each module must export:
     - MODULE_NAME: str - Unique identifier
     - MODULE_VERSION: str - Version for reload detection
     - TOOLS: list[ToolDef] - Tool definitions
 
     Optional exports:
+    - SYSTEM_PROMPT: str - Added to system context
     - initialize() -> None - Called after loading
     - cleanup() -> None - Called before unloading
 
@@ -50,17 +56,20 @@ class ToolLoader:
         self._modules: dict[str, ModuleType] = {}
         self._module_versions: dict[str, str] = {}
         self._module_mtimes: dict[str, float] = {}
+        self._module_paths: dict[str, Path] = {}  # Track actual file/dir path
         self._observer: Any = None
         self._watching = False
         self._reload_callbacks: list[callable] = []
 
     def discover_modules(self) -> list[str]:
-        """Find all tool module files.
+        """Find all tool module files and packages.
 
         Returns:
-            List of module names (without .py extension)
+            List of module names (without .py extension for files)
         """
         modules = []
+
+        # Discover single-file modules (tools/*.py)
         for f in self.tools_dir.glob("*.py"):
             # Skip private modules (starting with _)
             if f.name.startswith("_"):
@@ -69,7 +78,68 @@ class ToolLoader:
             if f.name.startswith("__"):
                 continue
             modules.append(f.stem)
+
+        # Discover package modules (tools/*/__init__.py)
+        for d in self.tools_dir.iterdir():
+            if not d.is_dir():
+                continue
+            # Skip private/hidden directories
+            if d.name.startswith("_") or d.name.startswith("."):
+                continue
+            # Skip __pycache__
+            if d.name == "__pycache__":
+                continue
+            # Check for __init__.py
+            init_file = d / "__init__.py"
+            if init_file.exists():
+                # Don't add if there's already a .py file with same name
+                if d.name not in modules:
+                    modules.append(d.name)
+
         return sorted(modules)
+
+    def _get_module_path(self, module_name: str) -> Path | None:
+        """Get the path to a module file or package.
+
+        Args:
+            module_name: Name of the module
+
+        Returns:
+            Path to .py file or package directory, or None if not found
+        """
+        # Check for single-file module first
+        file_path = self.tools_dir / f"{module_name}.py"
+        if file_path.exists():
+            return file_path
+
+        # Check for package module
+        pkg_path = self.tools_dir / module_name
+        if pkg_path.is_dir() and (pkg_path / "__init__.py").exists():
+            return pkg_path
+
+        return None
+
+    def _get_module_mtime(self, module_path: Path) -> float:
+        """Get modification time for a module.
+
+        For packages, returns the most recent mtime of any .py file in the package.
+
+        Args:
+            module_path: Path to module file or package directory
+
+        Returns:
+            Most recent modification timestamp
+        """
+        if module_path.is_file():
+            return module_path.stat().st_mtime
+
+        # For packages, check all .py files
+        max_mtime = 0.0
+        for py_file in module_path.rglob("*.py"):
+            mtime = py_file.stat().st_mtime
+            if mtime > max_mtime:
+                max_mtime = mtime
+        return max_mtime
 
     async def load_module(self, module_name: str) -> bool:
         """Load or reload a single tool module.
@@ -80,13 +150,13 @@ class ToolLoader:
         Returns:
             True if the module was loaded successfully
         """
-        module_path = self.tools_dir / f"{module_name}.py"
-        if not module_path.exists():
-            print(f"[tools] Module not found: {module_path}")
+        module_path = self._get_module_path(module_name)
+        if module_path is None:
+            print(f"[tools] Module not found: {module_name}")
             return False
 
         # Get file modification time
-        mtime = module_path.stat().st_mtime
+        mtime = self._get_module_mtime(module_path)
 
         # Check if we need to reload
         if module_name in self._modules:
@@ -128,9 +198,21 @@ class ToolLoader:
                 else:
                     init_fn()
 
-            # Register tools
+            # Register tools (support both ToolDef objects and dict format)
+            from ._base import ToolDef
+
             tools = module.TOOLS
             for tool_def in tools:
+                # Convert dict format to ToolDef if needed
+                if isinstance(tool_def, dict):
+                    tool_def = ToolDef(
+                        name=tool_def["name"],
+                        description=tool_def["description"],
+                        parameters=tool_def.get("parameters", {}),
+                        handler=tool_def.get("function") or tool_def.get("handler"),
+                        platforms=tool_def.get("platforms"),
+                        requires=tool_def.get("requires", []),
+                    )
                 self.registry.register(tool_def, source_module=mod_name)
 
             # Register system prompt only if module has active tools
@@ -285,6 +367,30 @@ class ToolLoader:
                 handler_self._debounce: dict[str, float] = {}
                 handler_self._debounce_delay = 0.5  # seconds
 
+            def _get_module_name(handler_self, path: Path) -> str | None:
+                """Extract module name from a file path.
+
+                For single-file modules: tools/foo.py -> foo
+                For package modules: tools/git/branch.py -> git
+                """
+                # Get path relative to tools dir
+                try:
+                    rel_path = path.relative_to(handler_self.loader.tools_dir)
+                except ValueError:
+                    return None
+
+                parts = rel_path.parts
+                if not parts:
+                    return None
+
+                # First part is the module name (file stem or package dir)
+                if len(parts) == 1:
+                    # Single file: foo.py -> foo
+                    return path.stem
+                else:
+                    # Package: git/branch.py -> git
+                    return parts[0]
+
             def on_modified(handler_self, event):
                 if event.is_directory:
                     return
@@ -295,7 +401,10 @@ class ToolLoader:
                 if path.name.startswith("_"):
                     return
 
-                module_name = path.stem
+                module_name = handler_self._get_module_name(path)
+                if not module_name:
+                    return
+
                 now = time.time()
 
                 # Debounce rapid changes
@@ -313,7 +422,7 @@ class ToolLoader:
 
         handler = ToolFileHandler(self)
         self._observer = Observer()
-        self._observer.schedule(handler, str(self.tools_dir), recursive=False)
+        self._observer.schedule(handler, str(self.tools_dir), recursive=True)
         self._observer.start()
         self._watching = True
         print(f"[tools] Watching {self.tools_dir} for changes")
