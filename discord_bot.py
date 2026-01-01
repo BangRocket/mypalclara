@@ -46,6 +46,7 @@ from clara_core import (
     MemoryManager,
     ModelTier,
     anthropic_to_openai_response,
+    generate_tool_description,
     get_model_for_tier,
     init_platform,
     make_llm,
@@ -58,6 +59,10 @@ from db.models import ChannelSummary, Project, Session
 from email_monitor import (
     email_check_loop,
     handle_email_tool,
+)
+from email_service.monitor import (
+    email_monitor_loop,
+    is_email_monitoring_enabled,
 )
 from organic_response_system import (
     is_enabled as proactive_enabled,
@@ -911,9 +916,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         monitor.start_time = datetime.now(UTC)
         monitor.update_guilds(self.guilds)
         monitor.log("system", "Bot", f"Logged in as {self.user}")
-        # Start email monitoring background task
+        # Start email monitoring background task (Clara's personal email)
         self.loop.create_task(email_check_loop(self))
         logger.info("Email monitoring task started")
+
+        # Start user email monitoring service (if enabled)
+        if is_email_monitoring_enabled():
+            self.loop.create_task(email_monitor_loop(self))
+            logger.info("User email monitoring service started")
 
         # Start proactive conversation engine (if enabled)
         if proactive_enabled():
@@ -2059,11 +2069,22 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Send status message as an interrupt (stays in chat)
                 total_tools_run += 1
                 step_label = f" (step {total_tools_run})" if total_tools_run > 1 else ""
+
+                # Generate Haiku description for tools without custom status
+                haiku_desc = None
                 try:
-                    await message.channel.send(
-                        f"-# {status_text}{step_label}",
-                        silent=True,
-                    )
+                    haiku_desc = await generate_tool_description(tool_name, arguments)
+                except Exception:
+                    pass  # Silently fail - description is optional
+
+                # Build final status message
+                if haiku_desc:
+                    status_msg = f"-# {status_text}{step_label}\n-# ↳ *{haiku_desc}*"
+                else:
+                    status_msg = f"-# {status_text}{step_label}"
+
+                try:
+                    await message.channel.send(status_msg, silent=True)
                 except Exception as e:
                     logger.debug(f" Failed to send status: {e}")
 
