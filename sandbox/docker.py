@@ -45,6 +45,7 @@ DOCKER_MEMORY = os.getenv("DOCKER_SANDBOX_MEMORY", "512m")
 DOCKER_CPU = float(os.getenv("DOCKER_SANDBOX_CPU", "1.0"))
 SANDBOX_IDLE_TIMEOUT = DOCKER_TIMEOUT
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 
 # Tool definitions for OpenAI-compatible APIs
@@ -358,6 +359,12 @@ class DockerSandboxManager:
                 except docker.errors.NotFound:
                     pass
 
+                # Build environment variables for sandbox
+                sandbox_env = {}
+                if GITHUB_TOKEN:
+                    sandbox_env["GITHUB_TOKEN"] = GITHUB_TOKEN
+                    sandbox_env["GH_TOKEN"] = GITHUB_TOKEN  # For gh CLI
+
                 loop = asyncio.get_event_loop()
                 container = await loop.run_in_executor(
                     None,
@@ -371,6 +378,7 @@ class DockerSandboxManager:
                         cpu_quota=int(DOCKER_CPU * 100000),
                         working_dir="/home/user",
                         network_mode="bridge",  # Internet access
+                        environment=sandbox_env if sandbox_env else None,
                     ),
                 )
 
@@ -379,6 +387,22 @@ class DockerSandboxManager:
                     None,
                     lambda: container.exec_run("mkdir -p /home/user", user="root"),
                 )
+
+                # Configure git to use GitHub token for authentication
+                if GITHUB_TOKEN:
+                    git_config_cmds = [
+                        "git config --global credential.helper store",
+                        "git config --global user.email 'clara@bot.local'",
+                        "git config --global user.name 'Clara Bot'",
+                        f'echo "https://x-access-token:{GITHUB_TOKEN}@github.com" > ~/.git-credentials',
+                    ]
+                    for cmd in git_config_cmds:
+                        await loop.run_in_executor(
+                            None,
+                            lambda c=cmd: container.exec_run(
+                                ["sh", "-c", c], user="root"
+                            ),
+                        )
 
                 session = ContainerSession(
                     container=container,
