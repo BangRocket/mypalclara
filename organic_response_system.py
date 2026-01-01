@@ -1076,6 +1076,56 @@ def get_cross_channel_activity(user_id: str) -> dict:
     }
 
 
+def should_reconsider(
+    user_id: str, last_decision_time: datetime | None
+) -> tuple[bool, str]:
+    """Lightweight check if context has changed enough to warrant early re-evaluation.
+
+    Called on loop iterations where user is not due for full processing.
+    This enables the "think quietly" behavior even when waiting.
+
+    Returns:
+        (should_reconsider, reason) - True if early processing should happen
+    """
+    if not last_decision_time:
+        return True, "no prior decision"
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    minutes_since_decision = (now - last_decision_time).total_seconds() / 60
+
+    # Check 1: New channel activity since last decision
+    activity = get_cross_channel_activity(user_id)
+    if activity["recent_channels"]:
+        most_recent = activity["recent_channels"][0]
+        if most_recent["minutes_ago"] < minutes_since_decision:
+            # Activity happened after our last decision
+            return True, f"new activity in channel {most_recent['minutes_ago']}m ago"
+
+    # Check 2: Notes that are about to expire (within 30 minutes)
+    with SessionLocal() as session:
+        expiring_soon = (
+            session.query(ProactiveNote)
+            .filter(
+                ProactiveNote.user_id == user_id,
+                ProactiveNote.surfaced == "false",
+                ProactiveNote.archived == "false",
+                ProactiveNote.expires_at.isnot(None),
+                ProactiveNote.expires_at <= now + timedelta(minutes=30),
+                ProactiveNote.expires_at > now,
+            )
+            .count()
+        )
+        if expiring_soon > 0:
+            return True, f"{expiring_soon} note(s) expiring within 30m"
+
+    # Check 3: If we've been waiting a long time (>30 min) with WAIT state,
+    # do a lightweight re-evaluation to stay present
+    if minutes_since_decision > 30:
+        return True, "periodic re-evaluation (>30m since last decision)"
+
+    return False, "no significant changes"
+
+
 def track_channel_activity(user_id: str, channel_id: str):
     """Track a user's activity in a specific channel."""
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -1430,86 +1480,97 @@ async def ors_main_loop(
     """
     logger.info("ORS main loop starting")
 
-    try:
-        # Track next check time per user
-        next_checks: dict[str, datetime] = {}
+    # Track next check time per user
+    next_checks: dict[str, datetime] = {}
 
-        # Track last maintenance time
-        last_maintenance = datetime.now(UTC).replace(tzinfo=None)
+    # Track last decision time per user (for reconsideration checks)
+    last_decisions: dict[str, datetime] = {}
 
-        logger.info("ORS entering main loop")
+    # Track last maintenance time
+    last_maintenance = datetime.now(UTC).replace(tzinfo=None)
 
-        while True:
-            try:
-                now = datetime.now(UTC).replace(tzinfo=None)
-                logger.info(f"ORS loop iteration at {now.isoformat()}")
+    logger.info("ORS entering main loop")
 
-                # Get active users
-                users = get_active_users()
-                logger.info(f"ORS found {len(users)} active users")
-                if not users:
-                    logger.info("No active users, sleeping 15 minutes")
-                    await asyncio.sleep(900)
-                    continue
+    while True:
+        try:
+            now = datetime.now(UTC).replace(tzinfo=None)
+            logger.info(f"ORS loop iteration at {now.isoformat()}")
 
-                # Run maintenance tasks periodically (every 10 minutes)
-                if (now - last_maintenance).total_seconds() > 600:
-                    # Decay old note relevance
-                    decay_note_relevance()
+            # Get active users
+            users = get_active_users()
+            logger.info(f"ORS found {len(users)} active users")
+            if not users:
+                logger.info("No active users, sleeping 15 minutes")
+                await asyncio.sleep(900)
+                continue
 
-                    # Archive expired notes
-                    archive_expired_notes()
+            # Run maintenance tasks periodically (every 10 minutes)
+            if (now - last_maintenance).total_seconds() > 600:
+                # Decay old note relevance
+                decay_note_relevance()
 
-                    # Check for idle conversations and extract info
-                    await check_idle_conversations(llm_call, get_recent_messages)
+                # Archive expired notes
+                archive_expired_notes()
 
-                    last_maintenance = now
+                # Check for idle conversations and extract info
+                await check_idle_conversations(llm_call, get_recent_messages)
 
-                # Process users whose next check time has passed
-                processed_count = 0
-                for user_id in users:
-                    next_check = next_checks.get(user_id)
+                last_maintenance = now
 
-                    if next_check and now < next_check:
-                        continue  # Not time yet for this user
+            # Process users - either full processing or reconsideration check
+            processed_count = 0
+            reconsidered_count = 0
+            for user_id in users:
+                next_check = next_checks.get(user_id)
 
-                    try:
-                        logger.info(f"ORS processing user: {user_id}")
-                        minutes_until_next = await process_user(user_id, client, llm_call)
-                        next_checks[user_id] = now + timedelta(minutes=minutes_until_next)
-                        processed_count += 1
-                        logger.info(
-                            f"ORS processed {user_id}, next check in {minutes_until_next}m"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Error processing user {user_id}: {e}", exc_info=True
-                        )
-                        next_checks[user_id] = now + timedelta(minutes=30)
+                if next_check and now < next_check:
+                    # Not time for full processing, but check if we should reconsider
+                    should_reeval, reason = should_reconsider(
+                        user_id, last_decisions.get(user_id)
+                    )
+                    if should_reeval:
+                        logger.debug(f"ORS reconsidering {user_id}: {reason}")
+                        reconsidered_count += 1
+                        # Fall through to full processing
+                    else:
+                        continue  # Still waiting, no significant changes
 
-                    # Small delay between users to avoid rate limits
-                    await asyncio.sleep(2)
+                try:
+                    logger.info(f"ORS processing user: {user_id}")
+                    minutes_until_next = await process_user(user_id, client, llm_call)
+                    next_checks[user_id] = now + timedelta(minutes=minutes_until_next)
+                    last_decisions[user_id] = now  # Track when we made this decision
+                    processed_count += 1
+                    logger.info(
+                        f"ORS processed {user_id}, next check in {minutes_until_next}m"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error processing user {user_id}: {e}", exc_info=True
+                    )
+                    next_checks[user_id] = now + timedelta(minutes=30)
 
-                logger.info(
-                    f"ORS processed {processed_count}/{len(users)} users this iteration"
-                )
+                # Small delay between users to avoid rate limits
+                await asyncio.sleep(2)
 
-                # Sleep until next user needs checking (or 5 min max)
-                if next_checks:
-                    soonest = min(next_checks.values())
-                    sleep_seconds = max(60, min(300, (soonest - now).total_seconds()))
-                else:
-                    sleep_seconds = 300
+            logger.info(
+                f"ORS processed {processed_count}/{len(users)} users this iteration "
+                f"(reconsidered: {reconsidered_count})"
+            )
 
-                logger.info(f"ORS sleeping {sleep_seconds / 60:.1f} minutes")
-                await asyncio.sleep(sleep_seconds)
+            # Sleep until next user needs checking (or 5 min max)
+            if next_checks:
+                soonest = min(next_checks.values())
+                sleep_seconds = max(60, min(300, (soonest - now).total_seconds()))
+            else:
+                sleep_seconds = 300
 
-            except Exception as e:
-                logger.error(f"ORS loop error: {e}", exc_info=True)
-                await asyncio.sleep(60)
+            logger.info(f"ORS sleeping {sleep_seconds / 60:.1f} minutes")
+            await asyncio.sleep(sleep_seconds)
 
-    except Exception as e:
-        logger.error(f"ORS fatal error - loop exiting: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"ORS loop error: {e}", exc_info=True)
+            await asyncio.sleep(60)
 
 
 # =============================================================================
