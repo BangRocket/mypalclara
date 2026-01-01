@@ -34,6 +34,7 @@ COPY db/ ./db/
 COPY sandbox/ ./sandbox/
 COPY storage/ ./storage/
 COPY tools/ ./tools/
+COPY email_service/ ./email_service/
 COPY vendor/ ./vendor/
 COPY personalities/ ./personalities/
 COPY scripts/ ./scripts/
