@@ -1,0 +1,99 @@
+name: Promote Main to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm deployment to production'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    name: Validate Production Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        if: github.event.inputs.confirm != 'deploy'
+        run: |
+          echo "::error::You must type 'deploy' to confirm production deployment"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check branch is main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::This workflow must be run from the main branch"
+            exit 1
+          fi
+
+      - name: Show commits to be deployed
+        run: |
+          echo "## Commits to be deployed to production:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          git log origin/prod..origin/main --oneline >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  approve:
+    name: Production Approval
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Approval received
+        run: echo "Production deployment approved by @${{ github.actor }}"
+
+  deploy:
+    name: Deploy to Production
+    needs: approve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Promote to prod
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --base prod --head main --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists, merging..."
+            gh pr merge $EXISTING_PR --merge --admin
+          else
+            echo "Creating new PR..."
+            gh pr create \
+              --base prod \
+              --head main \
+              --title "Deploy to production" \
+              --body "Production deployment triggered by @${{ github.actor }}"
+
+            # Get the new PR number and merge
+            NEW_PR=$(gh pr list --base prod --head main --json number --jq '.[0].number')
+            gh pr merge $NEW_PR --merge --admin
+          fi
+
+      - name: Create release tag
+        run: |
+          VERSION="v$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)"
+          git tag -a $VERSION -m "Production release $VERSION"
+          git push origin $VERSION
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "Tagged as: \`$VERSION\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Main has been deployed to production." >> $GITHUB_STEP_SUMMARY
