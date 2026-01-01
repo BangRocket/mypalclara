@@ -230,6 +230,12 @@ class IMAPProvider(EmailProvider):
         """Synchronous email search."""
         messages = []
 
+        # Log all search params
+        logger.info(
+            f"IMAP: Search params - from_addr={from_addr!r}, subject={subject!r}, "
+            f"query={query!r}, unread_only={unread_only}, limit={limit}, folder={folder}"
+        )
+
         try:
             with self._get_mailbox().login(self._username, self._password) as mailbox:
                 logger.info(f"IMAP: Selecting folder '{folder}'")
@@ -258,12 +264,13 @@ class IMAPProvider(EmailProvider):
                     criteria_kwargs["text"] = query
 
                 # Build criteria - use ALL if no filters
+                logger.info(f"IMAP: criteria_kwargs = {criteria_kwargs}")
                 if criteria_kwargs:
                     criteria = AND(**criteria_kwargs)
                 else:
                     criteria = AND(all=True)
 
-                logger.info(f"IMAP: Search criteria: {criteria}")
+                logger.info(f"IMAP: Final search criteria: {criteria}")
 
                 # Fetch messages
                 count = 0
