@@ -241,28 +241,25 @@ class IMAPProvider(EmailProvider):
                     f"IMAP: Folder '{folder}' has {status.get('MESSAGES', '?')} messages"
                 )
 
-                # Build search criteria
-                criteria_parts = []
+                # Build search criteria as kwargs for AND()
+                criteria_kwargs = {}
 
                 if unread_only:
-                    criteria_parts.append(AND(seen=False))
+                    criteria_kwargs["seen"] = False
                 if from_addr:
-                    criteria_parts.append(AND(from_=from_addr))
+                    criteria_kwargs["from_"] = from_addr
                 if subject:
-                    criteria_parts.append(AND(subject=subject))
+                    criteria_kwargs["subject"] = subject
                 if after:
-                    criteria_parts.append(AND(date_gte=after.date()))
+                    criteria_kwargs["date_gte"] = after.date()
                 if before:
-                    criteria_parts.append(AND(date_lt=before.date()))
+                    criteria_kwargs["date_lt"] = before.date()
                 if query:
-                    criteria_parts.append(AND(text=query))
+                    criteria_kwargs["text"] = query
 
-                # Combine criteria or use ALL
-                if criteria_parts:
-                    # imap-tools AND combines multiple conditions
-                    criteria = criteria_parts[0]
-                    for part in criteria_parts[1:]:
-                        criteria = AND(criteria, part)
+                # Build criteria - use ALL if no filters
+                if criteria_kwargs:
+                    criteria = AND(**criteria_kwargs)
                 else:
                     criteria = AND(all=True)
 
