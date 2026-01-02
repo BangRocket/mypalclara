@@ -884,16 +884,91 @@ class ClaraDiscordBot(discord.Client):
         llm = make_llm()
         return llm(messages)
 
+    def _format_time_gap(self, last_time: datetime | None) -> str | None:
+        """Format time gap since last message in human-readable form.
+
+        Returns None if gap is < 5 minutes (not worth mentioning).
+        """
+        if last_time is None:
+            return None
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        # Handle timezone-aware datetimes
+        if last_time.tzinfo is not None:
+            last_time = last_time.replace(tzinfo=None)
+
+        delta = now - last_time
+        total_seconds = delta.total_seconds()
+
+        if total_seconds < 300:  # < 5 min, not worth mentioning
+            return None
+        elif total_seconds < 3600:  # < 1 hour
+            minutes = int(total_seconds // 60)
+            return f"{minutes} minutes ago"
+        elif total_seconds < 86400:  # < 1 day
+            hours = int(total_seconds // 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        else:
+            days = int(total_seconds // 86400)
+            return f"{days} day{'s' if days != 1 else ''} ago"
+
+    def _extract_departure_context(self, last_user_message: str | None) -> str | None:
+        """Extract what user said they were going to do from their last message.
+
+        Looks for patterns like:
+        - "going to [verb]"
+        - "brb [doing something]"
+        - "heading out to [activity]"
+        - "gotta [do something]"
+
+        Returns a brief context or None if no departure detected.
+        """
+        if not last_user_message:
+            return None
+
+        import re
+
+        msg = last_user_message.lower().strip()
+
+        # Common departure patterns
+        patterns = [
+            r"(?:going to|gonna|gotta|about to|heading to|off to)\s+(.+?)(?:\.|!|$)",
+            r"brb\s*[,:]?\s*(.+?)(?:\.|!|$)",
+            r"(?:be right back|be back)\s*[,:]?\s*(.+?)(?:\.|!|$)",
+            r"(?:stepping away|stepping out)\s*(?:to|for)?\s*(.+?)(?:\.|!|$)",
+            r"(?:need to|have to|gotta)\s+(.+?)(?:\.|!|$)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, msg, re.IGNORECASE)
+            if match:
+                activity = match.group(1).strip()
+                # Clean up and limit length
+                if len(activity) > 100:
+                    activity = activity[:100] + "..."
+                if activity:
+                    return activity
+
+        return None
+
     def _build_discord_context(
         self,
         message: DiscordMessage,
         user_mems: list[str],
         proj_mems: list[str],
         is_dm: bool = False,
+        recent_msgs: list | None = None,
     ) -> str:
         """Build Discord-specific system context.
 
         Organized for prompt caching: static content first, dynamic content last.
+
+        Args:
+            message: Current Discord message
+            user_mems: User memories from mem0
+            proj_mems: Project memories from mem0
+            is_dm: Whether this is a DM conversation
+            recent_msgs: Recent messages from the session (for time gap tracking)
         """
         # === STATIC CONTENT (cacheable) ===
         static_parts = [
@@ -924,15 +999,31 @@ You have persistent memory via mem0. Use memories naturally without announcing "
         guild_name = message.guild.name if message.guild else "Direct Message"
         current_time = _get_current_time()
 
+        # Calculate time gap and departure context from recent messages
+        time_gap_line = ""
+        departure_line = ""
+        if recent_msgs:
+            # Find last user message (not from assistant)
+            user_msgs = [m for m in recent_msgs if m.role == "user"]
+            if user_msgs:
+                last_user_msg = user_msgs[-1]
+                time_gap = self._format_time_gap(last_user_msg.created_at)
+                if time_gap:
+                    time_gap_line = f"\nLast interaction: {time_gap}"
+                    # Check if user mentioned what they were doing
+                    departure_ctx = self._extract_departure_context(last_user_msg.content)
+                    if departure_ctx:
+                        departure_line = f"\nUser was: {departure_ctx}"
+
         if is_dm:
             dynamic_context = f"""## Current Context
-Time: {current_time}
+Time: {current_time}{time_gap_line}{departure_line}
 Environment: Private DM with {display_name} (one-on-one)
 User: {display_name} (@{username}, discord-{user_id})
 Memories: {len(user_mems)} user, {len(proj_mems)} project"""
         else:
             dynamic_context = f"""## Current Context
-Time: {current_time}
+Time: {current_time}{time_gap_line}{departure_line}
 Environment: {guild_name} server, #{channel_name} (shared channel)
 Speaker: {display_name} (@{username}, discord-{user_id})
 Memories: {len(user_mems)} user, {len(proj_mems)} project
@@ -1376,7 +1467,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Inject Discord-specific context after the base system prompt
                 discord_context = self._build_discord_context(
-                    message, user_mems, proj_mems, is_dm
+                    message, user_mems, proj_mems, is_dm, recent_msgs
                 )
                 # Insert as second system message (after Clara's persona)
                 system_msg = {"role": "system", "content": discord_context}
