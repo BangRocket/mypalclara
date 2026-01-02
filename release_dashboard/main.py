@@ -2,8 +2,8 @@
 """
 Clara Release Dashboard - Track and manage releases across environments.
 
-A standalone FastAPI service for tracking releases across stage/main/prod
-and triggering promotion workflows via GitHub Actions.
+A standalone FastAPI service for tracking releases across stage/main
+and triggering deployment workflows via GitHub Actions.
 
 Environment Variables:
     PORT                    - HTTP port (default: 8080)
@@ -14,23 +14,20 @@ Environment Variables:
     GITHUB_REPO_OWNER       - Repository owner (e.g., "BangRocket")
     GITHUB_REPO_NAME        - Repository name (e.g., "mypalclara")
     SESSION_SECRET          - Cookie signing secret (auto-generated if not set)
-    WORKFLOW_STAGE_TO_MAIN  - Workflow filename (default: "promote-to-main.yml")
-    WORKFLOW_MAIN_TO_PROD   - Workflow filename (default: "promote-to-prod.yml")
+    WORKFLOW_DEPLOY         - Workflow filename (default: "promote-to-main.yml")
 """
 
 import hashlib
 import hmac
-import json
 import logging
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 import uvicorn
-from fastapi import Cookie, FastAPI, Request
+from fastapi import Cookie, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
@@ -59,8 +56,7 @@ GITHUB_REPO_OWNER = os.getenv("GITHUB_REPO_OWNER", "")
 GITHUB_REPO_NAME = os.getenv("GITHUB_REPO_NAME", "")
 
 # Workflow config
-WORKFLOW_STAGE_TO_MAIN = os.getenv("WORKFLOW_STAGE_TO_MAIN", "promote-to-main.yml")
-WORKFLOW_MAIN_TO_PROD = os.getenv("WORKFLOW_MAIN_TO_PROD", "promote-to-prod.yml")
+WORKFLOW_DEPLOY = os.getenv("WORKFLOW_DEPLOY", "promote-to-main.yml")
 
 GITHUB_API_URL = "https://api.github.com"
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
@@ -97,7 +93,7 @@ class DashboardSession(Base):
 
 
 class DeploymentEvent(Base):
-    """History of deployment/promotion events."""
+    """History of deployment events."""
 
     __tablename__ = "deployment_events"
 
@@ -286,7 +282,6 @@ async def get_latest_release_tag(token: str) -> str | None:
         result = await github_request("GET", endpoint, token)
         return result.get("tag_name")
     except Exception:
-        # Try tags if no releases
         try:
             endpoint = f"/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/tags"
             tags = await github_request("GET", endpoint, token, params={"per_page": 1})
@@ -541,9 +536,7 @@ def dashboard_html(
     avatar_url: str,
     stage_info: dict,
     main_info: dict,
-    prod_info: dict,
     stage_to_main: dict,
-    main_to_prod: dict,
     deployments: list,
     latest_tag: str | None,
 ) -> str:
@@ -603,13 +596,8 @@ def dashboard_html(
 
     stage_sha = stage_info.get("commit", {}).get("sha", "unknown")[:7]
     main_sha = main_info.get("commit", {}).get("sha", "unknown")[:7]
-    prod_sha = prod_info.get("commit", {}).get("sha", "unknown")[:7]
-
     stage_ahead = stage_to_main.get("ahead_by", 0)
-    main_ahead = main_to_prod.get("ahead_by", 0)
-
     stage_commits_html = format_commits(stage_to_main.get("commits", []))
-    main_commits_html = format_commits(main_to_prod.get("commits", []))
     deployments_html = format_deployments(deployments)
 
     return f"""<!DOCTYPE html>
@@ -650,7 +638,7 @@ def dashboard_html(
         .avatar {{ width: 28px; height: 28px; border-radius: 50%; }}
         .logout {{ color: var(--text-secondary); text-decoration: none; font-size: 0.875rem; }}
         .logout:hover {{ color: var(--text-primary); }}
-        .container {{ max-width: 1400px; margin: 0 auto; padding: 1.5rem; }}
+        .container {{ max-width: 1000px; margin: 0 auto; padding: 1.5rem; }}
         .environments {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }}
         .env-card {{
             background: var(--bg-card);
@@ -667,15 +655,14 @@ def dashboard_html(
             font-weight: 500;
         }}
         .status-stage {{ background: #fbbf2430; color: #fbbf24; }}
-        .status-main {{ background: #60a5fa30; color: #60a5fa; }}
-        .status-prod {{ background: #4ade8030; color: #4ade80; }}
+        .status-main {{ background: #4ade8030; color: #4ade80; }}
         .commit-sha-main {{ font-family: monospace; color: var(--text-secondary); font-size: 0.875rem; }}
         .diff-section {{
             background: var(--bg-code);
             border-radius: 8px;
             margin-top: 1rem;
             padding: 0.75rem;
-            max-height: 250px;
+            max-height: 300px;
             overflow-y: auto;
         }}
         .diff-header {{ color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; }}
@@ -691,7 +678,7 @@ def dashboard_html(
         .commit-sha {{ font-family: monospace; color: var(--accent-blue); }}
         .commit-msg {{ color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
         .commit-author {{ color: var(--text-secondary); font-size: 0.75rem; }}
-        .promote-btn {{
+        .deploy-btn {{
             width: 100%;
             padding: 0.75rem 1.5rem;
             border: none;
@@ -701,12 +688,11 @@ def dashboard_html(
             cursor: pointer;
             margin-top: 1rem;
             transition: all 0.2s;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            color: #000;
         }}
-        .promote-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-        .btn-stage-main {{ background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #000; }}
-        .btn-main-prod {{ background: linear-gradient(135deg, #4ade80, #22c55e); color: #000; }}
-        .btn-stage-main:hover:not(:disabled) {{ transform: translateY(-1px); box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3); }}
-        .btn-main-prod:hover:not(:disabled) {{ transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3); }}
+        .deploy-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .deploy-btn:hover:not(:disabled) {{ transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3); }}
         .timeline {{
             background: var(--bg-card);
             border-radius: 12px;
@@ -751,6 +737,8 @@ def dashboard_html(
             font-weight: 600;
             margin-left: 0.5rem;
         }}
+        .latest-tag {{ margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem; }}
+        .latest-tag strong {{ color: var(--accent-green); }}
         .modal-overlay {{
             display: none;
             position: fixed;
@@ -788,8 +776,6 @@ def dashboard_html(
             font-weight: 600;
             cursor: pointer;
         }}
-        .latest-tag {{ margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem; }}
-        .latest-tag strong {{ color: var(--accent-green); }}
         @media (max-width: 768px) {{
             .header {{ padding: 1rem; }}
             .container {{ padding: 1rem; }}
@@ -818,35 +804,19 @@ def dashboard_html(
                     <div class="diff-header">{stage_ahead} commit{"s" if stage_ahead != 1 else ""} ahead of main</div>
                     {stage_commits_html}
                 </div>
-                <button class="promote-btn btn-stage-main"
-                        onclick="showPromoteModal('stage-to-main')"
+                <button class="deploy-btn"
+                        onclick="showDeployModal()"
                         {"disabled" if stage_ahead == 0 else ""}>
-                    Promote to Main
+                    Deploy to Main
                 </button>
             </div>
             <div class="env-card">
                 <div class="env-header">
                     <span class="env-name">Main</span>
-                    <span class="env-status status-main">Staging</span>
+                    <span class="env-status status-main">Production</span>
                 </div>
                 <div class="commit-sha-main">{main_sha}</div>
-                <div class="diff-section">
-                    <div class="diff-header">{main_ahead} commit{"s" if main_ahead != 1 else ""} ahead of prod</div>
-                    {main_commits_html}
-                </div>
-                <button class="promote-btn btn-main-prod"
-                        onclick="showPromoteModal('main-to-prod')"
-                        {"disabled" if main_ahead == 0 else ""}>
-                    Deploy to Production
-                </button>
-            </div>
-            <div class="env-card">
-                <div class="env-header">
-                    <span class="env-name">Production</span>
-                    <span class="env-status status-prod">Live</span>
-                </div>
-                <div class="commit-sha-main">{prod_sha}</div>
-                <div class="latest-tag">Latest: <strong>{latest_tag or "No releases yet"}</strong></div>
+                <div class="latest-tag">Latest release: <strong>{latest_tag or "No releases yet"}</strong></div>
             </div>
         </div>
         <div class="timeline">
@@ -854,41 +824,29 @@ def dashboard_html(
             {deployments_html}
         </div>
     </div>
-    <div class="modal-overlay" id="promoteModal">
+    <div class="modal-overlay" id="deployModal">
         <div class="modal">
-            <h2 id="modalTitle">Confirm Promotion</h2>
-            <p id="modalMessage">Are you sure?</p>
+            <h2>Deploy to Main</h2>
+            <p>This will merge stage into main and create a release tag. Continue?</p>
             <div class="modal-actions">
                 <button class="btn-cancel" onclick="hideModal()">Cancel</button>
-                <button class="btn-confirm" id="confirmBtn" onclick="confirmPromotion()">Confirm</button>
+                <button class="btn-confirm" id="confirmBtn" onclick="confirmDeploy()">Deploy</button>
             </div>
         </div>
     </div>
     <script>
-        let currentPromotion = null;
-        function showPromoteModal(type) {{
-            currentPromotion = type;
-            document.getElementById('modalTitle').textContent =
-                type === 'stage-to-main' ? 'Promote Stage to Main' : 'Deploy to Production';
-            document.getElementById('modalMessage').textContent =
-                type === 'stage-to-main'
-                    ? 'This will merge stage into main. Continue?'
-                    : 'This will deploy main to production and create a release tag. Continue?';
-            document.getElementById('promoteModal').classList.add('active');
+        function showDeployModal() {{
+            document.getElementById('deployModal').classList.add('active');
         }}
         function hideModal() {{
-            document.getElementById('promoteModal').classList.remove('active');
-            currentPromotion = null;
+            document.getElementById('deployModal').classList.remove('active');
         }}
-        async function confirmPromotion() {{
+        async function confirmDeploy() {{
             const btn = document.getElementById('confirmBtn');
             btn.disabled = true;
-            btn.textContent = 'Triggering...';
+            btn.textContent = 'Deploying...';
             try {{
-                const endpoint = currentPromotion === 'stage-to-main'
-                    ? '/api/promote/stage-to-main'
-                    : '/api/promote/main-to-prod';
-                const response = await fetch(endpoint, {{ method: 'POST' }});
+                const response = await fetch('/api/deploy', {{ method: 'POST' }});
                 const data = await response.json();
                 if (data.success) {{
                     hideModal();
@@ -900,10 +858,9 @@ def dashboard_html(
                 alert('Error: ' + e.message);
             }} finally {{
                 btn.disabled = false;
-                btn.textContent = 'Confirm';
+                btn.textContent = 'Deploy';
             }}
         }}
-        // Auto-refresh check
         setInterval(async () => {{
             try {{
                 const r = await fetch('/api/deployments?check_pending=true');
@@ -933,25 +890,16 @@ async def root(session: str = Cookie(None)):
     token = user_session.github_access_token
 
     try:
-        # Fetch all data in parallel-ish
         stage_info = await get_branch_info("stage", token)
         main_info = await get_branch_info("main", token)
-        prod_info = await get_branch_info("prod", token)
-
         stage_to_main = await compare_branches("main", "stage", token)
-        main_to_prod = await compare_branches("prod", "main", token)
-
         latest_tag = await get_latest_release_tag(token)
 
         # Sync deployment history from GitHub
         try:
-            stage_runs = await list_workflow_runs(WORKFLOW_STAGE_TO_MAIN, token, per_page=10)
-            for run in stage_runs:
-                sync_deployment_event(run, "promote-to-main", "stage", "main")
-
-            prod_runs = await list_workflow_runs(WORKFLOW_MAIN_TO_PROD, token, per_page=10)
-            for run in prod_runs:
-                sync_deployment_event(run, "promote-to-prod", "main", "prod")
+            runs = await list_workflow_runs(WORKFLOW_DEPLOY, token, per_page=15)
+            for run in runs:
+                sync_deployment_event(run, "deploy-to-main", "stage", "main")
         except Exception as e:
             logger.warning(f"Failed to sync deployment history: {e}")
 
@@ -963,9 +911,7 @@ async def root(session: str = Cookie(None)):
                 avatar_url=user_session.avatar_url or "",
                 stage_info=stage_info,
                 main_info=main_info,
-                prod_info=prod_info,
                 stage_to_main=stage_to_main,
-                main_to_prod=main_to_prod,
                 deployments=deployments,
                 latest_tag=latest_tag,
             )
@@ -1022,14 +968,12 @@ async def oauth_callback(
     if not code or not state:
         return HTMLResponse(error_html("Invalid callback parameters."))
 
-    # Verify state
     if not oauth_state or state != oauth_state:
         return HTMLResponse(error_html("Invalid state parameter. Please try again."))
 
     if not verify_state(state):
         return HTMLResponse(error_html("State signature invalid. Please try again."))
 
-    # Exchange code for token
     try:
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1054,14 +998,12 @@ async def oauth_callback(
     if not access_token:
         return HTMLResponse(error_html("No access token received."))
 
-    # Get user info
     try:
         user = await get_github_user(access_token)
     except Exception as e:
         logger.error(f"Failed to get user: {e}")
         return HTMLResponse(error_html("Failed to get user info from GitHub."))
 
-    # Check if user is collaborator
     is_collab = await check_collaborator(user["login"], access_token)
     if not is_collab:
         return HTMLResponse(
@@ -1070,7 +1012,6 @@ async def oauth_callback(
             )
         )
 
-    # Create session
     session_token = create_session(
         github_user_id=user["id"],
         github_username=user["login"],
@@ -1082,7 +1023,6 @@ async def oauth_callback(
     if not session_token:
         return HTMLResponse(error_html("Failed to create session. Check database configuration."))
 
-    # Redirect to dashboard
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie("session", session_token, httponly=True, samesite="lax", max_age=86400)
     response.delete_cookie("oauth_state")
@@ -1123,10 +1063,7 @@ async def api_environments(session: str = Cookie(None)):
     try:
         stage_info = await get_branch_info("stage", token)
         main_info = await get_branch_info("main", token)
-        prod_info = await get_branch_info("prod", token)
-
         stage_to_main = await compare_branches("main", "stage", token)
-        main_to_prod = await compare_branches("prod", "main", token)
 
         return {
             "stage": {
@@ -1135,10 +1072,6 @@ async def api_environments(session: str = Cookie(None)):
             },
             "main": {
                 "sha": main_info.get("commit", {}).get("sha"),
-                "ahead_of_prod": main_to_prod.get("ahead_by", 0),
-            },
-            "prod": {
-                "sha": prod_info.get("commit", {}).get("sha"),
             },
         }
     except Exception as e:
@@ -1161,43 +1094,23 @@ async def api_deployments(check_pending: bool = False, session: str = Cookie(Non
     return {"deployments": deployments}
 
 
-@app.post("/api/promote/stage-to-main")
-async def api_promote_stage_to_main(session: str = Cookie(None)):
-    """Trigger stage to main promotion."""
+@app.post("/api/deploy")
+async def api_deploy(session: str = Cookie(None)):
+    """Trigger stage to main deployment."""
     user_session = get_session(session)
     if not user_session or user_session.is_collaborator != "true":
         return JSONResponse({"error": "Not authorized"}, status_code=401)
 
     try:
-        result = await trigger_workflow(
-            WORKFLOW_STAGE_TO_MAIN,
+        await trigger_workflow(
+            WORKFLOW_DEPLOY,
             "stage",
-            {"confirm": "promote"},
-            user_session.github_access_token,
-        )
-        return {"success": True, "message": "Workflow triggered"}
-    except Exception as e:
-        logger.error(f"Failed to trigger stage-to-main: {e}")
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
-
-
-@app.post("/api/promote/main-to-prod")
-async def api_promote_main_to_prod(session: str = Cookie(None)):
-    """Trigger main to production deployment."""
-    user_session = get_session(session)
-    if not user_session or user_session.is_collaborator != "true":
-        return JSONResponse({"error": "Not authorized"}, status_code=401)
-
-    try:
-        result = await trigger_workflow(
-            WORKFLOW_MAIN_TO_PROD,
-            "main",
             {"confirm": "deploy"},
             user_session.github_access_token,
         )
-        return {"success": True, "message": "Workflow triggered"}
+        return {"success": True, "message": "Deployment triggered"}
     except Exception as e:
-        logger.error(f"Failed to trigger main-to-prod: {e}")
+        logger.error(f"Failed to trigger deployment: {e}")
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
