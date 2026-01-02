@@ -23,10 +23,12 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from clara_core.llm import get_base_model, get_current_tier, get_model_for_tier
 from config.bot import BOT_NAME
 from config.logging import get_logger
 from db.connection import SessionLocal
 from db.models import (
+    Message,
     ProactiveAssessment,
     ProactiveMessage,
     ProactiveNote,
@@ -42,28 +44,45 @@ logger = get_logger("ors")
 # Configuration
 # =============================================================================
 
-ORS_ENABLED = (
-    os.getenv("ORS_ENABLED", os.getenv("PROACTIVE_ENABLED", "false")).lower() == "true"
-)
+ORS_ENABLED = os.getenv("ORS_ENABLED", os.getenv("PROACTIVE_ENABLED", "false")).lower() == "true"
 ORS_BASE_INTERVAL_MINUTES = int(os.getenv("ORS_BASE_INTERVAL_MINUTES", "15"))
 ORS_MIN_SPEAK_GAP_HOURS = float(os.getenv("ORS_MIN_SPEAK_GAP_HOURS", "2"))
 ORS_ACTIVE_DAYS = int(os.getenv("ORS_ACTIVE_DAYS", "7"))
-ORS_NOTE_DECAY_DAYS = int(
-    os.getenv("ORS_NOTE_DECAY_DAYS", "7")
-)  # Days before note relevance decays to 0
-ORS_IDLE_TIMEOUT_MINUTES = int(
-    os.getenv("ORS_IDLE_TIMEOUT_MINUTES", "30")
-)  # Minutes before extracting convo summary
+ORS_NOTE_DECAY_DAYS = int(os.getenv("ORS_NOTE_DECAY_DAYS", "7"))  # Days before note relevance decays to 0
+ORS_IDLE_TIMEOUT_MINUTES = int(os.getenv("ORS_IDLE_TIMEOUT_MINUTES", "30"))  # Minutes before extracting convo summary
+
+
+def get_ors_model_name() -> str:
+    """Get the model name being used for ORS decisions."""
+    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    tier = get_current_tier()
+    if tier:
+        return get_model_for_tier(tier, provider)
+    return get_base_model(provider)
+
 
 # Note types
 NOTE_TYPE_OBSERVATION = "observation"  # "User mentioned job hunting is stressful"
-NOTE_TYPE_QUESTION = (
-    "question"  # "User said they'd look at the code 'later' - did they?"
-)
+NOTE_TYPE_QUESTION = "question"  # "User said they'd look at the code 'later' - did they?"
 NOTE_TYPE_FOLLOW_UP = "follow_up"  # "Check if the meeting with X went well"
-NOTE_TYPE_CONNECTION = (
-    "connection"  # "User's stress + upcoming deadline might be related"
-)
+NOTE_TYPE_CONNECTION = "connection"  # "User's stress + upcoming deadline might be related"
+
+# Validation statuses for notes
+NOTE_STATUS_RELEVANT = "relevant"  # Note topic appears in recent conversation
+NOTE_STATUS_RESOLVED = "resolved"  # Topic was addressed/completed
+NOTE_STATUS_STALE = "stale"  # No recent mention, may be outdated
+NOTE_STATUS_CONTRADICTED = "contradicted"  # Recent conversation contradicts this
+
+
+@dataclass
+class ValidatedNote:
+    """A note that has been validated against recent conversation context."""
+
+    original_note: dict
+    context_match_score: float  # 0.0 = no context match, 1.0 = strong match
+    validation_status: str  # relevant, resolved, stale, contradicted
+    validation_reason: str
+    is_relevant: bool  # Whether note should be included in assessment
 
 
 # =============================================================================
@@ -89,6 +108,8 @@ class ORSDecision:
     note_type: str | None = None  # If THINK - observation/question/follow_up/connection
     note_surface_conditions: dict | None = None  # If THINK - when to surface
     note_expires_hours: int | None = None  # If THINK - hours until note expires
+    note_confidence: str | None = None  # If THINK - high/medium/low confidence
+    note_grounding_ids: list[int] | None = None  # If THINK - message IDs that ground this note
     message: str | None = None  # If SPEAK - what to say
     message_purpose: str | None = None  # If SPEAK - why reaching out
     next_check_minutes: int = 15  # Suggested interval until next check
@@ -114,6 +135,7 @@ class ORSContext:
     last_interaction_energy: str | None = None
     last_interaction_channel: str | None = None
     open_threads: list[str] = field(default_factory=list)
+    recent_messages: list[dict] = field(default_factory=list)  # Messages since last idle for context validation
 
     # Cross-channel awareness
     is_active_elsewhere: bool = False  # Active in other channels recently
@@ -121,9 +143,7 @@ class ORSContext:
 
     # Calendar (if available)
     upcoming_events: list[dict] = field(default_factory=list)
-    just_ended_events: list[dict] = field(
-        default_factory=list
-    )  # Events that ended in last hour
+    just_ended_events: list[dict] = field(default_factory=list)  # Events that ended in last hour
 
     # Notes
     pending_notes: list[dict] = field(default_factory=list)
@@ -145,6 +165,9 @@ class ORSContext:
 # =============================================================================
 
 SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you care about. Think through what's going on with them - not to hover, but to stay aware like a good friend would.
+
+**Recent conversation (ground truth):**
+{recent_messages}
 
 **What you know:**
 - Current time: {current_time} ({day_of_week})
@@ -168,6 +191,9 @@ SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you c
 3. Any loose ends or things they said they'd do "later"?
 4. Anything time-sensitive - just happened or coming up?
 5. Any patterns connecting between what I've noticed?
+
+**Important - validate your notes:**
+When reviewing the notes above, check them against the recent conversation. If a note references something not present in the recent messages, consider whether it's still relevant or has gone stale. Don't act on notes that seem outdated or contradict what was actually discussed.
 
 Be honest with yourself. Keep it to 2-3 paragraphs - what actually matters for deciding whether to reach out."""
 
@@ -195,6 +221,11 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 - follow_up: "Check how that meeting with their boss went"
 - connection: "Their stress + upcoming deadline might be connected"
 
+**If THINK - confidence levels:**
+- high: Clearly stated by user, unambiguous fact
+- medium: Reasonable inference from context
+- low: Speculative, reading between the lines
+
 **Your principles:**
 - Only SPEAK when there's genuine purpose. "Just checking in" isn't a reason.
 - THINK when you notice something that might matter later.
@@ -204,6 +235,7 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 - Respect their time - never SPEAK outside active hours unless urgent.
 - If they've set boundaries, honor them. Full stop.
 - For time-sensitive notes, set an expiration so they don't go stale.
+- Be honest about confidence - speculative notes should be marked low.
 
 **Respond in JSON:**
 {{
@@ -211,6 +243,7 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
     "reasoning": "Be honest about why",
     "note": "What to remember (only if THINK)",
     "note_type": "observation" | "question" | "follow_up" | "connection",
+    "note_confidence": "high" | "medium" | "low",
     "note_expires_hours": null | 1-168,
     "surface_after_event": "event name if relevant",
     "purpose": "The real reason you're reaching out (only if SPEAK)",
@@ -237,6 +270,27 @@ CONVERSATION_EXTRACTION_PROMPT = """This conversation just went quiet. Before mo
     "notable": "Something worth remembering, or null if nothing stands out"
 }}"""
 
+NOTE_VALIDATION_PROMPT = """Given this note and recent conversation, assess whether the note is still relevant.
+
+**Note to validate:**
+{note}
+
+**Recent conversation:**
+{recent_messages}
+
+**Determine:**
+1. **RELEVANT**: Note topic appears in recent conversation and is still active
+2. **RESOLVED**: Topic was addressed/completed in recent conversation
+3. **STALE**: No recent mention, topic may be outdated
+4. **CONTRADICTED**: Recent conversation contradicts this note
+
+**Respond in JSON:**
+{{
+    "status": "relevant" | "resolved" | "stale" | "contradicted",
+    "score": 0.0-1.0,
+    "reason": "Brief explanation"
+}}"""
+
 
 # =============================================================================
 # Context Gathering
@@ -248,11 +302,7 @@ def get_temporal_context(user_id: str) -> dict:
     now = datetime.now(UTC).replace(tzinfo=None)
 
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
             return {
@@ -428,11 +478,7 @@ async def infer_and_store_timezone(user_id: str, timezone: str):
         return
 
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if pattern and not pattern.timezone:
             pattern.timezone = timezone
@@ -491,14 +537,120 @@ def get_notes_context(user_id: str) -> dict:
         }
 
 
+async def validate_notes_against_context(
+    notes: list[dict],
+    recent_messages: list[dict],
+    llm_call: Callable,
+) -> list[ValidatedNote]:
+    """Validate notes against recent conversation context.
+
+    Uses the ORS model to check each note for:
+    - Recency match: Does note reference something in recent conversation?
+    - Resolution detection: Was this topic addressed/completed?
+    - Contradiction check: Does recent conversation contradict note?
+
+    Args:
+        notes: List of note dicts from get_notes_context()
+        recent_messages: List of recent message dicts from get_recent_messages()
+        llm_call: Async LLM callable for validation
+
+    Returns:
+        List of ValidatedNote objects with scores and relevance status
+    """
+    if not notes:
+        return []
+
+    # Format recent messages for prompt
+    if recent_messages:
+        msg_lines = []
+        for msg in recent_messages:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")[:300]
+            msg_lines.append(f"[{role}]: {content}")
+        messages_str = "\n".join(msg_lines)
+    else:
+        messages_str = "No recent conversation"
+
+    validated = []
+
+    for note in notes:
+        note_text = note.get("note", "")
+        note_type = note.get("note_type", "note")
+
+        # Build validation prompt
+        prompt = NOTE_VALIDATION_PROMPT.format(
+            note=f"[{note_type}] {note_text}",
+            recent_messages=messages_str,
+        )
+
+        try:
+            response = await llm_call([{"role": "user", "content": prompt}])
+
+            # Parse JSON response
+            # Handle potential markdown code blocks
+            response_text = response.strip()
+            if response_text.startswith("```"):
+                # Extract JSON from code block
+                lines = response_text.split("\n")
+                json_lines = [l for l in lines if not l.startswith("```")]
+                response_text = "\n".join(json_lines)
+
+            result = json.loads(response_text)
+            status = result.get("status", NOTE_STATUS_STALE)
+            score = float(result.get("score", 0.5))
+            reason = result.get("reason", "")
+
+            # Determine if note should be included
+            is_relevant = status in (NOTE_STATUS_RELEVANT, NOTE_STATUS_STALE)
+
+            # Apply source quality weight if available
+            source_model = note.get("source_model")
+            source_confidence = note.get("source_confidence")
+
+            # Notes from weaker models or low confidence get extra penalty
+            if source_confidence == "low":
+                score *= 0.7
+            if source_model and "haiku" in source_model.lower():
+                score *= 0.8
+
+            validated.append(
+                ValidatedNote(
+                    original_note=note,
+                    context_match_score=score,
+                    validation_status=status,
+                    validation_reason=reason,
+                    is_relevant=is_relevant,
+                )
+            )
+
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            # On parse failure, keep note with medium score
+            logger.warning(f"Note validation parse error: {e}")
+            validated.append(
+                ValidatedNote(
+                    original_note=note,
+                    context_match_score=0.5,
+                    validation_status=NOTE_STATUS_STALE,
+                    validation_reason="Validation failed, treating as stale",
+                    is_relevant=True,
+                )
+            )
+
+    # Sort by relevance: relevant first, then by score
+    validated.sort(
+        key=lambda v: (
+            0 if v.validation_status == NOTE_STATUS_RELEVANT else 1,
+            -v.context_match_score,
+        )
+    )
+
+    return validated
+
+
 def get_patterns_context(user_id: str) -> dict:
     """Get learned interaction patterns."""
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
             return {}
@@ -511,12 +663,8 @@ def get_patterns_context(user_id: str) -> dict:
             "preferred_proactive_types": json.loads(pattern.preferred_proactive_types)
             if pattern.preferred_proactive_types
             else None,
-            "topic_receptiveness": json.loads(pattern.topic_receptiveness)
-            if pattern.topic_receptiveness
-            else None,
-            "explicit_boundaries": json.loads(pattern.explicit_boundaries)
-            if pattern.explicit_boundaries
-            else None,
+            "topic_receptiveness": json.loads(pattern.topic_receptiveness) if pattern.topic_receptiveness else None,
+            "explicit_boundaries": json.loads(pattern.explicit_boundaries) if pattern.explicit_boundaries else None,
         }
 
 
@@ -542,14 +690,79 @@ def get_proactive_history(user_id: str, limit: int = 5) -> list[dict]:
         ]
 
 
+def get_recent_messages(
+    user_id: str, idle_timeout_minutes: int = ORS_IDLE_TIMEOUT_MINUTES, max_messages: int = 20
+) -> list[dict]:
+    """Fetch messages since last idle timeout (conversation gap).
+
+    Finds messages since the most recent gap >= idle_timeout_minutes between messages.
+    This represents the current active conversation context.
+
+    Args:
+        user_id: The user to fetch messages for
+        idle_timeout_minutes: Gap duration that defines conversation boundary (default: 30)
+        max_messages: Maximum messages to return if no gap found (default: 20)
+
+    Returns:
+        List of {id, role, content, timestamp} dicts, oldest first
+    """
+    with SessionLocal() as session:
+        # Fetch recent messages ordered by time DESC
+        messages = (
+            session.query(Message)
+            .filter(Message.user_id == user_id)
+            .order_by(Message.created_at.desc())
+            .limit(max_messages * 2)  # Fetch extra to find gap
+            .all()
+        )
+
+        if not messages:
+            return []
+
+        # Find the first gap >= idle_timeout_minutes
+        idle_threshold = timedelta(minutes=idle_timeout_minutes)
+        cutoff_index = len(messages)  # Default: include all
+
+        for i in range(len(messages) - 1):
+            current = messages[i]
+            previous = messages[i + 1]
+            if current.created_at and previous.created_at:
+                gap = current.created_at - previous.created_at
+                if gap >= idle_threshold:
+                    cutoff_index = i + 1  # Include up to this message
+                    break
+
+        # Take messages from after the gap (or all if no gap found)
+        recent = messages[:cutoff_index]
+
+        # Limit to max_messages and reverse to chronological order
+        recent = recent[:max_messages]
+        recent.reverse()
+
+        return [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content[:500] if m.content else "",  # Truncate long messages
+                "timestamp": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in recent
+        ]
+
+
 async def gather_full_context(user_id: str) -> ORSContext:
     """Gather all context sources into ORSContext."""
     temporal = get_temporal_context(user_id)
     calendar_data = await get_calendar_context(user_id)
-    notes_data = get_notes_context(user_id)
     patterns = get_patterns_context(user_id)
     history = get_proactive_history(user_id)
     cross_channel = get_cross_channel_activity(user_id)
+
+    # Fetch recent messages for context validation
+    recent_messages = get_recent_messages(user_id)
+
+    # Get notes with validation against recent messages
+    notes_data = get_notes_context(user_id)
 
     # Infer and store timezone from calendar if not already known
     if calendar_data.get("inferred_timezone") and not temporal.get("timezone"):
@@ -574,8 +787,7 @@ async def gather_full_context(user_id: str) -> ORSContext:
     return ORSContext(
         user_id=user_id,
         current_time=temporal["current_time"],
-        user_timezone=temporal.get("timezone")
-        or calendar_data.get("inferred_timezone"),
+        user_timezone=temporal.get("timezone") or calendar_data.get("inferred_timezone"),
         user_local_time=temporal.get("user_local_time"),
         time_since_last_interaction=temporal.get("time_since_last_interaction"),
         time_since_last_proactive=time_since_proactive,
@@ -585,6 +797,7 @@ async def gather_full_context(user_id: str) -> ORSContext:
         last_interaction_energy=temporal.get("last_interaction_energy"),
         last_interaction_channel=temporal.get("last_interaction_channel"),
         open_threads=temporal.get("open_threads", []),
+        recent_messages=recent_messages,
         is_active_elsewhere=cross_channel.get("is_active_elsewhere", False),
         recent_channel_activity=cross_channel.get("recent_channels", []),
         upcoming_events=calendar_data.get("upcoming_events", []),
@@ -627,19 +840,14 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
 
     calendar_str = "No calendar access"
     if context.upcoming_events:
-        calendar_str = "\n".join(
-            f"- {e['summary']} at {e['start']}" for e in context.upcoming_events[:5]
-        )
+        calendar_str = "\n".join(f"- {e['summary']} at {e['start']}" for e in context.upcoming_events[:5])
     elif context.upcoming_events == []:
         calendar_str = "No upcoming events in next 24h"
 
     # Format recently ended events
     just_ended_str = "None"
     if context.just_ended_events:
-        just_ended_str = "\n".join(
-            f"- {e['summary']} (ended at {e['end']})"
-            for e in context.just_ended_events[:3]
-        )
+        just_ended_str = "\n".join(f"- {e['summary']} (ended at {e['end']})" for e in context.just_ended_events[:3])
 
     notes_str = "No pending notes"
     if context.pending_notes:
@@ -653,16 +861,13 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
     expiring_str = "None"
     if context.expiring_notes:
         expiring_str = "\n".join(
-            f"- {n['note']} (expires: {n.get('expires_at', 'soon')})"
-            for n in context.expiring_notes
+            f"- {n['note']} (expires: {n.get('expires_at', 'soon')})" for n in context.expiring_notes
         )
 
     # Format open threads
     open_threads_str = "None tracked"
     if context.open_threads:
-        open_threads_str = "\n".join(
-            f"- {thread}" for thread in context.open_threads[:5]
-        )
+        open_threads_str = "\n".join(f"- {thread}" for thread in context.open_threads[:5])
 
     history_str = "No recent proactive messages"
     if context.recent_proactive_history:
@@ -676,12 +881,22 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
     recent_channels_str = "No recent activity tracked"
     if context.recent_channel_activity:
         recent_channels_str = ", ".join(
-            f"{ch['channel_id']} ({ch['minutes_ago']}m ago)"
-            for ch in context.recent_channel_activity[:3]
+            f"{ch['channel_id']} ({ch['minutes_ago']}m ago)" for ch in context.recent_channel_activity[:3]
         )
+
+    # Format recent messages for context validation
+    recent_messages_str = "No recent conversation"
+    if context.recent_messages:
+        msg_lines = []
+        for msg in context.recent_messages:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")[:200]  # Truncate for prompt
+            msg_lines.append(f"[{role}]: {content}")
+        recent_messages_str = "\n".join(msg_lines)
 
     prompt = SITUATION_ASSESSMENT_PROMPT.format(
         bot_name=BOT_NAME,
+        recent_messages=recent_messages_str,
         current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
         day_of_week=context.day_of_week,
         user_local_time=user_local_str,
@@ -753,16 +968,14 @@ async def decide_action(
             raise ValueError("No JSON found in response")
 
         decision_str = data.get("decision", "WAIT").upper()
-        state = (
-            ORSState[decision_str]
-            if decision_str in ORSState.__members__
-            else ORSState.WAIT
-        )
+        state = ORSState[decision_str] if decision_str in ORSState.__members__ else ORSState.WAIT
 
         # Parse note-specific fields for THINK state
         note_type = None
         note_surface_conditions = None
         note_expires_hours = None
+        note_confidence = None
+        note_grounding_ids = None
 
         if state == ORSState.THINK:
             note_type = data.get("note_type")
@@ -775,6 +988,11 @@ async def decide_action(
             ]
             if note_type not in valid_types:
                 note_type = NOTE_TYPE_OBSERVATION  # Default
+
+            # Parse confidence level
+            note_confidence = data.get("note_confidence", "medium")
+            if note_confidence not in ["high", "medium", "low"]:
+                note_confidence = "medium"
 
             # Parse expiration
             expires = data.get("note_expires_hours")
@@ -791,6 +1009,10 @@ async def decide_action(
             if surface_after:
                 note_surface_conditions = {"after_event": surface_after}
 
+            # Get grounding message IDs from recent context
+            if context.recent_messages:
+                note_grounding_ids = [m.get("id") for m in context.recent_messages if m.get("id")]
+
         return ORSDecision(
             state=state,
             reasoning=data.get("reasoning", ""),
@@ -798,6 +1020,8 @@ async def decide_action(
             note_type=note_type,
             note_surface_conditions=note_surface_conditions,
             note_expires_hours=note_expires_hours,
+            note_confidence=note_confidence,
+            note_grounding_ids=note_grounding_ids,
             message=data.get("message") if state == ORSState.SPEAK else None,
             message_purpose=data.get("purpose") if state == ORSState.SPEAK else None,
             next_check_minutes=int(data.get("next_check_minutes", 15)),
@@ -901,6 +1125,9 @@ def create_note(
     source_context: dict | None = None,
     surface_conditions: dict | None = None,
     expires_hours: int | None = None,
+    source_model: str | None = None,
+    source_confidence: str | None = None,
+    grounding_message_ids: list[int] | None = None,
 ) -> str:
     """Create a new internal note from THINK state.
 
@@ -911,6 +1138,9 @@ def create_note(
         source_context: Context that triggered this note
         surface_conditions: JSON-serializable conditions for when to surface
         expires_hours: Hours until this note expires (for time-sensitive follow-ups)
+        source_model: Model that created this note (e.g., "opus-4", "sonnet-4")
+        source_confidence: Self-assessed confidence ("high", "medium", "low")
+        grounding_message_ids: Message IDs that this note is grounded in
 
     Returns:
         The note ID
@@ -925,12 +1155,15 @@ def create_note(
     if note_type and note_type not in valid_types:
         note_type = NOTE_TYPE_OBSERVATION
 
+    # Validate confidence level
+    valid_confidences = ["high", "medium", "low"]
+    if source_confidence and source_confidence not in valid_confidences:
+        source_confidence = "medium"
+
     # Calculate expiration time
     expires_at = None
     if expires_hours:
-        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-            hours=expires_hours
-        )
+        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=expires_hours)
 
     with SessionLocal() as session:
         note = ProactiveNote(
@@ -938,9 +1171,10 @@ def create_note(
             note=content,
             note_type=note_type or NOTE_TYPE_OBSERVATION,
             source_context=json.dumps(source_context) if source_context else None,
-            surface_conditions=json.dumps(surface_conditions)
-            if surface_conditions
-            else None,
+            source_model=source_model,
+            source_confidence=source_confidence,
+            grounding_message_ids=json.dumps(grounding_message_ids) if grounding_message_ids else None,
+            surface_conditions=json.dumps(surface_conditions) if surface_conditions else None,
             expires_at=expires_at,
             relevance_score=100,
         )
@@ -949,15 +1183,14 @@ def create_note(
         logger.info(
             f"Created {note_type or 'note'} for {user_id}: {content[:50]}..."
             + (f" (expires in {expires_hours}h)" if expires_hours else "")
+            + (f" [model={source_model}, conf={source_confidence}]" if source_model else "")
         )
         return note.id
 
 
 def decay_note_relevance():
     """Decay relevance of old notes (run periodically)."""
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        days=ORS_NOTE_DECAY_DAYS
-    )
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=ORS_NOTE_DECAY_DAYS)
 
     with SessionLocal() as session:
         # Decay notes older than cutoff
@@ -1065,8 +1298,7 @@ def get_cross_channel_activity(user_id: str) -> dict:
 
     # Check if active in non-DM channels (server channels)
     is_active_elsewhere = any(
-        not ch["is_dm"] and ch["minutes_ago"] < CHANNEL_ACTIVE_THRESHOLD_MINUTES
-        for ch in recent_channels
+        not ch["is_dm"] and ch["minutes_ago"] < CHANNEL_ACTIVE_THRESHOLD_MINUTES for ch in recent_channels
     )
 
     return {
@@ -1076,9 +1308,7 @@ def get_cross_channel_activity(user_id: str) -> dict:
     }
 
 
-def should_reconsider(
-    user_id: str, last_decision_time: datetime | None
-) -> tuple[bool, str]:
+def should_reconsider(user_id: str, last_decision_time: datetime | None) -> tuple[bool, str]:
     """Lightweight check if context has changed enough to warrant early re-evaluation.
 
     Called on loop iterations where user is not due for full processing.
@@ -1137,9 +1367,7 @@ def track_channel_activity(user_id: str, channel_id: str):
 
     # Cleanup old entries (older than 1 hour) to prevent memory bloat
     cutoff = now - timedelta(hours=1)
-    _user_channel_activity[user_id] = {
-        ch: ts for ch, ts in _user_channel_activity[user_id].items() if ts > cutoff
-    }
+    _user_channel_activity[user_id] = {ch: ts for ch, ts in _user_channel_activity[user_id].items() if ts > cutoff}
 
 
 async def extract_conversation_info(
@@ -1156,9 +1384,7 @@ async def extract_conversation_info(
     if not conversation_text or len(conversation_text.strip()) < 50:
         return None
 
-    prompt = CONVERSATION_EXTRACTION_PROMPT.format(
-        conversation=conversation_text[:4000]
-    )
+    prompt = CONVERSATION_EXTRACTION_PROMPT.format(conversation=conversation_text[:4000])
     messages = [{"role": "user", "content": prompt}]
 
     try:
@@ -1201,11 +1427,7 @@ async def extract_conversation_info(
 def update_interaction_from_extraction(user_id: str, extraction: dict):
     """Update UserInteractionPattern with extracted conversation info."""
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
             return
@@ -1227,9 +1449,7 @@ def update_interaction_from_extraction(user_id: str, extraction: dict):
         new_threads = extraction.get("open_threads", [])
         if new_threads:
             # Add new threads, keeping unique ones
-            combined = new_threads + [
-                t for t in existing_threads if t not in new_threads
-            ]
+            combined = new_threads + [t for t in existing_threads if t not in new_threads]
             # Limit to 10 most recent
             pattern.open_threads = json.dumps(combined[:10])
 
@@ -1237,9 +1457,7 @@ def update_interaction_from_extraction(user_id: str, extraction: dict):
         logger.info(f"Updated interaction pattern for {user_id} from extraction")
 
 
-async def check_idle_conversations(
-    llm_call: Callable, get_recent_messages: Callable | None = None
-):
+async def check_idle_conversations(llm_call: Callable, get_recent_messages: Callable | None = None):
     """Check for idle conversations and extract info.
 
     Args:
@@ -1263,9 +1481,7 @@ async def check_idle_conversations(
             if get_recent_messages:
                 conversation_text = await get_recent_messages(user_id)
                 if conversation_text:
-                    extraction = await extract_conversation_info(
-                        user_id, conversation_text, llm_call
-                    )
+                    extraction = await extract_conversation_info(user_id, conversation_text, llm_call)
                     if extraction:
                         update_interaction_from_extraction(user_id, extraction)
 
@@ -1276,6 +1492,8 @@ async def check_idle_conversations(
                                 content=extraction["notable"],
                                 note_type=NOTE_TYPE_OBSERVATION,
                                 source_context={"from": "conversation_extraction"},
+                                source_model=get_ors_model_name(),
+                                source_confidence="medium",  # Extracted from conversation
                             )
         except Exception as e:
             logger.error(f"Error extracting conversation for {user_id}: {e}")
@@ -1299,9 +1517,7 @@ def record_assessment(
             user_id=user_id,
             context_snapshot=json.dumps(
                 {
-                    "time_since_last_interaction": str(
-                        context.time_since_last_interaction
-                    ),
+                    "time_since_last_interaction": str(context.time_since_last_interaction),
                     "is_active_hours": context.is_active_hours,
                     "pending_notes_count": len(context.pending_notes),
                     "upcoming_events_count": len(context.upcoming_events),
@@ -1313,8 +1529,7 @@ def record_assessment(
             reasoning=decision.reasoning,
             note_created=note_id,
             message_sent=decision.message if decision.state == ORSState.SPEAK else None,
-            next_check_at=datetime.now(UTC).replace(tzinfo=None)
-            + timedelta(minutes=decision.next_check_minutes),
+            next_check_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=decision.next_check_minutes),
         )
         session.add(record)
         session.commit()
@@ -1338,9 +1553,7 @@ async def send_proactive_message(
         # Parse channel ID
         if channel_id.startswith("discord-dm-"):
             # DM to user
-            discord_user_id = int(
-                channel_id.replace("discord-dm-", "").replace("discord-", "")
-            )
+            discord_user_id = int(channel_id.replace("discord-dm-", "").replace("discord-", ""))
             user = await client.fetch_user(discord_user_id)
             dm = await user.create_dm()
             await dm.send(message)
@@ -1393,9 +1606,7 @@ def get_active_users() -> list[str]:
 
     with SessionLocal() as session:
         patterns = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.last_interaction_at > cutoff)
-            .all()
+            session.query(UserInteractionPattern).filter(UserInteractionPattern.last_interaction_at > cutoff).all()
         )
 
         return [p.user_id for p in patterns]
@@ -1408,6 +1619,9 @@ async def process_user(
 ) -> int:
     """Process ORS cycle for a single user. Returns minutes until next check."""
     logger.debug(f"Processing ORS for user: {user_id}")
+
+    # Get the current model name for source tracking
+    model_name = get_ors_model_name()
 
     # Phase 1: Gather context
     context = await gather_full_context(user_id)
@@ -1422,14 +1636,20 @@ async def process_user(
     note_id = None
 
     if decision.state == ORSState.THINK and decision.note_content:
-        # File the observation with type and expiration
+        # File the observation with type, expiration, and source tracking
         note_id = create_note(
             user_id=user_id,
             content=decision.note_content,
             note_type=decision.note_type,
-            source_context={"assessment": assessment[:200]},
+            source_context={
+                "from": "think_decision",
+                "assessment": assessment[:200],
+            },
             surface_conditions=decision.note_surface_conditions,
             expires_hours=decision.note_expires_hours,
+            source_model=model_name,
+            source_confidence=decision.note_confidence,
+            grounding_message_ids=decision.note_grounding_ids,
         )
         logger.info(f"ORS THINK for {user_id}: {decision.note_content[:50]}...")
 
@@ -1525,9 +1745,7 @@ async def ors_main_loop(
 
                 if next_check and now < next_check:
                     # Not time for full processing, but check if we should reconsider
-                    should_reeval, reason = should_reconsider(
-                        user_id, last_decisions.get(user_id)
-                    )
+                    should_reeval, reason = should_reconsider(user_id, last_decisions.get(user_id))
                     if should_reeval:
                         logger.debug(f"ORS reconsidering {user_id}: {reason}")
                         reconsidered_count += 1
@@ -1541,13 +1759,9 @@ async def ors_main_loop(
                     next_checks[user_id] = now + timedelta(minutes=minutes_until_next)
                     last_decisions[user_id] = now  # Track when we made this decision
                     processed_count += 1
-                    logger.info(
-                        f"ORS processed {user_id}, next check in {minutes_until_next}m"
-                    )
+                    logger.info(f"ORS processed {user_id}, next check in {minutes_until_next}m")
                 except Exception as e:
-                    logger.error(
-                        f"Error processing user {user_id}: {e}", exc_info=True
-                    )
+                    logger.error(f"Error processing user {user_id}: {e}", exc_info=True)
                     next_checks[user_id] = now + timedelta(minutes=30)
 
                 # Small delay between users to avoid rate limits
@@ -1584,11 +1798,7 @@ def resolve_open_thread(user_id: str, thread_content: str):
     Called when a topic/question from open_threads is addressed.
     """
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern or not pattern.open_threads:
             return
@@ -1611,11 +1821,7 @@ def add_open_thread(user_id: str, thread_content: str):
     Called when Clara notices something unresolved in conversation.
     """
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
             pattern = UserInteractionPattern(user_id=user_id)
@@ -1656,11 +1862,7 @@ async def on_user_message(
     track_channel_activity(user_id, channel_id)
 
     with SessionLocal() as session:
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
             pattern = UserInteractionPattern(user_id=user_id)
@@ -1692,11 +1894,7 @@ async def on_proactive_response(user_id: str, channel_id: str):
             message.response_at = now
 
         # Update response rate
-        pattern = (
-            session.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.user_id == user_id)
-            .first()
-        )
+        pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if pattern:
             # Calculate new response rate from last 20 proactive messages
@@ -1711,12 +1909,8 @@ async def on_proactive_response(user_id: str, channel_id: str):
             )
 
             if recent_messages:
-                responded = sum(
-                    1 for m in recent_messages if m.response_received == "true"
-                )
-                pattern.proactive_response_rate = int(
-                    (responded / len(recent_messages)) * 100
-                )
+                responded = sum(1 for m in recent_messages if m.response_received == "true")
+                pattern.proactive_response_rate = int((responded / len(recent_messages)) * 100)
 
         session.commit()
 
