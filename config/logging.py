@@ -166,11 +166,7 @@ class DatabaseHandler(logging.Handler):
                 "module": record.module,
                 "function": record.funcName,
                 "line_number": record.lineno,
-                "exception": (
-                    "".join(traceback.format_exception(*record.exc_info))
-                    if record.exc_info
-                    else None
-                ),
+                "exception": ("".join(traceback.format_exception(*record.exc_info)) if record.exc_info else None),
                 "extra_data": json.dumps(extra_data) if extra_data else None,
                 "user_id": getattr(record, "user_id", None),
                 "session_id": getattr(record, "session_id", None),
@@ -191,8 +187,121 @@ class DatabaseHandler(logging.Handler):
             self._thread.join(timeout=5.0)
 
 
+class DiscordLogHandler(logging.Handler):
+    """Async logging handler that mirrors logs to a Discord channel.
+
+    Each log line becomes a Discord message. Handles rate limiting by batching
+    messages when needed.
+    """
+
+    def __init__(self, level: int = logging.INFO):
+        super().__init__(level)
+        self._queue: Queue[str] = Queue(maxsize=500)
+        self._bot = None
+        self._channel_id: int | None = None
+        self._shutdown = False
+        self._task = None
+        self._loop = None
+
+    def set_bot(self, bot, channel_id: int, loop):
+        """Set the Discord bot client and start the background task."""
+        self._bot = bot
+        self._channel_id = channel_id
+        self._loop = loop
+        self._task = loop.create_task(self._worker())
+
+    async def _worker(self):
+        """Background worker that sends logs to Discord."""
+        import asyncio
+
+        while not self._shutdown:
+            try:
+                # Batch messages to respect rate limits (~5/5s per channel)
+                messages: list[str] = []
+                batch_size = 5
+                flush_interval = 1.0
+
+                # Wait for first message or timeout
+                await asyncio.sleep(flush_interval)
+
+                # Collect available messages (up to batch size)
+                while len(messages) < batch_size:
+                    try:
+                        msg = self._queue.get_nowait()
+                        messages.append(msg)
+                    except Empty:
+                        break
+
+                if messages and self._bot and self._channel_id:
+                    await self._send_messages(messages)
+
+            except Exception as e:
+                print(f"[logging] Discord handler error: {e}", file=sys.stderr)
+
+    async def _send_messages(self, messages: list[str]):
+        """Send messages to Discord channel."""
+        try:
+            channel = self._bot.get_channel(self._channel_id)
+            if not channel:
+                return
+
+            for msg in messages:
+                # Discord message limit is 2000 chars
+                if len(msg) > 1990:
+                    msg = msg[:1990] + "..."
+                try:
+                    await channel.send(f"`{msg}`")
+                except Exception as e:
+                    print(f"[logging] Failed to send to Discord: {e}", file=sys.stderr)
+
+        except Exception as e:
+            print(f"[logging] Discord send error: {e}", file=sys.stderr)
+
+    def _strip_ansi(self, text: str) -> str:
+        """Remove ANSI color codes from text."""
+        import re
+
+        ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+        return ansi_escape.sub("", text)
+
+    def emit(self, record: logging.LogRecord):
+        """Queue a log record for Discord."""
+        if self._shutdown or self._bot is None:
+            return
+
+        try:
+            # Format the message (strip colors for Discord)
+            msg = self.format(record)
+            msg = self._strip_ansi(msg)
+
+            try:
+                self._queue.put_nowait(msg)
+            except Exception:
+                pass  # Drop log if queue is full
+
+        except Exception:
+            self.handleError(record)
+
+    def shutdown(self):
+        """Gracefully shutdown the handler."""
+        self._shutdown = True
+        if self._task:
+            self._task.cancel()
+
+    async def send_direct(self, message: str):
+        """Send a message directly to the log channel (for startup/shutdown)."""
+        if self._bot and self._channel_id:
+            try:
+                channel = self._bot.get_channel(self._channel_id)
+                if channel:
+                    await channel.send(f"**{message}**")
+            except Exception as e:
+                print(f"[logging] Failed to send direct message: {e}", file=sys.stderr)
+
+
 # Global state
 _db_handler: DatabaseHandler | None = None
+_discord_handler: DiscordLogHandler | None = None
 _initialized = False
 
 
@@ -251,6 +360,39 @@ def set_db_session_factory(session_factory):
         _db_handler.set_session_factory(session_factory)
 
 
+def init_discord_logging(bot, channel_id: int, loop) -> DiscordLogHandler | None:
+    """Initialize Discord log handler after bot is ready.
+
+    Args:
+        bot: Discord bot client
+        channel_id: Discord channel ID to send logs to
+        loop: asyncio event loop
+
+    Returns:
+        The DiscordLogHandler instance, or None if channel_id is invalid
+    """
+    global _discord_handler
+
+    if not channel_id:
+        return None
+
+    if _discord_handler is None:
+        _discord_handler = DiscordLogHandler(level=_get_console_level())
+        # Use same formatter as console but without colors
+        _discord_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)-8s [%(name)s] %(message)s", datefmt="%H:%M:%S")
+        )
+        logging.getLogger().addHandler(_discord_handler)
+
+    _discord_handler.set_bot(bot, channel_id, loop)
+    return _discord_handler
+
+
+def get_discord_handler() -> DiscordLogHandler | None:
+    """Get the Discord log handler instance."""
+    return _discord_handler
+
+
 def get_logger(name: str) -> logging.Logger:
     """Get a logger with the given name."""
     if not _initialized:
@@ -260,6 +402,8 @@ def get_logger(name: str) -> logging.Logger:
 
 def shutdown_logging():
     """Gracefully shutdown logging."""
-    global _db_handler
+    global _db_handler, _discord_handler
     if _db_handler:
         _db_handler.shutdown()
+    if _discord_handler:
+        _discord_handler.shutdown()

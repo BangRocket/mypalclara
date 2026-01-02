@@ -53,7 +53,13 @@ from clara_core import (
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
 )
-from config.logging import get_logger, init_logging, set_db_session_factory
+from config.logging import (
+    get_discord_handler,
+    get_logger,
+    init_discord_logging,
+    init_logging,
+    set_db_session_factory,
+)
 from db import SessionLocal
 from db.channel_config import (
     CLARA_ADMIN_ROLE,
@@ -101,13 +107,14 @@ MAX_FILE_SIZE = int(os.getenv("DISCORD_MAX_FILE_SIZE", "100000"))  # 100KB defau
 SUMMARY_AGE_MINUTES = int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30"))
 CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
 
+# Log channel configuration - mirror console logs to this Discord channel
+LOG_CHANNEL_ID = os.getenv("DISCORD_LOG_CHANNEL_ID", "")
+
 # Stop phrase configuration - phrases that interrupt running tasks
 # Default phrases that will stop Clara mid-task
 STOP_PHRASES = [
     phrase.strip().lower()
-    for phrase in os.getenv(
-        "DISCORD_STOP_PHRASES", "clara stop,stop clara,nevermind,never mind"
-    ).split(",")
+    for phrase in os.getenv("DISCORD_STOP_PHRASES", "clara stop,stop clara,nevermind,never mind").split(",")
     if phrase.strip()
 ]
 
@@ -150,17 +157,9 @@ TEXT_EXTENSIONS = {
     ".gitignore",
     ".dockerfile",
 }
-ALLOWED_CHANNELS = [
-    ch.strip()
-    for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",")
-    if ch.strip()
-]
-ALLOWED_SERVERS = [
-    s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()
-]
-ALLOWED_ROLES = [
-    r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()
-]
+ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
+ALLOWED_SERVERS = [s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()]
+ALLOWED_ROLES = [r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()]
 DEFAULT_PROJECT = os.getenv("DEFAULT_PROJECT", "Default Project")
 DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "America/New_York")
 
@@ -171,9 +170,7 @@ MAX_TOOL_ITERATIONS = 75  # Max tool call rounds per response
 # Auto-continue configuration
 # When Clara ends with a permission-seeking question, auto-continue without waiting
 AUTO_CONTINUE_ENABLED = os.getenv("DISCORD_AUTO_CONTINUE", "true").lower() == "true"
-AUTO_CONTINUE_MAX = int(
-    os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3")
-)  # Max auto-continues per conversation
+AUTO_CONTINUE_MAX = int(os.getenv("DISCORD_AUTO_CONTINUE_MAX", "3"))  # Max auto-continues per conversation
 
 # Patterns that trigger auto-continue (case-insensitive, checked at end of response)
 AUTO_CONTINUE_PATTERNS = [
@@ -292,9 +289,7 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
     if os.getenv("CLARA_EMAIL_ADDRESS") and os.getenv("CLARA_EMAIL_PASSWORD"):
         capabilities["email"] = True
 
-    return registry.get_tools(
-        platform="discord", capabilities=capabilities, format="openai"
-    )
+    return registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
 
 
 # Discord message limit
@@ -657,9 +652,7 @@ class TaskQueue:
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
 
-    async def try_acquire(
-        self, message: DiscordMessage, is_dm: bool
-    ) -> tuple[bool, int]:
+    async def try_acquire(self, message: DiscordMessage, is_dm: bool) -> tuple[bool, int]:
         """Try to acquire the channel for processing.
 
         Returns:
@@ -696,9 +689,7 @@ class TaskQueue:
             if channel_id in self._queues and self._queues[channel_id]:
                 next_task = self._queues[channel_id].pop(0)
                 self._active[channel_id] = next_task.message
-                logger.info(
-                    f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining"
-                )
+                logger.info(f"Dequeued task for channel {channel_id}, {len(self._queues[channel_id])} remaining")
                 return next_task
 
             return None
@@ -766,9 +757,7 @@ class TaskQueue:
             if channel_id in self._queues:
                 queue_len = len(self._queues[channel_id])
                 if queue_len > 0:
-                    logger.info(
-                        f"Cleared {queue_len} queued task(s) for channel {channel_id}"
-                    )
+                    logger.info(f"Cleared {queue_len} queued task(s) for channel {channel_id}")
                 del self._queues[channel_id]
 
             return cancelled
@@ -874,6 +863,9 @@ class ClaraDiscordBot(discord.Client):
         # Message cache: discord_msg_id -> CachedMessage
         self.msg_cache: dict[int, CachedMessage] = {}
         self.cache_lock = asyncio.Lock()
+
+        # Track startup state for log messages
+        self._first_ready = True
 
         # Initialize Clara's unified platform (DB, LLM, MemoryManager, ToolRegistry)
         init_platform()
@@ -1033,9 +1025,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         # Combine: static first (cacheable), then dynamic
         return "\n\n".join(static_parts) + "\n\n" + dynamic_context
 
-    async def _extract_attachments(
-        self, message: DiscordMessage, user_id: str | None = None
-    ) -> list[dict]:
+    async def _extract_attachments(self, message: DiscordMessage, user_id: str | None = None) -> list[dict]:
         """Extract text content from message attachments.
 
         Also saves all attachments to local storage if user_id is provided.
@@ -1054,13 +1044,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             if file_manager and user_id:
                 try:
                     content_bytes = await attachment.read()
-                    save_result = file_manager.save_from_bytes(
-                        user_id, original_filename, content_bytes, channel_id
-                    )
+                    save_result = file_manager.save_from_bytes(user_id, original_filename, content_bytes, channel_id)
                     if save_result.success:
-                        logger.debug(
-                            f" Saved attachment to storage: {original_filename}"
-                        )
+                        logger.debug(f" Saved attachment to storage: {original_filename}")
                 except Exception as e:
                     logger.debug(f" Failed to save attachment locally: {e}")
 
@@ -1098,10 +1084,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Truncate if still too long for inline display
                 if len(content) > MAX_CHARS:
-                    content = (
-                        content[:MAX_CHARS]
-                        + "\n... [truncated, full file saved locally]"
-                    )
+                    content = content[:MAX_CHARS] + "\n... [truncated, full file saved locally]"
 
                 attachments.append(
                     {
@@ -1128,6 +1111,22 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
             logger.info(f"Invite URL: {invite}")
+
+        # Initialize Discord log channel mirroring (if configured)
+        if LOG_CHANNEL_ID:
+            try:
+                channel_id = int(LOG_CHANNEL_ID)
+                discord_handler = init_discord_logging(self, channel_id, self.loop)
+                if discord_handler:
+                    if self._first_ready:
+                        await discord_handler.send_direct(f"🟢 Bot started - Logged in as {self.user}")
+                    else:
+                        await discord_handler.send_direct(f"🔄 Bot reconnected - {self.user}")
+                    logger.info(f"Discord log mirroring enabled to channel {channel_id}")
+            except ValueError:
+                logger.warning(f"Invalid DISCORD_LOG_CHANNEL_ID: {LOG_CHANNEL_ID}")
+
+        self._first_ready = False
 
         # Initialize modular tools system (GitHub, ADO, etc.)
         await init_modular_tools()
@@ -1167,6 +1166,22 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         monitor.update_guilds(self.guilds)
         monitor.log("system", "Bot", f"Left server: {guild.name}")
 
+    async def on_disconnect(self):
+        """Called when bot disconnects from Discord."""
+        logger.warning("Bot disconnected from Discord")
+        monitor.log("system", "Bot", "Disconnected from Discord")
+        discord_handler = get_discord_handler()
+        if discord_handler:
+            await discord_handler.send_direct("🟡 Bot disconnected from Discord")
+
+    async def on_resumed(self):
+        """Called when bot resumes after a disconnect."""
+        logger.info("Bot resumed connection to Discord")
+        monitor.log("system", "Bot", "Resumed connection")
+        discord_handler = get_discord_handler()
+        if discord_handler:
+            await discord_handler.send_direct("🔄 Bot resumed connection")
+
     async def on_message(self, message: DiscordMessage):
         """Handle incoming messages."""
         # Debug: log all messages
@@ -1184,9 +1199,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if not is_dm:
             is_mentioned = self.user.mentioned_in(message)
             is_reply_to_bot = (
-                message.reference
-                and message.reference.resolved
-                and message.reference.resolved.author == self.user
+                message.reference and message.reference.resolved and message.reference.resolved.author == self.user
             )
 
             logger.debug(f"mentioned={is_mentioned}, reply_to_bot={is_reply_to_bot}")
@@ -1251,9 +1264,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     guild_name,
                     channel_name,
                 )
-                logger.info(
-                    f"Stop phrase from {message.author} cancelled task in channel {channel_id}"
-                )
+                logger.info(f"Stop phrase from {message.author} cancelled task in channel {channel_id}")
             else:
                 await message.reply(
                     "-# I wasn't working on anything, but I'm here!",
@@ -1273,7 +1284,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         if not acquired:
             # Channel is busy, notify user their request is queued
-            queue_msg = f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
+            queue_msg = (
+                f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
+            )
             try:
                 await message.reply(queue_msg, mention_author=False)
             except Exception as e:
@@ -1307,9 +1320,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             # Notify user their queued request is starting
             wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
-            start_msg = (
-                f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
-            )
+            start_msg = f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
             try:
                 await next_task.message.reply(start_msg, mention_author=False)
             except Exception as e:
@@ -1361,15 +1372,11 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Fetch context: channel history for channels, reply chain for DMs
                 if not is_dm:
                     channel_id = f"discord-channel-{message.channel.id}"
-                    all_channel_msgs = await self._fetch_channel_history(
-                        message.channel
-                    )
+                    all_channel_msgs = await self._fetch_channel_history(message.channel)
                     (
                         channel_summary,
                         recent_channel_msgs,
-                    ) = await self._get_or_update_channel_summary(
-                        channel_id, all_channel_msgs
-                    )
+                    ) = await self._get_or_update_channel_summary(channel_id, all_channel_msgs)
                     n_recent = len(recent_channel_msgs)
                     n_sum = len(channel_summary)
                     logger.debug(f" Channel: {n_recent} recent, {n_sum}ch summary")
@@ -1390,9 +1397,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Track interaction for proactive engine
                 proactive_channel_id = (
-                    f"discord-dm-{message.author.id}"
-                    if is_dm
-                    else f"discord-channel-{message.channel.id}"
+                    f"discord-dm-{message.author.id}" if is_dm else f"discord-channel-{message.channel.id}"
                 )
                 await proactive_on_user_message(
                     user_id=user_id,
@@ -1415,9 +1420,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     attachment_text = []
                     for att in attachments:
                         if "content" in att:
-                            attachment_text.append(
-                                f"\n\n--- File: {att['filename']} ---\n{att['content']}"
-                            )
+                            attachment_text.append(f"\n\n--- File: {att['filename']} ---\n{att['content']}")
                         elif "note" in att:
                             # File saved locally but not shown inline
                             fname, note = att["filename"], att["note"]
@@ -1438,9 +1441,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 logger.debug(f" Content length: {len(user_content)} chars")
 
                 # Extract participants from conversation for cross-user memory
-                participants = self._extract_participants(
-                    recent_channel_msgs, message.author
-                )
+                participants = self._extract_participants(recent_channel_msgs, message.author)
                 if len(participants) > 1:
                     names = [p["name"] for p in participants]
                     logger.debug(f" Participants: {', '.join(names)}")
@@ -1449,8 +1450,11 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 db = SessionLocal()
                 try:
                     user_mems, proj_mems = self.mm.fetch_mem0_context(
-                        user_id, project_id, user_content,
-                        participants=participants, is_dm=is_dm,
+                        user_id,
+                        project_id,
+                        user_content,
+                        participants=participants,
+                        is_dm=is_dm,
                     )
                     recent_msgs = self.mm.get_recent_messages(db, thread.id)
                 finally:
@@ -1466,18 +1470,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 )
 
                 # Inject Discord-specific context after the base system prompt
-                discord_context = self._build_discord_context(
-                    message, user_mems, proj_mems, is_dm, recent_msgs
-                )
+                discord_context = self._build_discord_context(message, user_mems, proj_mems, is_dm, recent_msgs)
                 # Insert as second system message (after Clara's persona)
                 system_msg = {"role": "system", "content": discord_context}
                 prompt_messages.insert(1, system_msg)
 
                 # Add channel summary if available (for channels only)
                 if channel_summary:
-                    summary_content = (
-                        f"## Earlier Channel Context (summarized)\n{channel_summary}"
-                    )
+                    summary_content = f"## Earlier Channel Context (summarized)\n{channel_summary}"
                     summary_msg = {"role": "system", "content": summary_content}
                     prompt_messages.insert(2, summary_msg)
 
@@ -1494,22 +1494,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         channel_context.append({"role": role, "content": content})
 
                     # Insert before the last user message
-                    prompt_messages = (
-                        prompt_messages[:-1] + channel_context + [prompt_messages[-1]]
-                    )
+                    prompt_messages = prompt_messages[:-1] + channel_context + [prompt_messages[-1]]
 
                 # Debug: check Docker sandbox status
-                docker_available = (
-                    DOCKER_ENABLED and get_sandbox_manager().is_available()
-                )
-                logger.debug(
-                    f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}"
-                )
+                docker_available = DOCKER_ENABLED and get_sandbox_manager().is_available()
+                logger.debug(f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}")
 
                 # Generate streaming response (with optional tier override)
-                response = await self._generate_response(
-                    message, prompt_messages, tier_override
-                )
+                response = await self._generate_response(message, prompt_messages, tier_override)
 
                 # Store in Clara's memory system
                 # Use thread_owner for message storage, user_id for memories
@@ -1529,25 +1521,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     # Log response to monitor
                     guild_name = message.guild.name if message.guild else None
                     channel_name = getattr(message.channel, "name", "DM")
-                    response_preview = (
-                        response[:200] + "..." if len(response) > 200 else response
-                    )
-                    monitor.log(
-                        "response", "Clara", response_preview, guild_name, channel_name
-                    )
+                    response_preview = response[:200] + "..." if len(response) > 200 else response
+                    monitor.log("response", "Clara", response_preview, guild_name, channel_name)
 
                     # Check for auto-continue (Clara asking permission to proceed)
-                    if (
-                        _should_auto_continue(response)
-                        and auto_continue_count < AUTO_CONTINUE_MAX
-                    ):
-                        logger.info(
-                            f"Auto-continuing ({auto_continue_count + 1}/{AUTO_CONTINUE_MAX})"
-                        )
+                    if _should_auto_continue(response) and auto_continue_count < AUTO_CONTINUE_MAX:
+                        logger.info(f"Auto-continuing ({auto_continue_count + 1}/{AUTO_CONTINUE_MAX})")
                         # Send a subtle indicator that we're auto-continuing
-                        await message.channel.send(
-                            "-# ▶️ Proceeding automatically...", silent=True
-                        )
+                        await message.channel.send("-# ▶️ Proceeding automatically...", silent=True)
                         # Recursively handle with "yes, go ahead" as the user message
                         await self._handle_message(
                             message,
@@ -1567,9 +1548,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 err_msg = f"Sorry, I encountered an error: {str(e)[:100]}"
                 await message.reply(err_msg, mention_author=False)
 
-    async def _build_message_chain(
-        self, message: DiscordMessage
-    ) -> list[CachedMessage]:
+    async def _build_message_chain(self, message: DiscordMessage) -> list[CachedMessage]:
         """Build conversation chain from reply history."""
         chain: list[CachedMessage] = []
         current = message
@@ -1587,9 +1566,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Follow reply chain
             if current.reference and current.reference.message_id:
                 try:
-                    current = await message.channel.fetch_message(
-                        current.reference.message_id
-                    )
+                    current = await message.channel.fetch_message(current.reference.message_id)
                 except discord.NotFound:
                     break
             else:
@@ -1621,9 +1598,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Cache management (limit size)
             if len(self.msg_cache) >= 500:
                 # Remove oldest entries
-                oldest = sorted(self.msg_cache.items(), key=lambda x: x[1].timestamp)[
-                    :100
-                ]
+                oldest = sorted(self.msg_cache.items(), key=lambda x: x[1].timestamp)[:100]
                 for msg_id, _ in oldest:
                     del self.msg_cache[msg_id]
 
@@ -1681,9 +1656,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         return participants
 
-    async def _fetch_channel_history(
-        self, channel, limit: int = CHANNEL_HISTORY_LIMIT
-    ) -> list[CachedMessage]:
+    async def _fetch_channel_history(self, channel, limit: int = CHANNEL_HISTORY_LIMIT) -> list[CachedMessage]:
         """Fetch recent channel messages.
 
         Returns:
@@ -1722,9 +1695,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         db = SessionLocal()
         try:
-            summary_record = (
-                db.query(ChannelSummary).filter_by(channel_id=channel_id).first()
-            )
+            summary_record = db.query(ChannelSummary).filter_by(channel_id=channel_id).first()
 
             # Check if we need to update summary
             needs_update = False
@@ -1735,22 +1706,15 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             elif old_messages:
                 # Check if there are new old messages since last summary
                 last_old_ts = old_messages[-1].timestamp.replace(tzinfo=None)
-                if (
-                    not summary_record.summary_cutoff_at
-                    or last_old_ts > summary_record.summary_cutoff_at
-                ):
+                if not summary_record.summary_cutoff_at or last_old_ts > summary_record.summary_cutoff_at:
                     needs_update = True
 
             if needs_update and old_messages:
                 # Generate new summary including old summary + new old messages
                 existing_summary = summary_record.summary or ""
-                new_summary = await self._summarize_messages(
-                    existing_summary, old_messages
-                )
+                new_summary = await self._summarize_messages(existing_summary, old_messages)
                 summary_record.summary = new_summary
-                summary_record.summary_cutoff_at = old_messages[-1].timestamp.replace(
-                    tzinfo=None
-                )
+                summary_record.summary_cutoff_at = old_messages[-1].timestamp.replace(tzinfo=None)
                 db.commit()
                 logger.debug(f" Updated channel summary for {channel_id}")
 
@@ -1803,11 +1767,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         """Ensure project exists and return its ID."""
         db = SessionLocal()
         try:
-            proj = (
-                db.query(Project)
-                .filter_by(owner_id=user_id, name=DEFAULT_PROJECT)
-                .first()
-            )
+            proj = db.query(Project).filter_by(owner_id=user_id, name=DEFAULT_PROJECT).first()
             if not proj:
                 proj = Project(owner_id=user_id, name=DEFAULT_PROJECT)
                 db.add(proj)
@@ -1817,9 +1777,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         finally:
             db.close()
 
-    async def _ensure_thread(
-        self, message: DiscordMessage, is_dm: bool
-    ) -> tuple[Session, str]:
+    async def _ensure_thread(self, message: DiscordMessage, is_dm: bool) -> tuple[Session, str]:
         """Get or create a thread based on context.
 
         For channels: One shared thread per channel (all users share context)
@@ -1885,18 +1843,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if tier is None and AUTO_TIER_ENABLED:
             # Get the user's message content for classification
             user_msg = next(
-                (
-                    m["content"]
-                    for m in reversed(prompt_messages)
-                    if m.get("role") == "user"
-                ),
+                (m["content"] for m in reversed(prompt_messages) if m.get("role") == "user"),
                 "",
             )
             if user_msg:
                 # Extract recent conversation for context (exclude system messages)
-                recent_for_tier = [
-                    m for m in prompt_messages if m.get("role") in ("user", "assistant")
-                ]
+                recent_for_tier = [m for m in prompt_messages if m.get("role") in ("user", "assistant")]
                 # Exclude the current message from context (it's passed separately)
                 if recent_for_tier and recent_for_tier[-1].get("content") == user_msg:
                     recent_for_tier = recent_for_tier[:-1]
@@ -1918,13 +1870,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 emoji, display = TIER_DISPLAY.get(tier, ("⚙️", tier))
                 model_name = get_model_for_tier(tier)
                 # Extract just the model name without provider prefix
-                short_model = (
-                    model_name.split("/")[-1] if "/" in model_name else model_name
-                )
+                short_model = model_name.split("/")[-1] if "/" in model_name else model_name
                 auto_tag = " (auto)" if auto_selected else ""
-                await message.channel.send(
-                    f"-# {emoji} Using {display}{auto_tag} ({short_model})", silent=True
-                )
+                await message.channel.send(f"-# {emoji} Using {display}{auto_tag} ({short_model})", silent=True)
             loop = asyncio.get_event_loop()
             full_response = ""
 
@@ -1936,14 +1884,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Always use tools (local file tools are always available)
             # Build the active tool list dynamically (includes modular tools like GitHub, ADO)
             if docker_available:
-                tools_logger.info(
-                    "Using tool-calling mode (Docker + local files + modular)"
-                )
+                tools_logger.info("Using tool-calling mode (Docker + local files + modular)")
                 active_tools = get_all_tools(include_docker=True)
             else:
-                tools_logger.info(
-                    "Using tool-calling mode (local files + modular only)"
-                )
+                tools_logger.info("Using tool-calling mode (local files + modular only)")
                 active_tools = get_all_tools(include_docker=False)
 
             # Generate with tools
@@ -1958,9 +1902,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 full_response = "I'm sorry, I didn't generate a response."
 
             # Extract any file attachments from the response text
-            cleaned_response, inline_files = self._extract_file_attachments(
-                full_response
-            )
+            cleaned_response, inline_files = self._extract_file_attachments(full_response)
             discord_files = []
 
             # Create Discord files from inline <<<file:>>> syntax
@@ -1977,22 +1919,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             # Read file content into memory to avoid timing/handle issues
                             content = file_path.read_bytes()
                             if content:
-                                discord_files.append(
-                                    discord.File(
-                                        fp=io.BytesIO(content), filename=file_path.name
-                                    )
-                                )
-                                logger.debug(
-                                    f" Adding local file: {file_path.name} ({len(content)} bytes)"
-                                )
+                                discord_files.append(discord.File(fp=io.BytesIO(content), filename=file_path.name))
+                                logger.debug(f" Adding local file: {file_path.name} ({len(content)} bytes)")
                             else:
-                                logger.warning(
-                                    f" Local file is empty: {file_path.name}"
-                                )
+                                logger.warning(f" Local file is empty: {file_path.name}")
                         except Exception as e:
-                            logger.error(
-                                f" Failed to read local file {file_path.name}: {e}"
-                            )
+                            logger.error(f" Failed to read local file {file_path.name}: {e}")
 
             # Split the response into chunks and send each
             chunks = self._split_message(cleaned_response)
@@ -2009,9 +1941,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         if chunk_files:
                             n_files = len(chunk_files)
                             logger.debug(f" Sending reply with {n_files} file(s)")
-                        response_msg = await message.reply(
-                            chunk, mention_author=False, files=chunk_files
-                        )
+                        response_msg = await message.reply(chunk, mention_author=False, files=chunk_files)
                     else:
                         # Subsequent messages are follow-ups in the channel
                         response_msg = await message.channel.send(chunk)
@@ -2202,11 +2132,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     logger.info("No tools needed, using main chat LLM")
 
                     # Remove the tool instruction we added
-                    original_messages = [
-                        m
-                        for m in messages
-                        if m.get("content") != tool_instruction["content"]
-                    ]
+                    original_messages = [m for m in messages if m.get("content") != tool_instruction["content"]]
 
                     def main_llm_call():
                         llm = make_llm(tier=tier)
@@ -2234,12 +2160,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     raw_args = tool_call["function"]["arguments"]
                     # Debug: log raw arguments
                     if raw_args:
-                        tools_logger.debug(
-                            f"Raw args type: {type(raw_args).__name__}, len: {len(raw_args)}"
-                        )
-                        preview = (
-                            raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
-                        )
+                        tools_logger.debug(f"Raw args type: {type(raw_args).__name__}, len: {len(raw_args)}")
+                        preview = raw_args[:200] + "..." if len(raw_args) > 200 else raw_args
                         tools_logger.debug(f"Raw args preview: {preview}")
                     else:
                         tools_logger.warning("raw_args is empty/None")
@@ -2250,9 +2172,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     tools_logger.error(f"Raw value: {repr(raw_args)[:500]}")
                     arguments = {}
 
-                tools_logger.info(
-                    f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}"
-                )
+                tools_logger.info(f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}")
 
                 # Get friendly status for this tool
                 emoji, action = tool_status.get(tool_name, ("⚙️", "Working"))
@@ -2260,9 +2180,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Build status text with context
                 if tool_name == "execute_python":
                     desc = arguments.get("description", "")
-                    status_text = (
-                        f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
-                    )
+                    status_text = f"{emoji} {action}..." if not desc else f"{emoji} {desc}..."
                 elif tool_name == "install_package":
                     pkg = arguments.get("package", "package")
                     status_text = f"{emoji} Installing `{pkg}`..."
@@ -2351,9 +2269,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             view=view,
                         )
                         # Simplify output for LLM context
-                        tool_output = (
-                            "OAuth authorization link sent to user via Discord button."
-                        )
+                        tool_output = "OAuth authorization link sent to user via Discord button."
                 except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                     pass  # Not a button response, use as-is
 
@@ -2386,8 +2302,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             {
                 "role": "user",
                 "content": (
-                    "You've reached the maximum number of tool calls. "
-                    "Please summarize what you've accomplished."
+                    "You've reached the maximum number of tool calls. " "Please summarize what you've accomplished."
                 ),
             }
         )
@@ -2441,9 +2356,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         if tool_name in docker_tools:
             # Use Docker sandbox manager
-            result = await sandbox_manager.handle_tool_call(
-                user_id, tool_name, arguments
-            )
+            result = await sandbox_manager.handle_tool_call(user_id, tool_name, arguments)
             if result.success:
                 return result.output
             else:
@@ -2505,9 +2418,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             sandbox_path = arguments.get("sandbox_path", "")
             local_filename = arguments.get("local_filename", "")
             if not local_filename:
-                local_filename = (
-                    sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
-                )
+                local_filename = sandbox_path.split("/")[-1] if "/" in sandbox_path else sandbox_path
 
             # Read from sandbox
             read_result = await sandbox_manager.read_file(user_id, sandbox_path)
@@ -2516,9 +2427,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             # Save locally (organized by user/channel)
             content = read_result.output
-            save_result = file_manager.save_file(
-                user_id, local_filename, content, channel_id
-            )
+            save_result = file_manager.save_file(user_id, local_filename, content, channel_id)
             return save_result.message
 
         elif tool_name == "upload_to_sandbox":
@@ -2526,9 +2435,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             sandbox_path = arguments.get("sandbox_path", "")
 
             # Read from local storage as bytes (preserves binary files)
-            content, error = file_manager.read_file_bytes(
-                user_id, local_filename, channel_id
-            )
+            content, error = file_manager.read_file_bytes(user_id, local_filename, channel_id)
             if content is None:
                 return f"Error: {error}"
 
@@ -2537,9 +2444,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 sandbox_path = f"/home/user/{local_filename}"
 
             # Write to sandbox (bytes supported)
-            write_result = await sandbox_manager.write_file(
-                user_id, sandbox_path, content
-            )
+            write_result = await sandbox_manager.write_file(user_id, sandbox_path, content)
             if write_result.success:
                 size_kb = len(content) / 1024
                 return f"Uploaded '{local_filename}' ({size_kb:.1f} KB) to sandbox at {sandbox_path}"
@@ -2609,11 +2514,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M")
                     author = msg.author.display_name
                     # Truncate long messages
-                    text = (
-                        msg.content[:200] + "..."
-                        if len(msg.content) > 200
-                        else msg.content
-                    )
+                    text = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
                     matches.append(f"[{timestamp}] {author}: {text}")
 
                     # Limit results
@@ -2657,9 +2558,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 author = msg.author.display_name
                 is_bot = " [Clara]" if msg.author == self.user else ""
                 # Truncate long messages
-                text = (
-                    msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
-                )
+                text = msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
                 messages.append(f"[{timestamp}] {author}{is_bot}: {text}")
 
                 if len(messages) >= count:
@@ -2759,9 +2658,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Primary pattern: <<<file:filename>>>content<<</file>>>
         # Also handles <<</file:filename>>> closing variant
-        primary_pattern = (
-            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
-        )
+        primary_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*/\s*file\s*(?::\s*[^>]*)?\s*>>>"
 
         def replace_file(match):
             filename = match.group(1).strip()
@@ -2770,17 +2667,11 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             files.append((filename, content))
             return f"📎 *Attached: {filename}*"
 
-        cleaned = re.sub(
-            primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
-        )
+        cleaned = re.sub(primary_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
 
         # Fallback pattern: <<<file:filename>>>content<<<end>>> or <<<endfile>>>
-        fallback_pattern = (
-            r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
-        )
-        cleaned = re.sub(
-            fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE
-        )
+        fallback_pattern = r"<<<\s*file\s*:\s*([^>]+?)\s*>>>(.*?)<<<\s*(?:end|endfile)\s*>>>"
+        cleaned = re.sub(fallback_pattern, replace_file, cleaned, flags=re.DOTALL | re.IGNORECASE)
 
         # Last resort: <<<file:filename>>> followed by content until next <<< or end of major section
         # This catches cases where Clara forgets the closing tag entirely
@@ -2794,9 +2685,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 if len(content) > 10 and not content.startswith("<<<"):
                     # Don't re-extract if we already got this file
                     if not any(f[0] == filename for f in files):
-                        logger.debug(
-                            f" Matched unclosed file: {filename} ({len(content)} chars)"
-                        )
+                        logger.debug(f" Matched unclosed file: {filename} ({len(content)} chars)")
                         files.append((filename, content))
                         return f"📎 *Attached: {filename}*"
                 return match.group(0)
@@ -2811,9 +2700,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         # Debug: check if we still have unmatched file tags
         remaining_tags = re.findall(r"<<<\s*file\s*:", cleaned, re.IGNORECASE)
         if remaining_tags:
-            logger.warning(
-                f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction"
-            )
+            logger.warning(f"Found {len(remaining_tags)} unmatched <<<file: tag(s) after extraction")
             logger.debug(f"Text snippet: {cleaned[:500]}")
 
         return cleaned, files
@@ -2835,9 +2722,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             try:
                 # Encode content to bytes and wrap in BytesIO
                 content_bytes = content.encode("utf-8")
-                discord_file = discord.File(
-                    fp=io.BytesIO(content_bytes), filename=filename
-                )
+                discord_file = discord.File(fp=io.BytesIO(content_bytes), filename=filename)
                 discord_files.append(discord_file)
                 logger.debug(f" Created file: {filename} ({len(content_bytes)} bytes)")
 
@@ -2879,9 +2764,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             # Store messages under thread owner (shared for channels)
             self.mm.store_message(db, thread_id, thread_owner_id, "user", user_message)
-            self.mm.store_message(
-                db, thread_id, thread_owner_id, "assistant", assistant_reply
-            )
+            self.mm.store_message(db, thread_id, thread_owner_id, "assistant", assistant_reply)
             thread.last_activity_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
 
@@ -2967,9 +2850,7 @@ def health_check():
 
 
 @monitor_app.get("/oauth/google/callback", response_class=HTMLResponse)
-async def google_oauth_callback(
-    code: str | None = None, state: str | None = None, error: str | None = None
-):
+async def google_oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None):
     """Handle Google OAuth callback - exchange code for tokens."""
     from tools.google_oauth import (
         decode_state,
@@ -3351,14 +3232,22 @@ def dashboard():
 async def run_bot():
     """Run the Discord bot."""
     bot = ClaraDiscordBot()
-    await bot.start(BOT_TOKEN)
+    try:
+        await bot.start(BOT_TOKEN)
+    finally:
+        # Send shutdown message before closing
+        discord_handler = get_discord_handler()
+        if discord_handler and not bot.is_closed():
+            try:
+                await discord_handler.send_direct("🔴 Bot shutting down...")
+            except Exception:
+                pass  # Best effort
+        await bot.close()
 
 
 async def run_monitor_server():
     """Run the FastAPI monitoring server."""
-    config = uvicorn.Config(
-        monitor_app, host="0.0.0.0", port=MONITOR_PORT, log_level="warning"
-    )
+    config = uvicorn.Config(monitor_app, host="0.0.0.0", port=MONITOR_PORT, log_level="warning")
     server = uvicorn.Server(config)
     await server.serve()
 
@@ -3380,15 +3269,11 @@ async def async_main():
 
     config_logger.info(f"Max message chain: {MAX_MESSAGES}")
     if ALLOWED_SERVERS:
-        config_logger.info(
-            f"Allowed servers ({len(ALLOWED_SERVERS)}): {', '.join(ALLOWED_SERVERS)}"
-        )
+        config_logger.info(f"Allowed servers ({len(ALLOWED_SERVERS)}): {', '.join(ALLOWED_SERVERS)}")
     else:
         config_logger.info("Allowed servers: NONE (using channel list)")
     if ALLOWED_CHANNELS:
-        config_logger.info(
-            f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}"
-        )
+        config_logger.info(f"Allowed channels ({len(ALLOWED_CHANNELS)}): {', '.join(ALLOWED_CHANNELS)}")
     else:
         config_logger.info("Allowed channels: ALL")
     config_logger.info(f"Allowed roles: {ALLOWED_ROLES or 'all'}")
@@ -3426,13 +3311,9 @@ async def async_main():
     else:
         sandbox_logger.warning("Code execution DISABLED")
         if not DOCKER_AVAILABLE:
-            sandbox_logger.info(
-                "  - docker package not installed (run: poetry add docker)"
-            )
+            sandbox_logger.info("  - docker package not installed (run: poetry add docker)")
         elif not sandbox_mgr.is_available():
-            sandbox_logger.info(
-                "  - Docker daemon not running (start Docker Desktop or dockerd)"
-            )
+            sandbox_logger.info("  - Docker daemon not running (start Docker Desktop or dockerd)")
 
     if MONITOR_ENABLED:
         logger.info(f"Dashboard at http://localhost:{MONITOR_PORT}")
