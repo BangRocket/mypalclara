@@ -1354,11 +1354,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     names = [p["name"] for p in participants]
                     logger.debug(f" Participants: {', '.join(names)}")
 
-                # Fetch memories
+                # Fetch memories (DMs prioritize personal, servers prioritize project)
                 db = SessionLocal()
                 try:
                     user_mems, proj_mems = self.mm.fetch_mem0_context(
-                        user_id, project_id, user_content, participants=participants
+                        user_id, project_id, user_content,
+                        participants=participants, is_dm=is_dm,
                     )
                     recent_msgs = self.mm.get_recent_messages(db, thread.id)
                 finally:
@@ -1421,6 +1422,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Store in Clara's memory system
                 # Use thread_owner for message storage, user_id for memories
+                # DMs store as "personal" memories, servers as "project" memories
                 if response:
                     await self._store_exchange(
                         thread_owner,  # For message storage in shared thread
@@ -1430,6 +1432,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         user_content,
                         response,
                         participants=participants,
+                        is_dm=is_dm,
                     )
 
                     # Log response to monitor
@@ -2761,6 +2764,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         user_message: str,
         assistant_reply: str,
         participants: list[dict] | None = None,
+        is_dm: bool = False,
     ):
         """Store the exchange in Clara's memory system.
 
@@ -2768,6 +2772,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             thread_owner_id: ID for message storage (channel or DM owner)
             memory_user_id: ID for mem0 memory extraction (always per-user)
             project_id: Project ID for memory organization
+            is_dm: Whether this is a DM (stores as "personal" vs "project" memory)
             thread_id: Thread ID for message storage
             user_message: The user's message
             assistant_reply: Clara's response
@@ -2794,6 +2799,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 self.mm.update_thread_summary(db, thread)
 
             # Add to mem0 for per-user memory extraction
+            # DMs store as "personal" memories, servers store as "project" memories
             self.mm.add_to_mem0(
                 memory_user_id,
                 project_id,
@@ -2801,6 +2807,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 user_message,
                 assistant_reply,
                 participants=participants,
+                is_dm=is_dm,
             )
             logger.debug(f" Stored exchange (thread: {thread_owner_id[:20]}...)")
 
