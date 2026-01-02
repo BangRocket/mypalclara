@@ -57,28 +57,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create deployment PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge stage into main
         run: |
-          # Check if PR already exists
-          EXISTING_PR=$(gh pr list --base main --head stage --json number --jq '.[0].number')
-
-          if [ -n "$EXISTING_PR" ]; then
-            echo "PR #$EXISTING_PR already exists, merging..."
-            gh pr merge $EXISTING_PR --merge --admin
-          else
-            echo "Creating new PR..."
-            gh pr create \
-              --base main \
-              --head stage \
-              --title "Deploy stage to main" \
-              --body "Deployment from stage to main triggered by @${{ github.actor }}"
-
-            # Get the new PR number and merge
-            NEW_PR=$(gh pr list --base main --head stage --json number --jq '.[0].number')
-            gh pr merge $NEW_PR --merge --admin
-          fi
+          git fetch origin main
+          git checkout main
+          git merge origin/stage --no-edit
+          git push origin main
 
       - name: Create release tag
         run: |
