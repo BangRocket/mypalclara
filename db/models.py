@@ -185,6 +185,9 @@ class ProactiveNote(Base):
     note = Column(Text, nullable=False)  # The observation/thought
     note_type = Column(String, nullable=True)  # observation, question, follow_up, connection
     source_context = Column(Text, nullable=True)  # JSON: What triggered this note
+    source_model = Column(String, nullable=True)  # Model that created this note (opus-4, sonnet-4, etc)
+    source_confidence = Column(String, nullable=True)  # Self-assessed confidence (high, medium, low)
+    grounding_message_ids = Column(Text, nullable=True)  # JSON: Message IDs that triggered this note
     connections = Column(Text, nullable=True)  # JSON: List of related note IDs
     relevance_score = Column(Integer, default=100)  # 0-100, decays over time
     surface_conditions = Column(Text, nullable=True)  # JSON: When should this come up
