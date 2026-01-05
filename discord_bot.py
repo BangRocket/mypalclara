@@ -92,6 +92,7 @@ from storage.local_files import get_file_manager
 
 # Import modular tools system for GitHub, ADO, etc.
 from tools import ToolContext, get_registry, init_tools
+from tools._registry import validate_tool_args
 
 # Initialize logging system
 init_logging()
@@ -2171,6 +2172,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     tools_logger.error(f"JSON parse error: {e}")
                     tools_logger.error(f"Raw value: {repr(raw_args)[:500]}")
                     arguments = {}
+
+                # Validate and coerce arguments against tool schema
+                registry = get_registry()
+                tool_def = registry.get_tool(tool_name)
+                if tool_def:
+                    arguments, validation_warnings = validate_tool_args(tool_name, arguments, tool_def.parameters)
+                    for warning in validation_warnings:
+                        tools_logger.warning(f"[{tool_name}] {warning}")
 
                 tools_logger.info(f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}")
 
