@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mypalclara"
-version = "0.6.0"
+version = "0.8.0"
 description = "MyPalClara - AI assistant with session management and memory"
 authors = ["Joshua Heidorn <heidornj@icloud.com>"]
 readme = "README.md"
@@ -33,6 +33,9 @@ pgvector = "^0.3.0"  # Vector support for mem0
 openai = "^1.42.0"
 anthropic = "^0.40.0"
 huggingface_hub = "^0.26.0"
+
+# CrewAI - Agent framework
+crewai = "^0.108.0"
 
 # General utils
 requests = "^2.32.5"
