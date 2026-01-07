@@ -1,20 +1,18 @@
 """Clara Core - Shared infrastructure for the Clara platform.
 
 This package provides the common components used by all Clara platform services:
-- API server
-- Discord bot
-- Email monitor
+- Discord bot (CrewAI architecture)
+- API service
 - Future platforms (Slack, Telegram, etc.)
 
 Usage:
-    from clara_core import init_platform, MemoryManager, ToolRegistry
+    from clara_core import init_platform, MemoryManager
 
     # Initialize shared infrastructure (call once at startup)
     init_platform()
 
     # Access singletons
     mm = MemoryManager.get_instance()
-    tools = ToolRegistry.get_instance()
 """
 
 from pathlib import Path
@@ -44,7 +42,6 @@ from clara_core.llm import (
 )
 from clara_core.memory import MemoryManager, load_initial_profile
 from clara_core.platform import PlatformAdapter, PlatformContext, PlatformMessage
-from clara_core.tools import ToolRegistry
 
 __all__ = [
     # Version
@@ -55,7 +52,6 @@ __all__ = [
     "get_config",
     # Core classes
     "MemoryManager",
-    "ToolRegistry",
     # Platform abstractions
     "PlatformAdapter",
     "PlatformContext",

@@ -212,12 +212,10 @@ def init_platform() -> None:
     1. Load configuration
     2. Initialize database
     3. Initialize MemoryManager singleton
-    4. Initialize ToolRegistry singleton
-    5. Optionally load initial profile
+    4. Optionally load initial profile
     """
     from clara_core.memory import MemoryManager, load_initial_profile
     from clara_core.llm import make_llm
-    from clara_core.tools import ToolRegistry
     from db.connection import init_db
 
     config = get_config()
@@ -236,10 +234,7 @@ def init_platform() -> None:
     llm = make_llm()
     MemoryManager.initialize(llm_callable=llm)
 
-    # 3. Initialize ToolRegistry
-    ToolRegistry.initialize()
-
-    # 4. Load initial profile if enabled
+    # 3. Load initial profile if enabled
     if not config.skip_profile_load:
         load_initial_profile(config.user_id)
 
