@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyPalClara - Your AI Companion</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                    <button class="close-btn" onclick="toggleSettings()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-group">
+                        <label for="api-key">API Key</label>
+                        <input type="password" id="api-key" placeholder="sk-ant-..." />
+                        <p class="hint">Your key is stored locally and never sent to our server.</p>
+                    </div>
+                    <div class="setting-group">
+                        <label for="user-name">Your Name</label>
+                        <input type="text" id="user-name" placeholder="What should Clara call you?" />
+                    </div>
+                    <div class="setting-group">
+                        <h3>Memory Management</h3>
+                        <div class="button-row">
+                            <button onclick="exportMemories()" class="secondary-btn">Export Memories</button>
+                            <button onclick="document.getElementById('import-file').click()" class="secondary-btn">Import Memories</button>
+                            <input type="file" id="import-file" accept=".json" onchange="importMemories(event)" hidden />
+                        </div>
+                        <button onclick="clearMemories()" class="danger-btn">Clear All Memories</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button onclick="saveSettings()" class="primary-btn">Save Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Container -->
+        <div class="container">
+            <!-- Header -->
+            <header>
+                <div class="logo">
+                    <span class="logo-icon">🌸</span>
+                    <h1>Clara</h1>
+                </div>
+                <div class="header-actions">
+                    <button onclick="toggleSettings()" class="icon-btn" title="Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1m15.36-5.36l-4.24 4.24m-4.24 0L3.64 6.64m12.72 12.72l-4.24-4.24m-4.24 0l-4.24 4.24"></path>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <main id="chat-container">
+                <div id="messages">
+                    <!-- Messages will be inserted here -->
+                </div>
+            </main>
+
+            <!-- Input Area -->
+            <footer>
+                <form id="chat-form" onsubmit="sendMessage(event)">
+                    <div class="input-container">
+                        <textarea
+                            id="message-input"
+                            placeholder="Talk to Clara..."
+                            rows="1"
+                            onkeydown="handleKeyDown(event)"
+                        ></textarea>
+                        <button type="submit" id="send-btn" title="Send">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+                <p class="footer-hint">Clara remembers your conversations locally in this browser.</p>
+            </footer>
+        </div>
+    </div>
+
+    <script src="/static/js/memory.js"></script>
+    <script src="/static/js/clara.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
