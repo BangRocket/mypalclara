@@ -3,6 +3,6 @@
 Provides local and cloud file storage.
 """
 
-from storage.local_files import LocalFileManager
+from clara_core.storage.local_files import LocalFileManager
 
 __all__ = ["LocalFileManager"]

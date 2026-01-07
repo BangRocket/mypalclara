@@ -216,7 +216,7 @@ def init_platform() -> None:
     """
     from clara_core.memory import MemoryManager, load_initial_profile
     from clara_core.llm import make_llm
-    from db.connection import init_db
+    from clara_core.db.connection import init_db
 
     config = get_config()
 

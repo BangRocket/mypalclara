@@ -42,7 +42,7 @@ def get_session():
 
 
 def init_db() -> None:
-    from db.models import Base
+    from clara_core.db.models import Base
     Base.metadata.create_all(bind=engine)
 
 

@@ -22,7 +22,7 @@ def main():
         sys.exit(1)
 
     # Import and run
-    from crews.discord.adapter import ClaraDiscordBot
+    from crewai_service.discord.adapter import ClaraDiscordBot
 
     print("Starting Clara (CrewAI architecture)...")
     bot = ClaraDiscordBot()

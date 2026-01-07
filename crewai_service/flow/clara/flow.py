@@ -16,8 +16,8 @@ from typing import Any
 from crewai.flow.flow import Flow, listen, start
 
 from clara_core.llm import make_llm
-from config.bot import PERSONALITY
-from db import SessionLocal
+from clara_core.config.bot import PERSONALITY
+from clara_core.db import SessionLocal
 
 from .memory_bridge import MemoryBridge
 from .state import ClaraState, ConversationContext

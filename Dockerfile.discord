@@ -26,12 +26,8 @@ RUN poetry install --only main --no-interaction --no-ansi
 # Copy application code
 COPY *.py ./
 COPY clara_core/ ./clara_core/
-COPY config/ ./config/
-COPY db/ ./db/
-COPY storage/ ./storage/
-COPY crews/ ./crews/
+COPY crewai_service/ ./crewai_service/
 COPY vendor/ ./vendor/
-COPY personalities/ ./personalities/
 COPY scripts/ ./scripts/
 COPY VERSION ./
 

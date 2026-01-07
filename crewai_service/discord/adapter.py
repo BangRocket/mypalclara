@@ -19,8 +19,8 @@ from discord import Message as DiscordMessage
 from clara_core import init_platform
 from clara_core.llm import make_llm
 from clara_core.memory import MemoryManager
-from db import SessionLocal
-from db.channel_config import should_respond_to_message
+from clara_core.db import SessionLocal
+from clara_core.db.channel_config import should_respond_to_message
 
 from .helpers import (
     build_participants_list,
@@ -30,7 +30,7 @@ from .helpers import (
 )
 
 if TYPE_CHECKING:
-    from crews.clara_flow.state import ConversationContext
+    from crewai_service.flow.clara.state import ConversationContext
 
 # Max messages to fetch for reply chain
 MAX_REPLY_CHAIN = 10
@@ -114,7 +114,7 @@ class ClaraDiscordBot(discord.Client):
             return
 
         # Build context
-        from crews.clara_flow.state import ConversationContext
+        from crewai_service.flow.clara.state import ConversationContext
 
         context = ConversationContext(
             user_id=f"discord-{message.author.id}",
@@ -267,7 +267,7 @@ class ClaraDiscordBot(discord.Client):
         loop = asyncio.get_event_loop()
 
         def run_sync():
-            from crews.clara_flow import ClaraFlow
+            from crewai_service.flow.clara import ClaraFlow
 
             flow = ClaraFlow()
             flow.kickoff(

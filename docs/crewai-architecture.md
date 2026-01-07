@@ -15,11 +15,11 @@ Discord Message → Thin Adapter → ClaraFlow (the mind) → Response
 - **Clara is a Flow** - The mind, decision maker, holds state and memory
 - **Adapters are interfaces** - How Clara perceives and interacts with platforms
 - **Reactive only (v1)** - Responds to input, no background processing yet
-- **Architecture supports expansion** - Adding new crews/platforms is straightforward
+- **Architecture supports expansion** - Adding new crewai_service/platforms is straightforward
 
 ## Components
 
-### 1. ClaraFlow (`crews/clara_flow/flow.py`)
+### 1. ClaraFlow (`crewai_service/flow/clara/flow.py`)
 
 The core "mind" - a CrewAI Flow that processes messages through a deterministic pipeline:
 
@@ -46,7 +46,7 @@ class ClaraFlow(Flow[ClaraState]):
 - `clara_core/llm.py` - LLM backends (OpenRouter, Anthropic, etc.)
 - `clara_core/memory.py` - MemoryManager singleton
 
-### 2. ClaraState (`crews/clara_flow/state.py`)
+### 2. ClaraState (`crewai_service/flow/clara/state.py`)
 
 Pydantic models that hold conversation state:
 
@@ -73,7 +73,7 @@ class ClaraState(BaseModel):
     tier: str                       # "high", "mid", "low"
 ```
 
-### 3. MemoryBridge (`crews/clara_flow/memory_bridge.py`)
+### 3. MemoryBridge (`crewai_service/flow/clara/memory_bridge.py`)
 
 Wrapper around `MemoryManager` for Flow integration:
 
@@ -85,7 +85,7 @@ class MemoryBridge:
     def store_message(db, thread_id, user_id, role, content)
 ```
 
-### 4. Discord Adapter (`crews/discord/adapter.py`)
+### 4. Discord Adapter (`crewai_service/discord/adapter.py`)
 
 Thin Discord.py bot that routes to ClaraFlow:
 
@@ -104,7 +104,7 @@ class ClaraDiscordBot(discord.Client):
         return flow.state.response
 ```
 
-### 5. Helpers (`crews/discord/helpers.py`)
+### 5. Helpers (`crewai_service/discord/helpers.py`)
 
 Utility functions:
 - `clean_message_content()` - Remove bot mentions
@@ -115,13 +115,15 @@ Utility functions:
 ## File Structure
 
 ```
-crews/
-├── __init__.py                 # Exports ClaraFlow, ClaraState
-├── clara_flow/
+crewai_service/
+├── __init__.py                 # Exports ClaraFlow, run_clara_flow
+├── flow/
 │   ├── __init__.py
-│   ├── flow.py                 # ClaraFlow - the mind
-│   ├── state.py                # Pydantic state models
-│   └── memory_bridge.py        # mem0 integration wrapper
+│   └── clara/
+│       ├── __init__.py         # Exports ClaraFlow, ClaraState
+│       ├── flow.py             # ClaraFlow - the mind
+│       ├── state.py            # Pydantic state models
+│       └── memory_bridge.py    # mem0 integration wrapper
 └── discord/
     ├── __init__.py
     ├── adapter.py              # ClaraDiscordBot
@@ -223,7 +225,7 @@ This runs ClaraFlow in a thread pool, keeping Discord.py's event loop responsive
 
 ### Adding a New Platform (e.g., Slack)
 
-1. Create `crews/slack/adapter.py` with platform-specific bot
+1. Create `crewai_service/slack/adapter.py` with platform-specific bot
 2. Build `ConversationContext` from Slack events
 3. Call `ClaraFlow.kickoff()` with context
 4. Send response back to Slack
@@ -232,7 +234,7 @@ The Flow doesn't change - only the adapter.
 
 ### Adding Tools (v2)
 
-1. Create `crews/tools/crew.py` with tool-executing agents
+1. Create `crewai_service/tools/crew.py` with tool-executing agents
 2. Add a new Flow step that calls the tools crew:
 
 ```python
@@ -246,7 +248,7 @@ def execute_tools_if_needed(self):
 
 ### Adding Background Processing (Rumination)
 
-1. Create `crews/rumination/flow.py` with its own Flow
+1. Create `crewai_service/rumination/flow.py` with its own Flow
 2. Run on a schedule or trigger
 3. Can share mem0 with main ClaraFlow
 

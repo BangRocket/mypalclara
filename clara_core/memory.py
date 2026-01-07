@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session as OrmSession
 
-    from db.models import Message, Session
+    from clara_core.db.models import Message, Session
 
 # Configuration constants
 CONTEXT_MESSAGE_COUNT = 15  # Reduced from 20 to save tokens
@@ -78,7 +78,7 @@ def load_initial_profile(user_id: str) -> None:
     2. If not, generate from inputs/user_profile.txt first
     3. Apply structured memories to mem0 with graph-friendly grouping
     """
-    from config.mem0 import MEM0
+    from clara_core.config.mem0 import MEM0
 
     skip_profile = os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true"
     if skip_profile:
@@ -220,13 +220,13 @@ class MemoryManager:
 
     def get_thread(self, db: "OrmSession", thread_id: str) -> "Session | None":
         """Get a thread by ID."""
-        from db.models import Session
+        from clara_core.db.models import Session
 
         return db.query(Session).filter_by(id=thread_id).first()
 
     def get_recent_messages(self, db: "OrmSession", thread_id: str) -> list["Message"]:
         """Get recent messages from a thread."""
-        from db.models import Message
+        from clara_core.db.models import Message
 
         msgs = (
             db.query(Message)
@@ -239,7 +239,7 @@ class MemoryManager:
 
     def get_message_count(self, db: "OrmSession", thread_id: str) -> int:
         """Get total message count for a thread."""
-        from db.models import Message
+        from clara_core.db.models import Message
 
         return db.query(Message).filter_by(session_id=thread_id).count()
 
@@ -252,7 +252,7 @@ class MemoryManager:
         content: str,
     ) -> "Message":
         """Store a message in a thread."""
-        from db.models import Message
+        from clara_core.db.models import Message
 
         msg = Message(
             session_id=thread_id,
@@ -274,7 +274,7 @@ class MemoryManager:
 
     def update_thread_summary(self, db: "OrmSession", thread: "Session") -> str:
         """Generate/update summary for a thread."""
-        from db.models import Message
+        from clara_core.db.models import Message
 
         all_msgs = (
             db.query(Message)
@@ -331,7 +331,7 @@ class MemoryManager:
         Returns:
             Tuple of (user_memories, project_memories)
         """
-        from config.mem0 import MEM0
+        from clara_core.config.mem0 import MEM0
 
         if MEM0 is None:
             return [], []
@@ -432,7 +432,7 @@ class MemoryManager:
             participants: List of {"id": str, "name": str} for people mentioned
             is_dm: Whether this is a DM conversation (stores as "personal" vs "project")
         """
-        from config.mem0 import MEM0
+        from clara_core.config.mem0 import MEM0
 
         if MEM0 is None:
             return
@@ -508,7 +508,7 @@ class MemoryManager:
         Returns:
             List of messages ready for LLM
         """
-        from config.bot import PERSONALITY
+        from clara_core.config.bot import PERSONALITY
 
         system_base = PERSONALITY
 

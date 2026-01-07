@@ -1,6 +1,6 @@
 """Database layer for Clara."""
 
-from db.connection import SessionLocal, init_db, get_engine
+from clara_core.db.connection import SessionLocal, init_db, get_engine
 
 __all__ = [
     "SessionLocal",

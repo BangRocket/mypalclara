@@ -101,7 +101,7 @@ class DatabaseHandler(logging.Handler):
 
     def _worker(self):
         """Background worker that writes logs to the database."""
-        from db.models import LogEntry
+        from clara_core.db.models import LogEntry
 
         batch: list[dict[str, Any]] = []
         batch_size = 10
