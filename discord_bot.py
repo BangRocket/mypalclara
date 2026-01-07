@@ -1206,12 +1206,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             logger.debug(f"mentioned={is_mentioned}, reply_to_bot={is_reply_to_bot}")
 
             # Check channel mode configuration
+            # "active" mode: respond to all messages
+            # "mention" mode: only respond to mentions/replies
+            # "off" mode: don't respond at all
             channel_id_str = str(message.channel.id)
             if not should_respond_to_message(channel_id_str, is_mentioned or is_reply_to_bot):
                 logger.debug(f"Channel {channel_id_str} mode blocks this message")
-                return
-
-            if not is_mentioned and not is_reply_to_bot:
                 return
 
             # Check server/channel permissions (only for non-DM)
