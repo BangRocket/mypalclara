@@ -19,6 +19,7 @@ from discord import Message as DiscordMessage
 from clara_core import init_platform
 from clara_core.llm import make_llm
 from clara_core.memory import MemoryManager
+from db import SessionLocal
 from db.channel_config import should_respond_to_message
 
 from .helpers import (
@@ -29,7 +30,12 @@ from .helpers import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from crews.clara_flow.state import ConversationContext
+
+# Max messages to fetch for reply chain
+MAX_REPLY_CHAIN = 10
+# Max messages to fetch from DB history
+MAX_RECENT_MESSAGES = 15
 
 
 class ClaraDiscordBot(discord.Client):
@@ -123,10 +129,13 @@ class ClaraDiscordBot(discord.Client):
             participants=build_participants_list(message),
         )
 
+        # Fetch conversation history
+        recent_messages = await self._get_recent_messages(message, context.thread_id)
+
         # Show typing indicator while processing
         async with message.channel.typing():
             try:
-                response = await self._run_flow(context, content)
+                response = await self._run_flow(context, content, recent_messages)
             except Exception as e:
                 print(f"[adapter] Error running flow: {e}")
                 import traceback
@@ -137,16 +146,120 @@ class ClaraDiscordBot(discord.Client):
         if response:
             await self._send_response(message, response)
 
+    async def _get_recent_messages(
+        self,
+        message: DiscordMessage,
+        thread_id: str,
+    ) -> list[dict]:
+        """Get recent conversation messages.
+
+        Combines:
+        1. Reply chain from Discord (if replying to a message)
+        2. Recent messages from database
+
+        Args:
+            message: Current Discord message
+            thread_id: Thread ID for DB lookup
+
+        Returns:
+            List of message dicts with role and content
+        """
+        recent = []
+
+        # First, try to build reply chain from Discord
+        if message.reference and message.reference.resolved:
+            reply_chain = await self._build_reply_chain(message)
+            recent.extend(reply_chain)
+
+        # Then, fetch from database if we don't have enough context
+        if len(recent) < MAX_RECENT_MESSAGES:
+            db_messages = self._get_db_messages(thread_id, MAX_RECENT_MESSAGES - len(recent))
+            # Prepend DB messages (older) before reply chain (newer)
+            recent = db_messages + recent
+
+        print(f"[adapter] Loaded {len(recent)} recent messages")
+        return recent
+
+    async def _build_reply_chain(self, message: DiscordMessage) -> list[dict]:
+        """Build conversation chain by following Discord replies.
+
+        Args:
+            message: The message with a reply reference
+
+        Returns:
+            List of messages in chronological order
+        """
+        chain = []
+        current = message.reference.resolved if message.reference else None
+        seen_ids = set()
+
+        while current and len(chain) < MAX_REPLY_CHAIN:
+            if current.id in seen_ids:
+                break
+            seen_ids.add(current.id)
+
+            # Determine role
+            if current.author == self.user:
+                role = "assistant"
+            else:
+                role = "user"
+
+            # Clean content
+            content = clean_message_content(current.content, self.user.id)
+            if content:
+                # Add author prefix for non-bot messages in group chats
+                if role == "user" and current.guild:
+                    content = f"[{current.author.display_name}]: {content}"
+
+                chain.append({"role": role, "content": content})
+
+            # Follow the chain
+            if current.reference and current.reference.resolved:
+                current = current.reference.resolved
+            else:
+                break
+
+        # Reverse to get chronological order
+        chain.reverse()
+        return chain
+
+    def _get_db_messages(self, thread_id: str, limit: int) -> list[dict]:
+        """Fetch recent messages from database.
+
+        Args:
+            thread_id: Thread ID
+            limit: Max messages to fetch
+
+        Returns:
+            List of message dicts
+        """
+        try:
+            db = SessionLocal()
+            mm = MemoryManager.get_instance()
+            messages = mm.get_recent_messages(db, thread_id)
+            db.close()
+
+            # Convert to dicts and limit
+            return [
+                {"role": m.role, "content": m.content}
+                for m in messages[-limit:]
+            ]
+        except Exception as e:
+            print(f"[adapter] Error fetching DB messages: {e}")
+            return []
+
     async def _run_flow(
         self,
         context: "ConversationContext",
         content: str,
+        recent_messages: list[dict],
     ) -> str:
         """Run ClaraFlow in executor (sync -> async bridge).
 
         Args:
             context: Conversation context
             content: Message content
+            recent_messages: Recent conversation history
 
         Returns:
             Clara's response
@@ -161,7 +274,7 @@ class ClaraDiscordBot(discord.Client):
                 inputs={
                     "context": context,
                     "user_message": content,
-                    "recent_messages": [],
+                    "recent_messages": recent_messages,
                     "tier": "mid",
                 }
             )
