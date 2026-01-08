@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-from crewai.tools import tool
+from mindflow.tools import tool
 
 
 @tool("web_search")

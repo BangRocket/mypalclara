@@ -6,10 +6,9 @@ in a sandboxed environment.
 
 from __future__ import annotations
 
-from crewai import Agent
-
-from crewai_service.agents.base import BaseAgent
-from crewai_service.agents.code.tools import CODE_TOOLS, set_user_context
+from clara_service.agents.base import AgentResult, BaseAgent
+from clara_service.agents.code.tools import CODE_TOOLS, set_user_context
+from mindflow import Agent
 
 
 class CodeAgent(BaseAgent):
@@ -83,5 +82,5 @@ class CodeAgent(BaseAgent):
         set_user_context(user_id)
 
         # Call parent execute
-        from crewai_service.agents.base import AgentResult
+        from clara_service.agents.base import AgentResult
         return super().execute(task_description, context)

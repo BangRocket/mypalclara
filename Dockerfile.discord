@@ -26,7 +26,7 @@ RUN poetry install --only main --no-interaction --no-ansi
 # Copy application code
 COPY *.py ./
 COPY clara_core/ ./clara_core/
-COPY crewai_service/ ./crewai_service/
+COPY clara_service/ ./clara_service/
 COPY vendor/ ./vendor/
 COPY scripts/ ./scripts/
 COPY VERSION ./
@@ -36,5 +36,5 @@ RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
 ENV CLARA_FILES_DIR=/app/clara_files
 
-# Run the Discord bot (CrewAI architecture)
-CMD ["python", "discord_crewai.py"]
+# Run the Discord bot (MindFlow architecture)
+CMD ["python", "discord_clara.py"]

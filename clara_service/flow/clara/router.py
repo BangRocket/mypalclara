@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from crewai_service.agents.base import BaseAgent, AgentResult
-from crewai_service.agents.code import CodeAgent
-from crewai_service.agents.search import SearchAgent
+from clara_service.agents.base import AgentResult, BaseAgent
+from clara_service.agents.code import CodeAgent
+from clara_service.agents.file import FileAgent
+from clara_service.agents.github import GitHubAgent
+from clara_service.agents.search import SearchAgent
 
 if TYPE_CHECKING:
     pass
@@ -39,9 +41,8 @@ class AgentRouter:
         agents = [
             CodeAgent(),
             SearchAgent(),
-            # Add more agents here as they're implemented:
-            # GitHubAgent(),
-            # FileAgent(),
+            GitHubAgent(),
+            FileAgent(),
         ]
         for agent in agents:
             self._agents[agent.name] = agent
@@ -78,6 +79,8 @@ class AgentRouter:
         query: str,
         user_id: str = "default",
         context: str = "",
+        on_agent_start: callable = None,
+        on_agent_end: callable = None,
     ) -> AgentResult | None:
         """Route a query to the appropriate agent and execute.
 
@@ -85,6 +88,8 @@ class AgentRouter:
             query: The user's query or task
             user_id: User ID for sandbox isolation
             context: Additional context
+            on_agent_start: Callback(agent_name) when agent starts
+            on_agent_end: Callback(agent_name, success, error) when agent ends
 
         Returns:
             AgentResult from the selected agent, or None if no agent matches
@@ -101,11 +106,28 @@ class AgentRouter:
         agent = candidates[0]
         logger.info(f"[router] Routing to: {agent.name}")
 
+        # Notify start
+        if on_agent_start:
+            on_agent_start(agent.name)
+
         # Execute with user context
-        if hasattr(agent, "execute") and "user_id" in agent.execute.__code__.co_varnames:
-            return agent.execute(query, context=context, user_id=user_id)
-        else:
-            return agent.execute(query, context=context)
+        try:
+            if hasattr(agent, "execute") and "user_id" in agent.execute.__code__.co_varnames:
+                result = agent.execute(query, context=context, user_id=user_id)
+            else:
+                result = agent.execute(query, context=context)
+
+            # Notify end with error if failed
+            if on_agent_end:
+                error = result.error if result and not result.success else None
+                on_agent_end(agent.name, result.success if result else False, error)
+
+            return result
+        except Exception as e:
+            # Notify failure with exception message
+            if on_agent_end:
+                on_agent_end(agent.name, False, str(e))
+            raise
 
     def route_with_llm(
         self,

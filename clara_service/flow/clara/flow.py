@@ -16,17 +16,15 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from crewai.flow.flow import Flow, listen, start
-
-from clara_core.llm import make_llm
 from clara_core.config.bot import PERSONALITY
 from clara_core.db import SessionLocal
-
-from crewai_service.flow.clara.memory_bridge import MemoryBridge
-from crewai_service.flow.clara.state import ClaraState, ConversationContext
-from crewai_service.flow.clara.router import get_router
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
-
+from clara_core.llm import make_llm
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.flow.clara.live_formatter import get_live_formatter
+from clara_service.flow.clara.memory_bridge import MemoryBridge
+from clara_service.flow.clara.router import get_router
+from clara_service.flow.clara.state import ClaraState, ConversationContext
+from mindflow.flow.flow import Flow, listen, start
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +34,8 @@ AGENT_TRIGGER_KEYWORDS = [
     "run", "execute", "code", "python", "script",
     "search", "find", "lookup", "google",
     "install", "pip",
+    "github", "repo", "repository", "issue", "pr", "pull request",
+    "save", "file", "storage", "download", "upload", "attachment",
 ]
 
 
@@ -165,11 +165,31 @@ class ClaraFlow(Flow[ClaraState]):
         router = get_router()
         user_id = self.state.context.user_id
 
+        # Get formatter for tree updates
+        formatter = get_live_formatter()
+
+        def on_agent_start(agent_name: str) -> None:
+            """Callback when agent starts."""
+            if formatter:
+                formatter.add_agent_execution("invoke_agents", agent_name, "running")
+
+        def on_agent_end(agent_name: str, success: bool, error: str | None = None) -> None:
+            """Callback when agent ends."""
+            if formatter:
+                formatter.add_agent_execution(
+                    "invoke_agents",
+                    agent_name,
+                    "completed" if success else "failed",
+                    error=error,
+                )
+
         try:
             result = router.route(
                 query=self.state.user_message,
                 user_id=user_id,
                 context=self.state.context_block,
+                on_agent_start=on_agent_start,
+                on_agent_end=on_agent_end,
             )
 
             if result and result.success:

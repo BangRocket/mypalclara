@@ -34,14 +34,14 @@ openai = "^1.42.0"
 anthropic = "^0.40.0"
 huggingface_hub = "^0.26.0"
 
-# CrewAI - Agent framework
-crewai = "^0.108.0"
+# MindFlow - Agent framework (forked from CrewAI, MIT license)
+mindflow = { path = "../mindflow/lib/mindflow", develop = true }
 
 # General utils
 requests = "^2.32.5"
 python-dotenv = "^1.0.1"
 imessage-reader = "^0.6.1"
-httpx = ">=0.23.0,<0.28.0"  # Async HTTP client (constrained by crewai/litellm)
+httpx = ">=0.23.0,<0.28.0"  # Async HTTP client (constrained by mindflow/litellm)
 
 # Discord bot
 py-cord = "^2.6.1"
@@ -61,6 +61,7 @@ playwright = "^1.49.0"
 # Claude Code agent SDK
 claude-agent-sdk = "^0.1.18"
 imap-tools = "^1.11.0"
+pygithub = "^2.8.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

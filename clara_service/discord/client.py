@@ -17,16 +17,19 @@ import discord
 from discord import Message as DiscordMessage
 
 from clara_core import init_platform
-from clara_core.llm import make_llm
-from clara_core.memory import MemoryManager
 from clara_core.db import SessionLocal
 from clara_core.db.channel_config import should_respond_to_message
-
-from crewai_service.crews.discord.crew import DiscordCrew
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_core.llm import make_llm
+from clara_core.memory import MemoryManager
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.crews.discord.crew import DiscordCrew
+from clara_service.flow.clara.live_formatter import install_live_formatter
 
 if TYPE_CHECKING:
     pass
+
+# Install live formatter before any flows are created
+install_live_formatter()
 
 
 class ClaraDiscordClient(discord.Client):

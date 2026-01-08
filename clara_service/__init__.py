@@ -12,9 +12,9 @@ Architecture:
   Discord Bot (delivers)
 """
 
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
-from crewai_service.crews.base import BaseCrew
-from crewai_service.flow.clara.flow import ClaraFlow, run_clara_flow
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.crews.base import BaseCrew
+from clara_service.flow.clara.flow import ClaraFlow, run_clara_flow
 
 __all__ = [
     "ClaraFlow",
