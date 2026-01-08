@@ -10,7 +10,8 @@ This is the core of Clara's new architecture. A CrewAI Flow that:
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from typing import Any
 
 from crewai.flow.flow import Flow, listen, start
@@ -188,6 +189,18 @@ class ClaraFlow(Flow[ClaraState]):
         """
         current_time = datetime.now().strftime("%A, %B %d, %Y at %-I:%M %p")
 
+        # Calculate time gap and departure context from recent messages
+        time_gap_line = ""
+        departure_line = ""
+        if self.state.recent_messages:
+            user_msgs = [m for m in self.state.recent_messages if m.get("role") == "user"]
+            if user_msgs:
+                last_user_content = user_msgs[-1].get("content", "")
+                # Check for departure context
+                departure_ctx = self._extract_departure_context(last_user_content)
+                if departure_ctx:
+                    departure_line = f"\nUser was: {departure_ctx}"
+
         parts = [
             "## Discord Guidelines",
             "- Use Discord markdown (bold, italic, code blocks)",
@@ -198,15 +211,17 @@ class ClaraFlow(Flow[ClaraState]):
             "You have persistent memory via mem0. Use memories naturally.",
             "",
             "## Current Context",
-            f"Time: {current_time}",
+            f"Time: {current_time}{time_gap_line}{departure_line}",
         ]
 
         if ctx.is_dm:
-            parts.append(f"Environment: Private DM with {ctx.user_display_name}")
+            parts.append(f"Environment: Private DM with {ctx.user_display_name} (one-on-one)")
         else:
-            parts.append(f"Environment: {ctx.guild_name} server, #{ctx.channel_name}")
+            parts.append(f"Environment: {ctx.guild_name} server, #{ctx.channel_name} (shared channel)")
+            parts.append("Note: Messages prefixed with [Username] are from other users. Address people by name.")
 
         parts.append(f"Speaker: {ctx.user_display_name} ({ctx.user_id})")
+        parts.append(f"Memories: {len(user_mems)} user, {len(proj_mems)} project")
 
         # Add memories
         if user_mems:
@@ -222,6 +237,43 @@ class ClaraFlow(Flow[ClaraState]):
                 parts.append(f"- {mem}")
 
         return "\n".join(parts)
+
+    def _extract_departure_context(self, last_user_message: str | None) -> str | None:
+        """Extract what user said they were going to do from their last message.
+
+        Looks for patterns like:
+        - "going to [verb]"
+        - "brb [doing something]"
+        - "heading out to [activity]"
+        - "gotta [do something]"
+
+        Returns a brief context or None if no departure detected.
+        """
+        if not last_user_message:
+            return None
+
+        msg = last_user_message.lower().strip()
+
+        # Common departure patterns
+        patterns = [
+            r"(?:going to|gonna|gotta|about to|heading to|off to)\s+(.+?)(?:\.|!|$)",
+            r"brb\s*[,:]?\s*(.+?)(?:\.|!|$)",
+            r"(?:be right back|be back)\s*[,:]?\s*(.+?)(?:\.|!|$)",
+            r"(?:stepping away|stepping out)\s*(?:to|for)?\s*(.+?)(?:\.|!|$)",
+            r"(?:need to|have to|gotta)\s+(.+?)(?:\.|!|$)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, msg, re.IGNORECASE)
+            if match:
+                activity = match.group(1).strip()
+                # Clean up and limit length
+                if len(activity) > 50:
+                    activity = activity[:50] + "..."
+                if activity:
+                    return activity
+
+        return None
 
 
 def run_clara_flow(
