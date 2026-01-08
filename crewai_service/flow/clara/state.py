@@ -1,9 +1,14 @@
 """Pydantic state models for ClaraFlow."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now() -> datetime:
+    """Get current UTC time (timezone-aware)."""
+    return datetime.now(timezone.utc)
 
 
 class ConversationContext(BaseModel):
@@ -31,8 +36,10 @@ class ConversationContext(BaseModel):
 class ClaraState(BaseModel):
     """State for Clara Flow - persists across conversation steps."""
 
-    # Conversation context
-    context: ConversationContext
+    # Conversation context (initialized with placeholder, set by kickoff inputs)
+    context: ConversationContext = Field(
+        default_factory=lambda: ConversationContext(user_id="unset")
+    )
 
     # Input
     user_message: str = ""
@@ -54,5 +61,5 @@ class ClaraState(BaseModel):
     tier: str = "mid"
 
     # Metadata
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=_utc_now)
     completed_at: Optional[datetime] = None
