@@ -2186,7 +2186,7 @@ optional = false
 python-versions = "<3.14,>=3.10"
 groups = ["main"]
 files = []
-develop = false
+develop = true
 
 [package.dependencies]
 aiosqlite = ">=0.21.0,<0.22.0"
@@ -2234,11 +2234,8 @@ voyageai = ["voyageai (>=0.3.5,<0.4.0)"]
 watson = ["ibm-watsonx-ai (>=1.3.39,<1.4.0)"]
 
 [package.source]
-type = "git"
-url = "https://github.com/BangRocket/mindflow.git"
-reference = "HEAD"
-resolved_reference = "98d05448efcf9c40cd16df9435b50a7494635a94"
-subdirectory = "lib/mindflow"
+type = "directory"
+url = "vendor/mindflow"
 
 [[package]]
 name = "mmh3"
@@ -5766,4 +5763,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11,<3.13"
-content-hash = "e578941d8c47bbcd666cdfbb67c81514d537b8bab3c556f6f5578a155c18100a"
+content-hash = "635f7b9564bf79ceee81db8d1f9e3ab2097211c794783d32cb5ffe610f492a41"
