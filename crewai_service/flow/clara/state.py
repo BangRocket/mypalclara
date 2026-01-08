@@ -14,8 +14,8 @@ def _utc_now() -> datetime:
 class ConversationContext(BaseModel):
     """Context for a single conversation turn."""
 
-    # User identity
-    user_id: str
+    # User identity (default needed for CrewAI Flow state initialization)
+    user_id: str = "unset"
     platform: str = "discord"
 
     # Location
