@@ -254,7 +254,7 @@ class MemoryManager:
 
         project = db.query(Project).filter_by(id=project_id).first()
         if not project:
-            project = Project(id=project_id, user_id=user_id, name="Default Project")
+            project = Project(id=project_id, owner_id=user_id, name="Default Project")
             db.add(project)
             db.commit()
             db.refresh(project)
