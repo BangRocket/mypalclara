@@ -269,13 +269,16 @@ class ClaraDiscordBot(discord.Client):
         def run_sync():
             from crewai_service.flow.clara import ClaraFlow
 
+            # Get default tier from env, fallback to "mid"
+            default_tier = os.getenv("MODEL_TIER", "mid")
+
             flow = ClaraFlow()
             flow.kickoff(
                 inputs={
                     "context": context,
                     "user_message": content,
                     "recent_messages": recent_messages,
-                    "tier": "mid",
+                    "tier": default_tier,
                 }
             )
             return flow.state.response
