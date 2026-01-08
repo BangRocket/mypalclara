@@ -1,6 +1,7 @@
 # Discord Bot Dockerfile for MyPalClara
-# Build: 2025-01-08
 FROM python:3.12-slim
+ARG CACHEBUST=20250108
+RUN echo "Cache bust: $CACHEBUST"
 
 WORKDIR /app
 
