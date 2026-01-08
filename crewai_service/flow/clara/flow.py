@@ -24,10 +24,19 @@ from clara_core.db import SessionLocal
 
 from crewai_service.flow.clara.memory_bridge import MemoryBridge
 from crewai_service.flow.clara.state import ClaraState, ConversationContext
+from crewai_service.flow.clara.router import get_router
 from crewai_service.contracts.messages import InboundMessage, OutboundMessage
 
 
 logger = logging.getLogger(__name__)
+
+
+# Keywords that suggest the user wants to invoke an agent
+AGENT_TRIGGER_KEYWORDS = [
+    "run", "execute", "code", "python", "script",
+    "search", "find", "lookup", "google",
+    "install", "pip",
+]
 
 
 class ClaraFlow(Flow[ClaraState]):
@@ -37,9 +46,10 @@ class ClaraFlow(Flow[ClaraState]):
     1. receive_message - Entry point, normalizes input from InboundMessage
     2. fetch_memories - Retrieves relevant memories from mem0
     3. build_prompt - Constructs full prompt with personality and context
-    4. generate_response - Calls LLM to generate response
-    5. store_memories - Saves conversation to mem0 for future recall
-    6. format_response - Packages response as OutboundMessage
+    4. invoke_agents - Routes to specialized agents if needed (code, search, etc.)
+    5. generate_response - Calls LLM to generate response
+    6. store_memories - Saves conversation to mem0 for future recall
+    7. format_response - Packages response as OutboundMessage
     """
 
     def __init__(self):
@@ -131,11 +141,80 @@ class ClaraFlow(Flow[ClaraState]):
         return messages
 
     @listen(build_prompt)
+    def invoke_agents(self, messages: list[dict]) -> list[dict]:
+        """Check if agents should be invoked and execute them.
+
+        Args:
+            messages: Current prompt messages
+
+        Returns:
+            Updated messages (with agent results if any)
+        """
+        user_message = self.state.user_message.lower()
+
+        # Quick check: does the message contain agent-trigger keywords?
+        should_check_agents = any(
+            keyword in user_message for keyword in AGENT_TRIGGER_KEYWORDS
+        )
+
+        if not should_check_agents:
+            logger.info("[flow] No agent triggers detected, skipping agent routing")
+            return messages
+
+        # Try to route to an agent
+        router = get_router()
+        user_id = self.state.context.user_id
+
+        try:
+            result = router.route(
+                query=self.state.user_message,
+                user_id=user_id,
+                context=self.state.context_block,
+            )
+
+            if result and result.success:
+                logger.info(f"[flow] Agent returned: {len(result.output)} chars")
+
+                # Add agent result as context for the LLM
+                agent_context = f"""
+## Agent Execution Result
+
+The following tool was executed to help answer the user's request:
+
+```
+{result.output}
+```
+
+Use this result to formulate your response to the user.
+"""
+                # Insert agent result before the user message
+                messages.insert(-1, {"role": "system", "content": agent_context})
+
+            elif result and not result.success:
+                logger.warning(f"[flow] Agent failed: {result.error}")
+                # Add error context
+                error_context = f"""
+## Agent Execution Failed
+
+An attempt was made to use a tool, but it failed:
+Error: {result.error}
+
+Inform the user and try to help anyway.
+"""
+                messages.insert(-1, {"role": "system", "content": error_context})
+
+        except Exception as e:
+            logger.error(f"[flow] Agent invocation error: {e}")
+            # Continue without agent results
+
+        return messages
+
+    @listen(invoke_agents)
     def generate_response(self, messages: list[dict]) -> str:
         """Generate Clara's response via LLM.
 
         Args:
-            messages: Full prompt messages
+            messages: Full prompt messages (may include agent results)
 
         Returns:
             Clara's response text
