@@ -29,7 +29,9 @@ COPY clara_core/ ./clara_core/
 COPY clara_service/ ./clara_service/
 COPY vendor/ ./vendor/
 COPY scripts/ ./scripts/
-COPY VERSION ./
+
+# VERSION is optional - clara_core/__init__.py falls back to "0.0.0"
+COPY VERSION* ./
 
 # Create directories for persistent data
 RUN mkdir -p /data /app/clara_files
