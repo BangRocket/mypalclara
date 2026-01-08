@@ -93,7 +93,7 @@ def load_initial_profile(user_id: str) -> None:
         print("[mem0] Profile already loaded (flag exists), skipping")
         return
 
-    from src.bootstrap_memory import (
+    from scripts.bootstrap_memory import (
         apply_to_mem0,
         load_existing_memories,
     )

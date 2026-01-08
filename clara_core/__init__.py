@@ -26,7 +26,7 @@ def get_version() -> str:
     """Get the current Clara platform version."""
     return __version__
 
-from clara_core.config import get_config, init_platform
+from clara_core.settings import get_config, init_platform
 from clara_core.llm import (
     ModelTier,
     make_llm,
