@@ -2,8 +2,7 @@
 dockerfilePath = "Dockerfile.discord"
 
 [deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 300
-startCommand = "python discord_bot.py"
+# No healthcheckPath - Discord bot doesn't serve HTTP
+startCommand = "python discord_crewai.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

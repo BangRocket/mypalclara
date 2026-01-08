@@ -36,8 +36,5 @@ RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
 ENV CLARA_FILES_DIR=/app/clara_files
 
-# Expose monitor dashboard port
-EXPOSE 8001
-
 # Run the Discord bot (CrewAI architecture)
 CMD ["python", "discord_crewai.py"]
