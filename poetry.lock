@@ -2181,12 +2181,12 @@ files = [
 [[package]]
 name = "mindflow"
 version = "1.8.0"
-description = "Agent orchestration framework (forked from CrewAI). Empowers multi-agent AI systems to work together seamlessly on complex tasks."
+description = "Agent orchestration framework (forked from MindFlow). Empowers multi-agent AI systems to work together seamlessly on complex tasks."
 optional = false
 python-versions = "<3.14,>=3.10"
 groups = ["main"]
 files = []
-develop = true
+develop = false
 
 [package.dependencies]
 aiosqlite = ">=0.21.0,<0.22.0"
@@ -2234,8 +2234,11 @@ voyageai = ["voyageai (>=0.3.5,<0.4.0)"]
 watson = ["ibm-watsonx-ai (>=1.3.39,<1.4.0)"]
 
 [package.source]
-type = "directory"
-url = "../mindflow/lib/mindflow"
+type = "git"
+url = "https://github.com/BangRocket/mindflow.git"
+reference = "HEAD"
+resolved_reference = "98d05448efcf9c40cd16df9435b50a7494635a94"
+subdirectory = "lib/mindflow"
 
 [[package]]
 name = "mmh3"
@@ -5763,4 +5766,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11,<3.13"
-content-hash = "a7686eec9014619731e5f2a2adf4eab65cd2acafefe43b07c6da3ca2f0d26289"
+content-hash = "e578941d8c47bbcd666cdfbb67c81514d537b8bab3c556f6f5578a155c18100a"
