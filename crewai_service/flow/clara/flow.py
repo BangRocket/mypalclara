@@ -1,15 +1,17 @@
 """Clara Flow - the mind.
 
 This is the core of Clara's new architecture. A CrewAI Flow that:
-- Receives structured input from the Discord adapter
+- Receives InboundMessage from Crews
 - Fetches relevant memories from mem0
 - Builds prompts with personality and context
 - Generates responses via LLM
 - Stores new memories for future recall
+- Returns OutboundMessage to Crews
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -20,19 +22,24 @@ from clara_core.llm import make_llm
 from clara_core.config.bot import PERSONALITY
 from clara_core.db import SessionLocal
 
-from .memory_bridge import MemoryBridge
-from .state import ClaraState, ConversationContext
+from crewai_service.flow.clara.memory_bridge import MemoryBridge
+from crewai_service.flow.clara.state import ClaraState, ConversationContext
+from crewai_service.contracts.messages import InboundMessage, OutboundMessage
+
+
+logger = logging.getLogger(__name__)
 
 
 class ClaraFlow(Flow[ClaraState]):
     """Clara's mind - the core conversation flow.
 
     Flow steps:
-    1. receive_message - Entry point, normalizes input
+    1. receive_message - Entry point, normalizes input from InboundMessage
     2. fetch_memories - Retrieves relevant memories from mem0
     3. build_prompt - Constructs full prompt with personality and context
     4. generate_response - Calls LLM to generate response
     5. store_memories - Saves conversation to mem0 for future recall
+    6. format_response - Packages response as OutboundMessage
     """
 
     def __init__(self):
@@ -42,11 +49,21 @@ class ClaraFlow(Flow[ClaraState]):
 
     @start()
     def receive_message(self) -> str:
-        """Entry point - receive and validate input.
+        """Entry point - receive and validate input from InboundMessage.
 
         Input comes via kickoff(inputs={...}) and is stored in self.state.
         """
-        print(f"[flow] Received message from {self.state.context.user_display_name}")
+        inbound = self.state.inbound
+
+        # Build context from inbound message
+        self.state.context = ConversationContext.from_inbound(inbound)
+
+        # Extract fields for convenience
+        self.state.user_message = inbound.content
+        self.state.attachments = inbound.attachments
+        self.state.recent_messages = inbound.recent_messages
+
+        logger.info(f"[flow] Received message from {self.state.context.user_display_name}")
         return self.state.user_message
 
     @listen(receive_message)
@@ -59,17 +76,25 @@ class ClaraFlow(Flow[ClaraState]):
         Returns:
             Tuple of (user_memories, project_memories)
         """
-        user_mems, proj_mems = self._memory.fetch_context(
-            context=self.state.context,
-            user_message=user_message,
-        )
+        try:
+            user_mems, proj_mems = self._memory.fetch_context(
+                context=self.state.context,
+                user_message=user_message,
+            )
 
-        # Store in state
-        self.state.user_memories = user_mems
-        self.state.project_memories = proj_mems
+            # Store in state
+            self.state.user_memories = user_mems
+            self.state.project_memories = proj_mems
 
-        print(f"[flow] Found {len(user_mems)} user, {len(proj_mems)} project memories")
-        return user_mems, proj_mems
+            logger.info(f"[flow] Found {len(user_mems)} user, {len(proj_mems)} project memories")
+            return user_mems, proj_mems
+
+        except Exception as e:
+            logger.error(f"[flow] Memory fetch failed: {e}")
+            # Degrade gracefully - continue without memories
+            self.state.user_memories = []
+            self.state.project_memories = []
+            return [], []
 
     @listen(fetch_memories)
     def build_prompt(self, memories: tuple[list[str], list[str]]) -> list[dict]:
@@ -118,11 +143,11 @@ class ClaraFlow(Flow[ClaraState]):
         tier = self.state.tier
         llm = make_llm(tier=tier)
 
-        print(f"[flow] Generating response with tier={tier}")
+        logger.info(f"[flow] Generating response with tier={tier}")
         response = llm(messages)
 
         self.state.response = response
-        self.state.completed_at = datetime.utcnow()
+        self.state.completed_at = datetime.now(timezone.utc)
         return response
 
     @listen(generate_response)
@@ -139,37 +164,66 @@ class ClaraFlow(Flow[ClaraState]):
 
         # Only store if we have a thread context
         if ctx.thread_id:
-            db = SessionLocal()
             try:
-                # Store messages in DB
-                self._memory.store_message(
-                    db=db,
-                    thread_id=ctx.thread_id,
-                    user_id=ctx.user_id,
-                    role="user",
-                    content=self.state.user_message,
-                )
-                self._memory.store_message(
-                    db=db,
-                    thread_id=ctx.thread_id,
-                    user_id=ctx.user_id,
-                    role="assistant",
-                    content=response,
-                )
+                db = SessionLocal()
+                try:
+                    # Ensure thread exists before storing messages
+                    self._memory._mm.ensure_thread_exists(
+                        db=db,
+                        thread_id=ctx.thread_id,
+                        user_id=ctx.user_id,
+                    )
 
-                # Store in mem0 for semantic recall
-                self._memory.store_exchange(
-                    db=db,
-                    context=ctx,
-                    thread_id=ctx.thread_id,
-                    user_message=self.state.user_message,
-                    assistant_reply=response,
-                )
-            finally:
-                db.close()
+                    # Store messages in DB
+                    self._memory.store_message(
+                        db=db,
+                        thread_id=ctx.thread_id,
+                        user_id=ctx.user_id,
+                        role="user",
+                        content=self.state.user_message,
+                    )
+                    self._memory.store_message(
+                        db=db,
+                        thread_id=ctx.thread_id,
+                        user_id=ctx.user_id,
+                        role="assistant",
+                        content=response,
+                    )
 
-        print(f"[flow] Response generated: {len(response)} chars")
+                    # Store in mem0 for semantic recall
+                    self._memory.store_exchange(
+                        db=db,
+                        context=ctx,
+                        thread_id=ctx.thread_id,
+                        user_message=self.state.user_message,
+                        assistant_reply=response,
+                    )
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"[flow] Memory store failed: {e}")
+                # Continue - response was still generated
+
+        logger.info(f"[flow] Response generated: {len(response)} chars")
         return response
+
+    @listen(store_memories)
+    def format_response(self, response: str) -> OutboundMessage:
+        """Package response as OutboundMessage for Crew delivery.
+
+        Args:
+            response: Clara's response text
+
+        Returns:
+            OutboundMessage for the Crew to deliver
+        """
+        outbound = OutboundMessage(
+            content=response,
+            attachments=[],  # Future: handle file attachments
+            metadata={},
+        )
+        self.state.outbound = outbound
+        return outbound
 
     def _build_context_block(
         self,
@@ -277,43 +331,24 @@ class ClaraFlow(Flow[ClaraState]):
 
 
 def run_clara_flow(
-    context: dict[str, Any],
-    user_message: str,
-    recent_messages: list[dict] | None = None,
+    inbound: InboundMessage,
     tier: str = "mid",
-    thread_id: str | None = None,
-) -> str:
+) -> OutboundMessage:
     """Convenience function to run ClaraFlow.
 
     Args:
-        context: Conversation context dict (will be converted to ConversationContext)
-        user_message: The user's message
-        recent_messages: Optional recent conversation history
+        inbound: Normalized inbound message from Crew
         tier: Model tier to use
-        thread_id: Optional thread ID for message storage
 
     Returns:
-        Clara's response
+        OutboundMessage with Clara's response
     """
-    # Build context object
-    if isinstance(context, dict):
-        ctx = ConversationContext(**context)
-    else:
-        ctx = context
-
-    # Add thread_id to context if provided
-    if thread_id:
-        ctx.thread_id = thread_id
-
-    # Create and run flow
     flow = ClaraFlow()
     flow.kickoff(
         inputs={
-            "context": ctx,
-            "user_message": user_message,
-            "recent_messages": recent_messages or [],
+            "inbound": inbound,
             "tier": tier,
         }
     )
 
-    return flow.state.response
+    return flow.state.outbound

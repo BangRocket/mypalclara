@@ -2,6 +2,17 @@
 """Entry point for CrewAI-based Discord bot.
 
 This replaces discord_bot.py with the new CrewAI architecture.
+
+Architecture:
+  Discord Bot (thin client)
+         ↓
+  Discord Crew (translates Discord ↔ Flow contract)
+         ↓
+  Clara Flow (mind - thinks, remembers, responds)
+         ↓
+  Discord Crew (formats response for Discord)
+         ↓
+  Discord Bot (delivers)
 """
 
 import os
@@ -22,11 +33,10 @@ def main():
         sys.exit(1)
 
     # Import and run
-    from crewai_service.discord.adapter import ClaraDiscordBot
+    from crewai_service.discord import run_bot
 
     print("Starting Clara (CrewAI architecture)...")
-    bot = ClaraDiscordBot()
-    bot.run(token)
+    run_bot()
 
 
 if __name__ == "__main__":
