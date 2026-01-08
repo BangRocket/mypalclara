@@ -1,6 +1,7 @@
 # Git
 .git
 .gitignore
+.github
 
 # Python
 __pycache__/
@@ -17,9 +18,7 @@ ENV/
 
 # Environment
 .env
-.env.local
-.env.remote
-.env.*.local
+.env.*
 
 # Database (will be volume mounted)
 *.db
@@ -31,18 +30,37 @@ mem0_data/
 .vscode/
 *.swp
 *.swo
+.ruff_cache/
+.serena/
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+tests/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Profile flag
-.profile_loaded
+# Not needed for Discord bot runtime
+api_service/
+backup_service/
+release_dashboard/
+sandbox/
+scripts/
+docs/
+inputs/
 
-# Docs
+# Dockerfiles (not needed inside container)
+Dockerfile*
+docker-compose*.yml
+railway.toml
+.dockerignore
+
+# Other
 README.md
+CLAUDE.md
+*.md
+LICENSE
+VERSION
