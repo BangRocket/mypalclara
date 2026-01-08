@@ -1,6 +1,6 @@
 # Discord Bot Dockerfile for MyPalClara
 FROM python:3.12-slim
-ARG CACHEBUST=20250108
+ARG CACHEBUST=20250108v2
 RUN echo "Cache bust: $CACHEBUST"
 
 WORKDIR /app
@@ -15,11 +15,12 @@ RUN apt-get update && apt-get install -y \
 # Install Poetry
 RUN pip install poetry
 
-# Copy dependency files first (for layer caching)
-COPY pyproject.toml poetry.lock ./
-
 # Configure Poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
+
+# Copy dependency files AND vendored packages (needed for local path deps)
+COPY pyproject.toml poetry.lock ./
+COPY vendor/ ./vendor/
 
 # Install dependencies (production only)
 RUN poetry install --only main --no-interaction --no-ansi
