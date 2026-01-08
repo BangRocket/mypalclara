@@ -13,9 +13,6 @@ dist/
 venv/
 ENV/
 
-# Poetry
-poetry.lock
-
 # Environment variables
 .env
 .env.local
