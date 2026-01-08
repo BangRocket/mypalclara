@@ -8,10 +8,13 @@ This Crew handles all Discord-specific logic:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from crewai_service.crews.base import BaseCrew
+
+logger = logging.getLogger(__name__)
 from crewai_service.contracts.messages import InboundMessage, OutboundMessage
 from crewai_service.discord.helpers import (
     build_participants_list,
@@ -76,7 +79,7 @@ class DiscordCrew(BaseCrew):
         # Build conversation history from reply chain
         recent_messages = await self._build_reply_chain(message)
 
-        return InboundMessage(
+        inbound = InboundMessage(
             source="discord",
             user_id=f"discord-{message.author.id}",
             user_name=message.author.display_name,
@@ -86,6 +89,9 @@ class DiscordCrew(BaseCrew):
             recent_messages=recent_messages,
             timestamp=datetime.now(timezone.utc),
         )
+
+        print(f"[crew] Received from {message.author.display_name}: {content[:50]}...")
+        return inbound
 
     async def deliver(
         self,
@@ -100,6 +106,7 @@ class DiscordCrew(BaseCrew):
             response: Normalized OutboundMessage from the Flow
             message: Original Discord message to reply to
         """
+        print(f"[crew] Delivering response: {len(response.content)} chars")
         chunks = chunk_response(response.content)
 
         for i, chunk in enumerate(chunks):
