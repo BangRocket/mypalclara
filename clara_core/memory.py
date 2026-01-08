@@ -248,13 +248,17 @@ class MemoryManager:
         db: "OrmSession",
         thread_id: str,
         user_id: str,
+        project_id: str | None = None,
     ) -> "Session":
         """Ensure a thread exists, creating it if necessary."""
         from clara_core.db.models import Session
 
         thread = db.query(Session).filter_by(id=thread_id).first()
         if not thread:
-            thread = Session(id=thread_id, user_id=user_id)
+            # Derive project_id from user_id if not provided
+            if not project_id:
+                project_id = f"{user_id}-default"
+            thread = Session(id=thread_id, user_id=user_id, project_id=project_id)
             db.add(thread)
             db.commit()
             db.refresh(thread)
@@ -267,12 +271,13 @@ class MemoryManager:
         user_id: str,
         role: str,
         content: str,
+        project_id: str | None = None,
     ) -> "Message":
         """Store a message in a thread (creates thread if needed)."""
         from clara_core.db.models import Message
 
         # Ensure the thread/session exists first
-        self.ensure_thread_exists(db, thread_id, user_id)
+        self.ensure_thread_exists(db, thread_id, user_id, project_id)
 
         msg = Message(
             session_id=thread_id,
