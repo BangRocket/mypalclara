@@ -90,10 +90,14 @@ class SoulAgent:
         if soul_input.context_summary:
             task_parts.append(f"## Current Situation\n{soul_input.context_summary}")
 
-        # Memories about this person
+        # Memories about this person (background context - don't explicitly reference)
         if soul_input.memories:
             memories_text = "\n".join(f"- {m}" for m in soul_input.memories[:15])
-            task_parts.append(f"## Your Memories of {soul_input.user_name}\n{memories_text}")
+            task_parts.append(
+                f"## Background (things you know about {soul_input.user_name})\n"
+                f"{memories_text}\n"
+                f"(Use this to inform your tone and approach, but don't explicitly bring up these memories unless directly relevant)"
+            )
 
         # Results from specialized agents (if any)
         if soul_input.agent_results:
