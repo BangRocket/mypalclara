@@ -243,6 +243,23 @@ class MemoryManager:
 
         return db.query(Message).filter_by(session_id=thread_id).count()
 
+    def ensure_project_exists(
+        self,
+        db: "OrmSession",
+        project_id: str,
+        user_id: str,
+    ) -> "Project":
+        """Ensure a project exists, creating it if necessary."""
+        from clara_core.db.models import Project
+
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            project = Project(id=project_id, user_id=user_id, name="Default Project")
+            db.add(project)
+            db.commit()
+            db.refresh(project)
+        return project
+
     def ensure_thread_exists(
         self,
         db: "OrmSession",
@@ -258,6 +275,8 @@ class MemoryManager:
             # Derive project_id from user_id if not provided
             if not project_id:
                 project_id = f"{user_id}-default"
+            # Ensure project exists first
+            self.ensure_project_exists(db, project_id, user_id)
             thread = Session(id=thread_id, user_id=user_id, project_id=project_id)
             db.add(thread)
             db.commit()
