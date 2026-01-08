@@ -105,6 +105,9 @@ class ClaraState(BaseModel):
     context_block: str = ""
     full_messages: list[dict[str, str]] = Field(default_factory=list)
 
+    # Agent execution (from Mind routing)
+    agent_results: Optional[str] = None
+
     # Generation
     response: str = ""
     tier: str = "mid"

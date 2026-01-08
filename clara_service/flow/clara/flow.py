@@ -1,12 +1,17 @@
-"""Clara Flow - the mind.
+"""Clara Flow - the Mind.
 
-This is the core of Clara's new architecture. A CrewAI Flow that:
+The Mind is the cognitive/executive layer of Clara's architecture.
+It decides WHAT to do, not HOW to express it.
+
+The Mind:
 - Receives InboundMessage from Crews
 - Fetches relevant memories from mem0
-- Builds prompts with personality and context
-- Generates responses via LLM
-- Stores new memories for future recall
+- Routes to specialized agents (GitHub, Code, Search, File)
+- Passes everything to the Soul for expression
+- Stores memories for future recall
 - Returns OutboundMessage to Crews
+
+The Soul (separate agent) handles HOW to express things in Clara's voice.
 """
 
 from __future__ import annotations
@@ -18,7 +23,8 @@ from typing import Any
 
 from clara_core.config.bot import PERSONALITY
 from clara_core.db import SessionLocal
-from clara_core.llm import make_llm
+from clara_service.agents.soul import SoulAgent
+from clara_service.agents.soul.agent import SoulInput
 from clara_service.contracts.messages import InboundMessage, OutboundMessage
 from clara_service.flow.clara.live_formatter import get_live_formatter
 from clara_service.flow.clara.memory_bridge import MemoryBridge
@@ -40,14 +46,16 @@ AGENT_TRIGGER_KEYWORDS = [
 
 
 class ClaraFlow(Flow[ClaraState]):
-    """Clara's mind - the core conversation flow.
+    """Clara's Mind - the cognitive/executive flow.
+
+    The Mind decides WHAT to do. The Soul decides HOW to express it.
 
     Flow steps:
     1. receive_message - Entry point, normalizes input from InboundMessage
     2. fetch_memories - Retrieves relevant memories from mem0
-    3. build_prompt - Constructs full prompt with personality and context
-    4. invoke_agents - Routes to specialized agents if needed (code, search, etc.)
-    5. generate_response - Calls LLM to generate response
+    3. build_prompt - Constructs context for agents
+    4. invoke_agents - Routes to specialized agents (GitHub, Code, Search, File)
+    5. invoke_soul - Soul transforms everything into Clara's voice
     6. store_memories - Saves conversation to mem0 for future recall
     7. format_response - Packages response as OutboundMessage
     """
@@ -194,34 +202,13 @@ class ClaraFlow(Flow[ClaraState]):
 
             if result and result.success:
                 logger.info(f"[flow] Agent returned: {len(result.output)} chars")
-
-                # Add agent result as context for the LLM
-                agent_context = f"""
-## Agent Execution Result
-
-The following tool was executed to help answer the user's request:
-
-```
-{result.output}
-```
-
-Use this result to formulate your response to the user.
-"""
-                # Insert agent result before the user message
-                messages.insert(-1, {"role": "system", "content": agent_context})
+                # Store in state for Soul to use
+                self.state.agent_results = result.output
 
             elif result and not result.success:
                 logger.warning(f"[flow] Agent failed: {result.error}")
-                # Add error context
-                error_context = f"""
-## Agent Execution Failed
-
-An attempt was made to use a tool, but it failed:
-Error: {result.error}
-
-Inform the user and try to help anyway.
-"""
-                messages.insert(-1, {"role": "system", "content": error_context})
+                # Store error in state for Soul to handle gracefully
+                self.state.agent_results = f"[Agent error: {result.error}]"
 
         except Exception as e:
             logger.error(f"[flow] Agent invocation error: {e}")
@@ -230,26 +217,52 @@ Inform the user and try to help anyway.
         return messages
 
     @listen(invoke_agents)
-    def generate_response(self, messages: list[dict]) -> str:
-        """Generate Clara's response via LLM.
+    def invoke_soul(self, messages: list[dict]) -> str:
+        """Invoke the Soul agent to generate Clara's response.
+
+        The Soul takes everything the Mind has gathered and transforms it
+        into Clara's authentic voice.
 
         Args:
-            messages: Full prompt messages (may include agent results)
+            messages: Prompt messages (unused now - Soul gets context from state)
 
         Returns:
             Clara's response text
         """
-        tier = self.state.tier
-        llm = make_llm(tier=tier)
+        ctx = self.state.context
 
-        logger.info(f"[flow] Generating response with tier={tier}")
-        response = llm(messages)
+        # Build context summary for Soul
+        context_parts = []
+        current_time = datetime.now().strftime("%A, %B %d, %Y at %-I:%M %p")
+        context_parts.append(f"Time: {current_time}")
+
+        if ctx.is_dm:
+            context_parts.append(f"Environment: Private DM (one-on-one)")
+        else:
+            context_parts.append(f"Environment: {ctx.guild_name} server, #{ctx.channel_name}")
+
+        context_summary = "\n".join(context_parts)
+
+        # Create Soul input
+        soul_input = SoulInput(
+            user_message=self.state.user_message,
+            user_name=ctx.user_display_name,
+            memories=self.state.user_memories,
+            agent_results=self.state.agent_results,
+            context_summary=context_summary,
+            recent_messages=self.state.recent_messages,
+        )
+
+        # Invoke Soul
+        logger.info("[flow] Invoking Soul for response generation")
+        soul = SoulAgent()
+        response = soul.express(soul_input)
 
         self.state.response = response
         self.state.completed_at = datetime.now(timezone.utc)
         return response
 
-    @listen(generate_response)
+    @listen(invoke_soul)
     def store_memories(self, response: str) -> str:
         """Store conversation exchange in mem0 for future recall.
 
