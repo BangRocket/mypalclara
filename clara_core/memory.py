@@ -25,6 +25,8 @@ CONTEXT_MESSAGE_COUNT = 15  # Reduced from 20 to save tokens
 SUMMARY_INTERVAL = 10
 MAX_SEARCH_QUERY_CHARS = 6000
 MAX_MEMORIES_PER_TYPE = 50  # Limit memories to reduce token usage
+MEMORY_SEARCH_LIMIT = 15  # Limit per mem0 search call
+MEMORY_RELEVANCE_THRESHOLD = 0.5  # Minimum score for memory relevance
 
 # Paths for initial profile loading
 BASE_DIR = Path(__file__).parent.parent
@@ -387,7 +389,12 @@ class MemoryManager:
             print(f"[mem0] Truncated search query to {MAX_SEARCH_QUERY_CHARS} chars")
 
         try:
-            user_res = MEM0.search(search_query, user_id=user_id)
+            user_res = MEM0.search(
+                search_query,
+                user_id=user_id,
+                limit=MEMORY_SEARCH_LIMIT,
+                threshold=MEMORY_RELEVANCE_THRESHOLD,
+            )
         except Exception as e:
             print(f"[mem0] ERROR searching user memories: {e}")
             import traceback
@@ -399,6 +406,8 @@ class MemoryManager:
                 search_query,
                 user_id=user_id,
                 filters={"project_id": project_id},
+                limit=MEMORY_SEARCH_LIMIT,
+                threshold=MEMORY_RELEVANCE_THRESHOLD,
             )
         except Exception as e:
             print(f"[mem0] ERROR searching project memories: {e}")
@@ -421,6 +430,8 @@ class MemoryManager:
                     p_search = MEM0.search(
                         f"{p_name} {search_query[:500]}",
                         user_id=user_id,
+                        limit=MEMORY_SEARCH_LIMIT,
+                        threshold=MEMORY_RELEVANCE_THRESHOLD,
                     )
                     for r in p_search.get("results", []):
                         mem = r["memory"]
