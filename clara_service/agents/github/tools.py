@@ -6,7 +6,7 @@ GitHub API operations using PyGithub.
 import os
 from typing import Union
 
-from mindflow.tools import tool
+from crewai.tools import tool
 
 
 def _get_github_client():

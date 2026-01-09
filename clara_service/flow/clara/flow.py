@@ -30,7 +30,7 @@ from clara_service.flow.clara.live_formatter import get_live_formatter
 from clara_service.flow.clara.memory_bridge import MemoryBridge
 from clara_service.flow.clara.router import get_router
 from clara_service.flow.clara.state import ClaraState, ConversationContext
-from mindflow.flow.flow import Flow, listen, start
+from crewai.flow.flow import Flow, listen, start
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from clara_core.config.bot import PERSONALITY, BOT_NAME
-from mindflow import Agent, Crew, Task
+from crewai import Agent, Crew, Task
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from rich.live import Live
 from rich.text import Text
 from rich.tree import Tree
 
-from mindflow.events.utils.console_formatter import ConsoleFormatter
+from crewai.events.utils.console_formatter import ConsoleFormatter
 
 
 class LiveFlowFormatter(ConsoleFormatter):
@@ -369,7 +369,7 @@ def install_live_formatter() -> LiveFlowFormatter:
         The installed LiveFlowFormatter instance
     """
     global _live_formatter
-    from mindflow.events.event_listener import event_listener
+    from crewai.events.event_listener import event_listener
 
     # Replace the default formatter with our live formatter
     _live_formatter = LiveFlowFormatter(verbose=False)

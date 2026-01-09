@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from mindflow.tools import tool
+from crewai.tools import tool
 
 
 def _get_files_dir(user_id: str = "default") -> Path:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from clara_service.agents.base import AgentResult, BaseAgent
 from clara_service.agents.code.tools import CODE_TOOLS, set_user_context
-from mindflow import Agent
+from crewai import Agent
 
 
 class CodeAgent(BaseAgent):

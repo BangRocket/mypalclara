@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from mindflow.tools import tool
+from crewai.tools import tool
 
 # Global user_id for sandbox context (set by agent before tool execution)
 _current_user_id: str = "default"

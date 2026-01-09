@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from clara_service.agents.base import BaseAgent
 from clara_service.agents.github.tools import GITHUB_TOOLS
-from mindflow import Agent
+from crewai import Agent
 
 
 class GitHubAgent(BaseAgent):
