@@ -10,7 +10,6 @@ from typing import Any
 
 from crewai.tools import tool
 
-
 # Global user_id for sandbox context (set by agent before tool execution)
 _current_user_id: str = "default"
 

@@ -12,11 +12,11 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from crewai_service.crews.base import BaseCrew
+from clara_service.crews.base import BaseCrew
 
 logger = logging.getLogger(__name__)
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
-from crewai_service.discord.helpers import (
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.discord.helpers import (
     build_participants_list,
     chunk_response,
     clean_message_content,

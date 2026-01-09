@@ -18,15 +18,13 @@ from typing import Any
 
 from crewai.flow.flow import Flow, listen, start
 
-from clara_core.llm import make_llm
 from clara_core.config.bot import PERSONALITY
 from clara_core.db import SessionLocal
-
-from crewai_service.flow.clara.memory_bridge import MemoryBridge
-from crewai_service.flow.clara.state import ClaraState, ConversationContext
-from crewai_service.flow.clara.router import get_router
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
-
+from clara_core.llm import make_llm
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.flow.clara.memory_bridge import MemoryBridge
+from clara_service.flow.clara.router import get_router
+from clara_service.flow.clara.state import ClaraState, ConversationContext
 
 logger = logging.getLogger(__name__)
 

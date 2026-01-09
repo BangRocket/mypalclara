@@ -33,7 +33,7 @@ def main():
         sys.exit(1)
 
     # Import and run
-    from crewai_service.discord import run_bot
+    from clara_service.discord import run_bot
 
     print("Starting Clara (CrewAI architecture)...")
     run_bot()

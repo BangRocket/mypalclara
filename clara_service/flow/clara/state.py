@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from crewai_service.contracts.messages import InboundMessage, OutboundMessage
+from clara_service.contracts.messages import InboundMessage, OutboundMessage
 
 
 def _utc_now() -> datetime:

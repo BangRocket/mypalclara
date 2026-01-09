@@ -12,8 +12,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from crewai import Agent, Crew, Task
 from pydantic import BaseModel, Field
-from crewai import Agent, Task, Crew
 
 
 class AgentResult(BaseModel):

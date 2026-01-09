@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from crewai import Agent
 
-from crewai_service.agents.base import BaseAgent
-from crewai_service.agents.search.tools import SEARCH_TOOLS
+from clara_service.agents.base import BaseAgent
+from clara_service.agents.search.tools import SEARCH_TOOLS
 
 
 class SearchAgent(BaseAgent):

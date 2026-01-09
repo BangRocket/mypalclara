@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from crewai_service.agents.base import BaseAgent, AgentResult
-from crewai_service.agents.code import CodeAgent
-from crewai_service.agents.search import SearchAgent
+from clara_service.agents.base import AgentResult, BaseAgent
+from clara_service.agents.code import CodeAgent
+from clara_service.agents.file import FileAgent
+from clara_service.agents.github import GitHubAgent
+from clara_service.agents.search import SearchAgent
 
 if TYPE_CHECKING:
     pass
@@ -38,10 +40,9 @@ class AgentRouter:
         """Register all available agents."""
         agents = [
             CodeAgent(),
+            FileAgent(),
+            GitHubAgent(),
             SearchAgent(),
-            # Add more agents here as they're implemented:
-            # GitHubAgent(),
-            # FileAgent(),
         ]
         for agent in agents:
             self._agents[agent.name] = agent
