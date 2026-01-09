@@ -99,8 +99,20 @@ class SoulAgent:
         if soul_input.agent_results:
             task_parts.append(f"## Information Gathered\nThe following was retrieved to help answer:\n```\n{soul_input.agent_results}\n```")
 
+        # Recent conversation history (so Soul knows the thread)
+        if soul_input.recent_messages:
+            convo_parts = []
+            for msg in soul_input.recent_messages[-10:]:  # Last 10 for context
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "user":
+                    convo_parts.append(f"{soul_input.user_name}: {content}")
+                else:
+                    convo_parts.append(f"{BOT_NAME}: {content}")
+            task_parts.append(f"## Recent Conversation\n" + "\n\n".join(convo_parts))
+
         # The actual message to respond to
-        task_parts.append(f"## Message from {soul_input.user_name}\n{soul_input.user_message}")
+        task_parts.append(f"## Current Message from {soul_input.user_name}\n{soul_input.user_message}")
 
         # Instructions
         task_parts.append(
