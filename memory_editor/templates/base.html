@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Memory Editor{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-indigo-600 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="/" class="text-xl font-bold">Memory Editor</a>
+                    <div class="flex space-x-4">
+                        <a href="/" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                        <a href="/memories" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">Memories</a>
+                        <a href="/users" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">Users</a>
+                    </div>
+                </div>
+                <div class="text-sm text-indigo-200">
+                    mem0 Admin
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-gray-200 mt-auto py-4">
+        <div class="max-w-7xl mx-auto px-4 text-center text-gray-500 text-sm">
+            Memory Editor for MyPalClara
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

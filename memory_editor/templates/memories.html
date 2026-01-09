@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Memories - Memory Editor{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex items-center justify-between">
+    <div>
+        <h1 class="text-3xl font-bold text-gray-900">Memories</h1>
+        <p class="text-gray-600 mt-2">{{ total }} total memories</p>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="GET" action="/memories" class="flex flex-wrap gap-4 items-end">
+        <div class="flex-1 min-w-[200px]">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+            <input type="text" name="search" value="{{ search }}"
+                   placeholder="Search memory content..."
+                   class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2 border">
+        </div>
+        <div class="w-48">
+            <label class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+            <input type="text" name="user_id" value="{{ user_id }}"
+                   placeholder="Filter by user..."
+                   class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2 border">
+        </div>
+        <div class="w-48">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Project ID</label>
+            <input type="text" name="project_id" value="{{ project_id }}"
+                   placeholder="Filter by project..."
+                   class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2 border">
+        </div>
+        <div>
+            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                Filter
+            </button>
+            <a href="/memories" class="ml-2 inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Clear
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Bulk Delete -->
+<div class="bg-yellow-50 rounded-lg border border-yellow-200 mb-6 p-4">
+    <h3 class="text-sm font-medium text-yellow-800 mb-2">Bulk Delete</h3>
+    <form method="POST" action="/memories/bulk-delete" class="flex flex-wrap gap-4 items-end"
+          onsubmit="return confirm('Are you sure you want to delete these memories? This cannot be undone.');">
+        <div class="w-48">
+            <label class="block text-sm font-medium text-yellow-700 mb-1">User ID</label>
+            <input type="text" name="user_id" placeholder="All memories for user..."
+                   class="w-full rounded-md border-yellow-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 px-3 py-2 border">
+        </div>
+        <div class="w-48">
+            <label class="block text-sm font-medium text-yellow-700 mb-1">Project ID</label>
+            <input type="text" name="project_id" placeholder="All memories for project..."
+                   class="w-full rounded-md border-yellow-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 px-3 py-2 border">
+        </div>
+        <div class="w-32">
+            <label class="block text-sm font-medium text-yellow-700 mb-1">Older than (days)</label>
+            <input type="number" name="older_than_days" placeholder="30"
+                   class="w-full rounded-md border-yellow-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 px-3 py-2 border">
+        </div>
+        <div>
+            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                Bulk Delete
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Memories Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Memory</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for memory in memories %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4">
+                    <a href="/memories/{{ memory.id }}" class="text-indigo-600 hover:underline">
+                        {{ memory.memory | truncate(80) }}
+                    </a>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                    {% if memory.metadata.user_id %}
+                    <a href="/memories?user_id={{ memory.metadata.user_id }}" class="hover:underline">
+                        {{ memory.metadata.user_id | truncate(20) }}
+                    </a>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td class="px-6 py-4 text-sm">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                        {{ memory.metadata.source_type | default("unknown") }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                    {{ memory.created_at | format_datetime }}
+                </td>
+                <td class="px-6 py-4 text-right text-sm">
+                    <a href="/memories/{{ memory.id }}" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</a>
+                    <button onclick="deleteMemory('{{ memory.id }}')" class="text-red-600 hover:text-red-900">Delete</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                    No memories found
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="mt-6 flex items-center justify-between">
+    <div class="text-sm text-gray-700">
+        Showing {{ (page - 1) * per_page + 1 }} to {{ [page * per_page, total] | min }} of {{ total }} memories
+    </div>
+    <div class="flex space-x-2">
+        {% if page > 1 %}
+        <a href="/memories?page={{ page - 1 }}&search={{ search }}&user_id={{ user_id }}&project_id={{ project_id }}"
+           class="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            Previous
+        </a>
+        {% endif %}
+
+        <span class="px-3 py-2 text-sm text-gray-700">
+            Page {{ page }} of {{ total_pages }}
+        </span>
+
+        {% if page < total_pages %}
+        <a href="/memories?page={{ page + 1 }}&search={{ search }}&user_id={{ user_id }}&project_id={{ project_id }}"
+           class="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            Next
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function deleteMemory(id) {
+    if (!confirm('Are you sure you want to delete this memory?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/memories/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Failed to delete memory');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+/* Memory Editor custom styles */
+
+/* Override default input styles for better visibility */
+input[type="text"],
+input[type="number"],
+textarea {
+    border: 1px solid #d1d5db;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Table hover effects */
+tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Truncate long text */
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* JSON editor improvements */
+textarea[name="metadata_json"] {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    tab-size: 2;
+}
+
+/* Confirmation dialogs */
+.confirm-delete {
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+}

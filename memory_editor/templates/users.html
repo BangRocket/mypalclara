@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Memory Editor{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Users</h1>
+    <p class="text-gray-600 mt-2">{{ users | length }} users with memories</p>
+</div>
+
+<!-- Users Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Memories</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">First Memory</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Memory</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for user in users %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4">
+                    <a href="/memories?user_id={{ user.user_id }}" class="text-indigo-600 hover:underline font-medium">
+                        {{ user.user_id }}
+                    </a>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                        {{ user.memory_count }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                    {{ user.first_memory | format_datetime }}
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">
+                    {{ user.last_memory | format_datetime }}
+                </td>
+                <td class="px-6 py-4 text-right text-sm">
+                    <a href="/memories?user_id={{ user.user_id }}" class="text-indigo-600 hover:text-indigo-900 mr-3">View</a>
+                    <button onclick="deleteUserMemories('{{ user.user_id }}', {{ user.memory_count }})"
+                            class="text-red-600 hover:text-red-900">
+                        Delete All
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                    No users found
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function deleteUserMemories(userId, count) {
+    if (!confirm(`Are you sure you want to delete all ${count} memories for user "${userId}"? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Failed to delete user memories');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Memory Editor{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+    <p class="text-gray-600 mt-2">Memory statistics and overview</p>
+</div>
+
+<!-- Stats Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Memories</div>
+        <div class="mt-2 text-3xl font-bold text-indigo-600">{{ stats.total_memories | default(0) }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500 uppercase tracking-wide">Unique Users</div>
+        <div class="mt-2 text-3xl font-bold text-green-600">{{ stats.unique_users | default(0) }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500 uppercase tracking-wide">Last 24 Hours</div>
+        <div class="mt-2 text-3xl font-bold text-blue-600">{{ stats.recent_24h | default(0) }}</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Top Users -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Top Users</h2>
+        </div>
+        <div class="p-6">
+            {% if stats.top_users %}
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left text-sm text-gray-500">
+                        <th class="pb-2">User ID</th>
+                        <th class="pb-2 text-right">Memories</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in stats.top_users %}
+                    <tr class="border-t border-gray-100">
+                        <td class="py-2">
+                            <a href="/memories?user_id={{ user.user_id }}" class="text-indigo-600 hover:underline">
+                                {{ user.user_id | truncate(30) }}
+                            </a>
+                        </td>
+                        <td class="py-2 text-right text-gray-600">{{ user.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-gray-500">No users found</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- By Source Type -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">By Source Type</h2>
+        </div>
+        <div class="p-6">
+            {% if stats.by_source %}
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left text-sm text-gray-500">
+                        <th class="pb-2">Source Type</th>
+                        <th class="pb-2 text-right">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for source in stats.by_source %}
+                    <tr class="border-t border-gray-100">
+                        <td class="py-2">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                {{ source.source_type }}
+                            </span>
+                        </td>
+                        <td class="py-2 text-right text-gray-600">{{ source.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-gray-500">No data available</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="mt-8 bg-white rounded-lg shadow p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+    <div class="flex space-x-4">
+        <a href="/memories" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+            Browse All Memories
+        </a>
+        <a href="/users" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            View Users
+        </a>
+    </div>
+</div>
+{% endblock %}
