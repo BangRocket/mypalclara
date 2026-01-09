@@ -31,9 +31,14 @@ logger = logging.getLogger(__name__)
 
 # Keywords that suggest the user wants to invoke an agent
 AGENT_TRIGGER_KEYWORDS = [
-    "run", "execute", "code", "python", "script",
+    # Code agent
+    "run", "execute", "code", "python", "script", "install", "pip",
+    # Search agent
     "search", "find", "lookup", "google",
-    "install", "pip",
+    # GitHub agent
+    "github", "repo", "repository", "issue", "pull request", "pr", "commit", "branch",
+    # File agent
+    "file", "save", "download", "upload", "attachment", "storage",
 ]
 
 
