@@ -131,8 +131,8 @@ class ClaraBot(commands.Bot):
 
 async def run_bot():
     """Run the Discord bot."""
-    if not settings.discord_token:
-        raise RuntimeError("DISCORD_TOKEN is not set")
+    if not settings.discord_bot_token:
+        raise RuntimeError("DISCORD_BOT_TOKEN is not set")
 
     bot = ClaraBot()
-    await bot.start(settings.discord_token)
+    await bot.start(settings.discord_bot_token)

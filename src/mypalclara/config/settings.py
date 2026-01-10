@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     """Application settings from environment."""
 
     # Discord
-    discord_token: str = ""
-    discord_application_id: str = ""
+    discord_bot_token: str = ""
+    discord_client_id: str = ""
 
     # LLM
     anthropic_api_key: str = ""
