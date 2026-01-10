@@ -317,9 +317,46 @@ class CortexManager:
         if not self.pg_pool:
             return []
 
-        # TODO: Implement with pgvector
-        # For now, return empty - Phase 2b will add embeddings
-        return []
+        try:
+            from mypalclara.cortex.embeddings import generate_embedding
+
+            # Generate embedding for query
+            query_embedding = await generate_embedding(query)
+            if not query_embedding:
+                logger.warning("[cortex] Could not generate query embedding")
+                return []
+
+            # Search using cosine similarity
+            async with self.pg_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT content, category, importance, created_at, metadata,
+                           1 - (embedding <=> $1::vector) as similarity
+                    FROM long_term_memories
+                    WHERE user_id = $2
+                    ORDER BY embedding <=> $1::vector
+                    LIMIT $3
+                    """,
+                    query_embedding,
+                    user_id,
+                    limit,
+                )
+
+                return [
+                    {
+                        "content": row["content"],
+                        "category": row["category"],
+                        "importance": row["importance"],
+                        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                        "similarity": float(row["similarity"]),
+                        "metadata": row["metadata"],
+                    }
+                    for row in rows
+                ]
+
+        except Exception as e:
+            logger.error(f"[cortex] Semantic search failed: {e}")
+            return []
 
     async def _store_longterm(
         self,
@@ -332,9 +369,35 @@ class CortexManager:
         if not self.pg_pool:
             return
 
-        # TODO: Implement with pgvector
-        # For now, no-op - Phase 2b will add embeddings
-        pass
+        try:
+            import json
+
+            from mypalclara.cortex.embeddings import generate_embedding
+
+            # Generate embedding for content
+            embedding = await generate_embedding(content)
+            if not embedding:
+                logger.warning("[cortex] Could not generate embedding, skipping long-term storage")
+                return
+
+            # Store in database
+            async with self.pg_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO long_term_memories (user_id, content, embedding, category, metadata)
+                    VALUES ($1, $2, $3::vector, $4, $5::jsonb)
+                    """,
+                    user_id,
+                    content,
+                    embedding,
+                    category,
+                    json.dumps(metadata),
+                )
+
+            logger.info(f"[cortex] Stored in long-term memory: {content[:50]}...")
+
+        except Exception as e:
+            logger.error(f"[cortex] Failed to store in long-term memory: {e}")
 
     async def _get_project_context(self, project_id: str) -> Optional[dict]:
         """Get project-specific context."""
