@@ -6,9 +6,12 @@ not WHETHER to. The decision to act lives in Ruminate.
 """
 
 from mypalclara.faculties.base import Faculty, FacultyResult
+from mypalclara.faculties.github import GitHubFaculty
 
 # Registry of available faculties
-FACULTIES: dict[str, "Faculty"] = {}
+FACULTIES: dict[str, "Faculty"] = {
+    "github": GitHubFaculty(),
+}
 
 
 def register_faculty(faculty: "Faculty") -> None:
