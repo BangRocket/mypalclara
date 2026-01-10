@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     cortex_redis_password: Optional[str] = None
 
     # Cortex - Postgres (long-term semantic search)
+    # Can use URL or individual settings
+    cortex_postgres_url: Optional[str] = None  # e.g. postgres://user:pass@host:port/db
     cortex_postgres_host: str = "localhost"
     cortex_postgres_port: int = 5432
     cortex_postgres_user: str = "cortex"

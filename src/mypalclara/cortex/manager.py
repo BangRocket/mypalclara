@@ -67,18 +67,28 @@ class CortexManager:
         try:
             import asyncpg
 
-            self.pg_pool = await asyncpg.create_pool(
-                host=settings.cortex_postgres_host,
-                port=settings.cortex_postgres_port,
-                user=settings.cortex_postgres_user,
-                password=settings.cortex_postgres_password,
-                database=settings.cortex_postgres_database,
-                min_size=1,
-                max_size=5,
-            )
-            logger.info(
-                f"[cortex] Connected to Postgres at {settings.cortex_postgres_host}:{settings.cortex_postgres_port}"
-            )
+            if settings.cortex_postgres_url:
+                # Use URL-based connection
+                self.pg_pool = await asyncpg.create_pool(
+                    dsn=settings.cortex_postgres_url,
+                    min_size=1,
+                    max_size=5,
+                )
+                logger.info(f"[cortex] Connected to Postgres via URL")
+            else:
+                # Use individual settings
+                self.pg_pool = await asyncpg.create_pool(
+                    host=settings.cortex_postgres_host,
+                    port=settings.cortex_postgres_port,
+                    user=settings.cortex_postgres_user,
+                    password=settings.cortex_postgres_password,
+                    database=settings.cortex_postgres_database,
+                    min_size=1,
+                    max_size=5,
+                )
+                logger.info(
+                    f"[cortex] Connected to Postgres at {settings.cortex_postgres_host}:{settings.cortex_postgres_port}"
+                )
         except Exception as e:
             logger.warning(f"[cortex] Postgres unavailable ({e}), semantic search disabled")
             self.pg_pool = None
