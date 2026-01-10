@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Cortex - Redis (fast access: identity, session, working memory)
     cortex_redis_host: str = "localhost"
     cortex_redis_port: int = 6379
+    cortex_redis_password: Optional[str] = None
 
     # Cortex - Postgres (long-term semantic search)
     cortex_postgres_host: str = "localhost"

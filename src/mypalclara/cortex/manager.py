@@ -51,6 +51,7 @@ class CortexManager:
             self.redis_client = redis.Redis(
                 host=settings.cortex_redis_host,
                 port=settings.cortex_redis_port,
+                password=settings.cortex_redis_password,
                 decode_responses=True,
             )
             # Test connection
