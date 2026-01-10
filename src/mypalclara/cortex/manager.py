@@ -7,14 +7,14 @@ Architecture:
 - Redis: Fast access (identity, session, working memory)
 - Postgres/pgvector: Long-term semantic search
 
-Phase 1: Stub implementation with in-memory fallbacks
-Phase 2: Full Redis + Postgres integration
+Falls back to in-memory storage if Redis is unavailable.
 """
 
 import logging
 from datetime import datetime
 from typing import Optional
 
+from mypalclara.config.settings import settings
 from mypalclara.models.state import MemoryContext, QuickContext
 
 logger = logging.getLogger(__name__)
@@ -29,37 +29,99 @@ class CortexManager:
     """
 
     def __init__(self):
-        self.redis_client = None  # Initialize in setup
-        self.pg_pool = None  # Initialize in setup
+        self.redis_client = None
+        self.pg_pool = None
         self._initialized = False
+        self._use_redis = False
 
-        # In-memory fallbacks for Phase 1
+        # In-memory fallbacks
         self._identity_store: dict[str, dict] = {}
         self._session_store: dict[str, dict] = {}
-        self._working_store: dict[str, list] = {}
+        self._working_store: dict[str, list[tuple[str, float, float]]] = {}  # (content, importance, timestamp)
 
     async def initialize(self):
         """Initialize connections to Cortex storage."""
         if self._initialized:
             return
 
-        # Phase 1: Use in-memory fallbacks
-        # Phase 2 will add Redis and Postgres connections
-        logger.info("[cortex] Initialized (in-memory mode)")
+        # Try to connect to Redis
+        try:
+            import redis.asyncio as redis
+
+            self.redis_client = redis.Redis(
+                host=settings.cortex_redis_host,
+                port=settings.cortex_redis_port,
+                decode_responses=True,
+            )
+            # Test connection
+            await self.redis_client.ping()
+            self._use_redis = True
+            logger.info(f"[cortex] Connected to Redis at {settings.cortex_redis_host}:{settings.cortex_redis_port}")
+        except Exception as e:
+            logger.warning(f"[cortex] Redis unavailable ({e}), using in-memory fallback")
+            self._use_redis = False
+            self.redis_client = None
+
+        # Try to connect to Postgres for semantic search
+        try:
+            import asyncpg
+
+            self.pg_pool = await asyncpg.create_pool(
+                host=settings.cortex_postgres_host,
+                port=settings.cortex_postgres_port,
+                user=settings.cortex_postgres_user,
+                password=settings.cortex_postgres_password,
+                database=settings.cortex_postgres_database,
+                min_size=1,
+                max_size=5,
+            )
+            logger.info(
+                f"[cortex] Connected to Postgres at {settings.cortex_postgres_host}:{settings.cortex_postgres_port}"
+            )
+        except Exception as e:
+            logger.warning(f"[cortex] Postgres unavailable ({e}), semantic search disabled")
+            self.pg_pool = None
+
         self._initialized = True
+        logger.info(f"[cortex] Initialized (redis={self._use_redis}, postgres={self.pg_pool is not None})")
 
     async def get_quick_context(self, user_id: str) -> QuickContext:
         """
         Fast retrieval for reflexive decisions.
         Identity + session only. No semantic search.
+        Target: < 10ms
         """
         await self.initialize()
 
+        if self._use_redis:
+            return await self._get_quick_context_redis(user_id)
+        else:
+            return self._get_quick_context_memory(user_id)
+
+    async def _get_quick_context_redis(self, user_id: str) -> QuickContext:
+        """Get quick context from Redis."""
         # Get identity facts
-        identity_data = self._identity_store.get(user_id, {})
-        identity_facts = [f"{k}: {v}" for k, v in identity_data.items()]
+        identity_key = f"identity:{user_id}"
+        identity_data = await self.redis_client.hgetall(identity_key)
+        identity_facts = [f"{k}: {v}" for k, v in identity_data.items()] if identity_data else []
 
         # Get session
+        session_key = f"session:{user_id}"
+        session_data = await self.redis_client.hgetall(session_key)
+        session = dict(session_data) if session_data else {}
+
+        return QuickContext(
+            user_id=user_id,
+            user_name=session.get("user_name", "unknown"),
+            identity_facts=identity_facts,
+            session=session,
+            last_interaction=session.get("last_active"),
+        )
+
+    def _get_quick_context_memory(self, user_id: str) -> QuickContext:
+        """Get quick context from in-memory store."""
+        identity_data = self._identity_store.get(user_id, {})
+        identity_facts = [f"{k}: {v}" for k, v in identity_data.items()]
         session_data = self._session_store.get(user_id, {})
 
         return QuickContext(
@@ -79,17 +141,20 @@ class CortexManager:
         """
         Full retrieval for conscious thought.
         Identity + session + working memory + semantic retrieval.
+        Target: < 500ms
         """
         await self.initialize()
 
         # Get quick context first
         quick = await self.get_quick_context(user_id)
 
-        # Get working memory (recent, emotionally weighted)
-        working_items = self._working_store.get(user_id, [])
-        working_memories = [{"content": item, "score": 0.5} for item in working_items[-20:]]
+        # Get working memory
+        if self._use_redis:
+            working_memories = await self._get_working_memory_redis(user_id)
+        else:
+            working_memories = self._get_working_memory_memory(user_id)
 
-        # Semantic search in long-term memory (stub for Phase 1)
+        # Semantic search in long-term memory
         retrieved_memories = await self._semantic_search(user_id=user_id, query=query, limit=20)
 
         # Get project context if applicable
@@ -107,6 +172,20 @@ class CortexManager:
             project_context=project_context,
         )
 
+    async def _get_working_memory_redis(self, user_id: str) -> list[dict]:
+        """Get working memory from Redis sorted set."""
+        working_key = f"working:{user_id}"
+        # Get items with scores (importance)
+        items = await self.redis_client.zrevrange(working_key, 0, 20, withscores=True)
+        return [{"content": item[0], "score": item[1]} for item in items] if items else []
+
+    def _get_working_memory_memory(self, user_id: str) -> list[dict]:
+        """Get working memory from in-memory store."""
+        items = self._working_store.get(user_id, [])
+        # Sort by importance (descending) and take top 20
+        sorted_items = sorted(items, key=lambda x: x[1], reverse=True)[:20]
+        return [{"content": item[0], "score": item[1]} for item in sorted_items]
+
     async def remember(
         self,
         user_id: str,
@@ -123,22 +202,63 @@ class CortexManager:
         """
         await self.initialize()
 
-        # Calculate TTL based on emotional importance
         ttl_minutes = self._importance_to_ttl(importance)
 
-        # Identity-level facts (importance >= 1.0) go to permanent storage
+        if self._use_redis:
+            await self._remember_redis(user_id, content, importance, ttl_minutes, category)
+        else:
+            self._remember_memory(user_id, content, importance, ttl_minutes, category)
+
+        # Also store in long-term (if Postgres available)
+        if self.pg_pool:
+            await self._store_longterm(user_id, content, category, metadata or {})
+
+    async def _remember_redis(
+        self,
+        user_id: str,
+        content: str,
+        importance: float,
+        ttl_minutes: int,
+        category: Optional[str],
+    ):
+        """Store memory in Redis."""
         if ttl_minutes == -1:
+            # Identity-level facts go to permanent hash
+            identity_key = f"identity:{user_id}"
+            field = category or f"fact_{hash(content) % 10000}"
+            await self.redis_client.hset(identity_key, field, content)
+            logger.info(f"[cortex] Promoted to identity: {content[:50]}...")
+        else:
+            # Working memory goes to sorted set with importance score
+            working_key = f"working:{user_id}"
+            await self.redis_client.zadd(working_key, {content: importance})
+            # Set TTL on the whole set
+            await self.redis_client.expire(working_key, ttl_minutes * 60)
+            logger.info(f"[cortex] Remembered: {content[:50]}... (importance: {importance}, ttl: {ttl_minutes}m)")
+
+    def _remember_memory(
+        self,
+        user_id: str,
+        content: str,
+        importance: float,
+        ttl_minutes: int,
+        category: Optional[str],
+    ):
+        """Store memory in in-memory store."""
+        if ttl_minutes == -1:
+            # Identity-level facts
             if user_id not in self._identity_store:
                 self._identity_store[user_id] = {}
             field = category or f"fact_{hash(content) % 10000}"
             self._identity_store[user_id][field] = content
             logger.info(f"[cortex] Promoted to identity: {content[:50]}...")
         else:
-            # Add to working memory
+            # Working memory
             if user_id not in self._working_store:
                 self._working_store[user_id] = []
-            self._working_store[user_id].append(content)
-            # Keep only last 50 items in working memory
+            timestamp = datetime.utcnow().timestamp()
+            self._working_store[user_id].append((content, importance, timestamp))
+            # Keep only last 50 items
             self._working_store[user_id] = self._working_store[user_id][-50:]
             logger.info(f"[cortex] Remembered: {content[:50]}... (importance: {importance})")
 
@@ -146,12 +266,20 @@ class CortexManager:
         """Update session state."""
         await self.initialize()
 
-        if user_id not in self._session_store:
-            self._session_store[user_id] = {}
-
         # Filter None values
-        clean_updates = {k: v for k, v in updates.items() if v is not None}
-        self._session_store[user_id].update(clean_updates)
+        clean_updates = {k: str(v) for k, v in updates.items() if v is not None}
+        if not clean_updates:
+            return
+
+        if self._use_redis:
+            session_key = f"session:{user_id}"
+            await self.redis_client.hset(session_key, mapping=clean_updates)
+            # Sessions expire after 24 hours of inactivity
+            await self.redis_client.expire(session_key, 86400)
+        else:
+            if user_id not in self._session_store:
+                self._session_store[user_id] = {}
+            self._session_store[user_id].update(clean_updates)
 
     def _importance_to_ttl(self, importance: float) -> int:
         """
@@ -186,8 +314,11 @@ class CortexManager:
         limit: int = 20,
     ) -> list[dict]:
         """Search long-term memory using embeddings."""
-        # Phase 1: Return empty (no semantic search yet)
-        # Phase 2: Implement with pgvector
+        if not self.pg_pool:
+            return []
+
+        # TODO: Implement with pgvector
+        # For now, return empty - Phase 2b will add embeddings
         return []
 
     async def _store_longterm(
@@ -198,15 +329,25 @@ class CortexManager:
         metadata: dict,
     ):
         """Store in long-term memory with embedding."""
-        # Phase 1: No-op
-        # Phase 2: Implement with pgvector
+        if not self.pg_pool:
+            return
+
+        # TODO: Implement with pgvector
+        # For now, no-op - Phase 2b will add embeddings
         pass
 
     async def _get_project_context(self, project_id: str) -> Optional[dict]:
         """Get project-specific context."""
-        # Phase 1: Return None
-        # Phase 2: Implement project context retrieval
+        # TODO: Implement project context retrieval
         return None
+
+    async def close(self):
+        """Close all connections."""
+        if self.redis_client:
+            await self.redis_client.close()
+        if self.pg_pool:
+            await self.pg_pool.close()
+        logger.info("[cortex] Connections closed")
 
 
 # Singleton instance

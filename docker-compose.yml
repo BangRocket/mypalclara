@@ -1,4 +1,21 @@
 services:
+  # Redis for Cortex memory (fast access layer)
+  redis:
+    image: redis:7-alpine
+    container_name: mypalclara-redis
+    profiles:
+      - cortex
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # PostgreSQL databases
   postgres:
     image: postgres:16
@@ -154,6 +171,7 @@ volumes:
   mypalclara-files:
   postgres-data:
   postgres-vectors-data:
+  redis-data:
 
 networks:
   default:
