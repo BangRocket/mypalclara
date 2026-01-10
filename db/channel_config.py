@@ -80,9 +80,7 @@ def set_channel_mode(
 def get_guild_channels(guild_id: str) -> list[ChannelConfig]:
     """Get all configured channels for a guild."""
     with get_session() as session:
-        configs = session.execute(
-            select(ChannelConfig).where(ChannelConfig.guild_id == guild_id)
-        ).scalars().all()
+        configs = session.execute(select(ChannelConfig).where(ChannelConfig.guild_id == guild_id)).scalars().all()
         return list(configs)
 
 

@@ -187,16 +187,11 @@ class SandboxManager:
 
                 session.base_packages = packages.copy()
                 session.installed_packages = packages.copy()
-                print(
-                    f"[SandboxManager] Tracked {len(packages)} pre-installed packages "
-                    f"for {session.user_id}"
-                )
+                print(f"[SandboxManager] Tracked {len(packages)} pre-installed packages " f"for {session.user_id}")
         except Exception as e:
             print(f"[SandboxManager] Failed to init package tracking: {e}")
 
-    async def _create_container(
-        self, name: str, workspace_path: str
-    ) -> Container | None:
+    async def _create_container(self, name: str, workspace_path: str) -> Container | None:
         """Create a new sandbox container."""
         loop = asyncio.get_event_loop()
         pip_cache = self._ensure_pip_cache()
@@ -273,13 +268,9 @@ class SandboxManager:
             cpu_percent = 0
             if "cpu_stats" in stats and "precpu_stats" in stats:
                 cpu_delta = (
-                    stats["cpu_stats"]["cpu_usage"]["total_usage"]
-                    - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+                    stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
                 )
-                system_delta = (
-                    stats["cpu_stats"]["system_cpu_usage"]
-                    - stats["precpu_stats"]["system_cpu_usage"]
-                )
+                system_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
                 if system_delta > 0:
                     cpu_percent = (cpu_delta / system_delta) * 100
 
@@ -296,9 +287,7 @@ class SandboxManager:
         except Exception:
             return None
 
-    async def execute_code(
-        self, user_id: str, code: str, timeout: int = DEFAULT_EXECUTION_TIMEOUT
-    ) -> ExecutionResult:
+    async def execute_code(self, user_id: str, code: str, timeout: int = DEFAULT_EXECUTION_TIMEOUT) -> ExecutionResult:
         """Execute Python code in the sandbox."""
         container = await self.get_sandbox(user_id)
         if not container:
@@ -360,9 +349,7 @@ class SandboxManager:
                 execution_time=time.time() - start_time,
             )
 
-    async def run_shell(
-        self, user_id: str, command: str, timeout: int = 60
-    ) -> ExecutionResult:
+    async def run_shell(self, user_id: str, command: str, timeout: int = 60) -> ExecutionResult:
         """Run a shell command in the sandbox."""
         container = await self.get_sandbox(user_id)
         if not container:
@@ -416,9 +403,7 @@ class SandboxManager:
                 error=str(e),
             )
 
-    async def install_package(
-        self, user_id: str, package: str, timeout: int = 120
-    ) -> ExecutionResult:
+    async def install_package(self, user_id: str, package: str, timeout: int = 120) -> ExecutionResult:
         """Install a pip package in the sandbox.
 
         Uses session-level package tracking to avoid redundant installs.
@@ -436,9 +421,7 @@ class SandboxManager:
             )
 
         # Actually install (quietly to save tokens)
-        result = await self.run_shell(
-            user_id, f"pip install -q {package}", timeout=timeout
-        )
+        result = await self.run_shell(user_id, f"pip install -q {package}", timeout=timeout)
 
         # Track on success
         if result.success and session:
@@ -446,9 +429,7 @@ class SandboxManager:
 
         return result
 
-    async def ensure_packages(
-        self, user_id: str, packages: list[str], timeout: int = 180
-    ) -> ExecutionResult:
+    async def ensure_packages(self, user_id: str, packages: list[str], timeout: int = 180) -> ExecutionResult:
         """Ensure multiple packages are installed (batch install).
 
         Only installs packages that aren't already tracked.
@@ -471,9 +452,7 @@ class SandboxManager:
             )
 
         # Install only what's needed
-        result = await self.run_shell(
-            user_id, f"pip install -q {' '.join(missing)}", timeout=timeout
-        )
+        result = await self.run_shell(user_id, f"pip install -q {' '.join(missing)}", timeout=timeout)
 
         # Track on success
         if result.success and session:
@@ -523,9 +502,7 @@ class SandboxManager:
                 error=str(e),
             )
 
-    async def write_file(
-        self, user_id: str, path: str, content: str | bytes
-    ) -> ExecutionResult:
+    async def write_file(self, user_id: str, path: str, content: str | bytes) -> ExecutionResult:
         """Write a file to the sandbox."""
         container = await self.get_sandbox(user_id)
         if not container:
@@ -558,15 +535,11 @@ class SandboxManager:
                 error=str(e),
             )
 
-    async def list_files(
-        self, user_id: str, path: str = "/workspace"
-    ) -> ExecutionResult:
+    async def list_files(self, user_id: str, path: str = "/workspace") -> ExecutionResult:
         """List files in a directory."""
         return await self.run_shell(user_id, f"ls -la '{path}'", timeout=10)
 
-    async def unzip_file(
-        self, user_id: str, path: str, destination: str | None = None
-    ) -> ExecutionResult:
+    async def unzip_file(self, user_id: str, path: str, destination: str | None = None) -> ExecutionResult:
         """Extract an archive file."""
         dest = destination or os.path.dirname(path) or "/workspace"
 
@@ -592,9 +565,7 @@ class SandboxManager:
 
         return result
 
-    async def _write_to_container(
-        self, container: Container, path: str, content: str | bytes
-    ) -> None:
+    async def _write_to_container(self, container: Container, path: str, content: str | bytes) -> None:
         """Write content to a file in the container using tar."""
         if isinstance(content, str):
             content = content.encode("utf-8")

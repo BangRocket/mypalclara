@@ -65,9 +65,7 @@ async def search_chat_history(args: dict[str, Any], ctx: ToolContext) -> str:
             # Check user filter
             if from_user:
                 author_name = msg.author.display_name.lower()
-                if from_user not in author_name and from_user not in str(
-                    msg.author.id
-                ):
+                if from_user not in author_name and from_user not in str(msg.author.id):
                     continue
 
             # Format match
@@ -153,9 +151,7 @@ TOOLS = [
                 },
                 "limit": {
                     "type": "integer",
-                    "description": (
-                        "Maximum messages to search through (default: 200, max: 1000)"
-                    ),
+                    "description": ("Maximum messages to search through (default: 200, max: 1000)"),
                 },
                 "from_user": {
                     "type": "string",
@@ -179,9 +175,7 @@ TOOLS = [
             "properties": {
                 "count": {
                     "type": "integer",
-                    "description": (
-                        "Number of messages to retrieve (default: 50, max: 200)"
-                    ),
+                    "description": ("Number of messages to retrieve (default: 50, max: 200)"),
                 },
                 "before_hours": {
                     "type": "number",

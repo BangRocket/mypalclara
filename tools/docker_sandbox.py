@@ -194,10 +194,7 @@ TOOLS = [
                 },
                 "description": {
                     "type": "string",
-                    "description": (
-                        "Brief description of what this code does "
-                        "(for logging/display purposes)"
-                    ),
+                    "description": ("Brief description of what this code does " "(for logging/display purposes)"),
                 },
             },
             "required": ["code"],
@@ -296,10 +293,7 @@ TOOLS = [
     ),
     ToolDef(
         name="run_shell",
-        description=(
-            "Run a shell command in the sandbox. "
-            "Useful for system operations, git, curl, etc."
-        ),
+        description=("Run a shell command in the sandbox. " "Useful for system operations, git, curl, etc."),
         parameters={
             "type": "object",
             "properties": {
@@ -325,16 +319,11 @@ TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Path to the archive file to extract "
-                        "(e.g., '/home/user/archive.zip')"
-                    ),
+                    "description": ("Path to the archive file to extract " "(e.g., '/home/user/archive.zip')"),
                 },
                 "destination": {
                     "type": "string",
-                    "description": (
-                        "Directory to extract to (default: same directory as archive)"
-                    ),
+                    "description": ("Directory to extract to (default: same directory as archive)"),
                 },
             },
             "required": ["path"],
@@ -357,13 +346,9 @@ async def initialize() -> None:
         if manager.is_available():
             backend = stats.get("active_backend", "unknown")
             mode = stats.get("mode", "auto")
-            print(
-                f"[docker_sandbox] Sandbox available (mode={mode}, backend={backend})"
-            )
+            print(f"[docker_sandbox] Sandbox available (mode={mode}, backend={backend})")
         else:
-            print(
-                "[docker_sandbox] No sandbox backend available - tools will be disabled"
-            )
+            print("[docker_sandbox] No sandbox backend available - tools will be disabled")
     except Exception as e:
         print(f"[docker_sandbox] Error initializing sandbox: {e}")
 

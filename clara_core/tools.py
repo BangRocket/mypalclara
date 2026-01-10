@@ -81,9 +81,7 @@ class ToolRegistry:
     def get_instance(cls) -> "ToolRegistry":
         """Get the singleton registry instance."""
         if cls._instance is None:
-            raise RuntimeError(
-                "ToolRegistry not initialized. Call ToolRegistry.initialize() first."
-            )
+            raise RuntimeError("ToolRegistry not initialized. Call ToolRegistry.initialize() first.")
         return cls._instance
 
     @classmethod
@@ -296,8 +294,8 @@ def register_docker_tools(registry: ToolRegistry) -> None:
     """
     # Import here to avoid circular imports
     try:
-        from sandbox.manager import get_sandbox_manager
         from sandbox.docker import DOCKER_TOOLS
+        from sandbox.manager import get_sandbox_manager
     except ImportError:
         print("[tools] Docker tools not available (sandbox.docker module not found)")
         return

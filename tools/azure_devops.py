@@ -359,7 +359,9 @@ async def list_pull_requests(args: dict[str, Any], ctx: ToolContext) -> str:
     if not project:
         return "Error: project is required"
 
-    endpoint = f"{project}/_apis/git/pullrequests" if not repo else f"{project}/_apis/git/repositories/{repo}/pullrequests"
+    endpoint = (
+        f"{project}/_apis/git/pullrequests" if not repo else f"{project}/_apis/git/repositories/{repo}/pullrequests"
+    )
 
     params = {}
     if args.get("status"):
@@ -460,7 +462,9 @@ async def update_pull_request(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Error: at least one field to update is required"
 
     try:
-        result = await _ado_request("PATCH", f"{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}", json_data=data)
+        result = await _ado_request(
+            "PATCH", f"{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}", json_data=data
+        )
         return json.dumps({"updated": True, "pullRequestId": result["pullRequestId"]}, indent=2)
     except Exception as e:
         return f"Error: {e}"
@@ -505,7 +509,9 @@ async def create_pr_comment(args: dict[str, Any], ctx: ToolContext) -> str:
     }
 
     try:
-        result = await _ado_request("POST", f"{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}/threads", json_data=data)
+        result = await _ado_request(
+            "POST", f"{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}/threads", json_data=data
+        )
         return json.dumps({"created": True, "threadId": result["id"]}, indent=2)
     except Exception as e:
         return f"Error: {e}"
@@ -894,7 +900,9 @@ async def my_work_items(args: dict[str, Any], ctx: ToolContext) -> str:
         """
     }
     if not args.get("includeCompleted"):
-        wiql["query"] = wiql["query"].replace("ORDER BY", "AND [System.State] <> 'Closed' AND [System.State] <> 'Done' ORDER BY")
+        wiql["query"] = wiql["query"].replace(
+            "ORDER BY", "AND [System.State] <> 'Closed' AND [System.State] <> 'Done' ORDER BY"
+        )
 
     try:
         result = await _ado_request("POST", f"{project}/_apis/wit/wiql", json_data=wiql)
@@ -904,7 +912,9 @@ async def my_work_items(args: dict[str, Any], ctx: ToolContext) -> str:
             return json.dumps({"items": []}, indent=2)
 
         # Get work item details
-        items_result = await _ado_request("GET", f"{project}/_apis/wit/workitems", params={"ids": ",".join(work_item_ids)})
+        items_result = await _ado_request(
+            "GET", f"{project}/_apis/wit/workitems", params={"ids": ",".join(work_item_ids)}
+        )
         items = [
             {
                 "id": w["id"],
@@ -1396,7 +1406,10 @@ TOOLS = [
             "properties": {
                 "project": {"type": "string", "description": "Project name or ID"},
                 "definitions": {"type": "string", "description": "Comma-separated definition IDs"},
-                "statusFilter": {"type": "string", "enum": ["all", "inProgress", "completed", "notStarted", "postponed"]},
+                "statusFilter": {
+                    "type": "string",
+                    "enum": ["all", "inProgress", "completed", "notStarted", "postponed"],
+                },
                 "resultFilter": {"type": "string", "enum": ["succeeded", "partiallySucceeded", "failed", "canceled"]},
                 "branchName": {"type": "string", "description": "Filter by branch"},
                 "top": {"type": "integer", "description": "Max results"},

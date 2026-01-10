@@ -115,9 +115,7 @@ TOOLS = [
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": (
-                        "Maximum number of results to return (default: 5, max: 10)"
-                    ),
+                    "description": ("Maximum number of results to return (default: 5, max: 10)"),
                 },
                 "search_depth": {
                     "type": "string",

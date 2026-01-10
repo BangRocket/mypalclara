@@ -100,9 +100,7 @@ class ToolLoader:
 
         try:
             # Load the module
-            spec = importlib.util.spec_from_file_location(
-                f"tools.{module_name}", module_path
-            )
+            spec = importlib.util.spec_from_file_location(f"tools.{module_name}", module_path)
             if spec is None or spec.loader is None:
                 print(f"[tools] Failed to load spec for {module_name}")
                 return False
@@ -334,10 +332,7 @@ class ToolLoader:
 
     def get_loaded_modules(self) -> dict[str, str]:
         """Get dict of loaded module names to versions."""
-        return {
-            name: self._module_versions.get(name, "unknown")
-            for name in self._modules.keys()
-        }
+        return {name: self._module_versions.get(name, "unknown") for name in self._modules.keys()}
 
     async def shutdown(self) -> None:
         """Shutdown the loader, cleaning up all modules."""

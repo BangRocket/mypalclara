@@ -97,9 +97,7 @@ class RemoteSandboxClient:
         try:
             client = await self._get_client()
             request_timeout = httpx.Timeout(timeout or self.timeout)
-            response = await client.request(
-                method, path, json=json, timeout=request_timeout
-            )
+            response = await client.request(method, path, json=json, timeout=request_timeout)
 
             if response.status_code == 401:
                 return ExecutionResult(
@@ -356,11 +354,7 @@ class RemoteSandboxClient:
         """Handle tool call (same interface as DockerSandboxManager)."""
         # Route to appropriate method based on tool name
         if tool_name == "execute_python":
-            code = (
-                arguments.get("code")
-                or arguments.get("python_code")
-                or arguments.get("script", "")
-            )
+            code = arguments.get("code") or arguments.get("python_code") or arguments.get("script", "")
             return await self.execute_code(
                 user_id,
                 code,

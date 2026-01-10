@@ -24,9 +24,7 @@ PIP_CACHE_DIR = os.getenv("SANDBOX_PIP_CACHE_DIR", "/data/pip-cache")
 
 # Limits
 MAX_CONTAINERS = int(os.getenv("SANDBOX_MAX_CONTAINERS", "50"))
-MAX_EXECUTION_TIMEOUT = int(
-    os.getenv("SANDBOX_MAX_EXECUTION_TIMEOUT", "300")
-)  # 5 minutes
+MAX_EXECUTION_TIMEOUT = int(os.getenv("SANDBOX_MAX_EXECUTION_TIMEOUT", "300"))  # 5 minutes
 DEFAULT_EXECUTION_TIMEOUT = int(os.getenv("SANDBOX_DEFAULT_EXECUTION_TIMEOUT", "30"))
 
 # Security

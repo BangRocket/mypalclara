@@ -44,6 +44,7 @@ More reliable than inline <<<file:>>> syntax, especially for large content.
 - For sandbox work: `write_file` (temporary) then `download_from_sandbox` (permanent)
 """.strip()
 
+
 def _get_manager() -> "FileManager":
     """Get the file manager singleton (Local or S3 based on config)."""
     from storage.local_files import get_file_manager
@@ -136,9 +137,7 @@ async def download_from_sandbox(args: dict[str, Any], ctx: ToolContext) -> str:
         local_filename = sandbox_path.split("/")[-1]
 
     # Save locally
-    result = manager.save_file(
-        ctx.user_id, local_filename, read_result.output, ctx.channel_id
-    )
+    result = manager.save_file(ctx.user_id, local_filename, read_result.output, ctx.channel_id)
     return result.message
 
 
@@ -168,9 +167,7 @@ async def upload_to_sandbox(args: dict[str, Any], ctx: ToolContext) -> str:
         sandbox_path = f"/home/user/{local_filename}"
 
     # Write to sandbox
-    write_result = await sandbox_manager.write_file(
-        ctx.user_id, sandbox_path, read_result.message
-    )
+    write_result = await sandbox_manager.write_file(ctx.user_id, sandbox_path, read_result.message)
     if write_result.success:
         return f"Uploaded {local_filename} to sandbox at {sandbox_path}"
     return f"Error uploading to sandbox: {write_result.error or 'Unknown error'}"
@@ -259,8 +256,7 @@ TOOLS = [
     ToolDef(
         name="list_local_files",
         description=(
-            "List files saved in local storage. "
-            "Shows files you've saved or that were uploaded by the user."
+            "List files saved in local storage. " "Shows files you've saved or that were uploaded by the user."
         ),
         parameters={
             "type": "object",
@@ -273,8 +269,7 @@ TOOLS = [
     ToolDef(
         name="read_local_file",
         description=(
-            "Read content from a locally saved file. "
-            "Use this to retrieve previously saved data or uploaded files."
+            "Read content from a locally saved file. " "Use this to retrieve previously saved data or uploaded files."
         ),
         parameters={
             "type": "object",
@@ -316,16 +311,12 @@ TOOLS = [
             "properties": {
                 "sandbox_path": {
                     "type": "string",
-                    "description": (
-                        "Path to the file in the sandbox "
-                        "(e.g., '/home/user/output.csv')"
-                    ),
+                    "description": ("Path to the file in the sandbox " "(e.g., '/home/user/output.csv')"),
                 },
                 "local_filename": {
                     "type": "string",
                     "description": (
-                        "Optional: name for the local file. "
-                        "If not provided, uses the original filename."
+                        "Optional: name for the local file. " "If not provided, uses the original filename."
                     ),
                 },
             },
@@ -350,10 +341,7 @@ TOOLS = [
                 },
                 "sandbox_path": {
                     "type": "string",
-                    "description": (
-                        "Optional: destination path in the sandbox. "
-                        "Defaults to /home/user/<filename>"
-                    ),
+                    "description": ("Optional: destination path in the sandbox. " "Defaults to /home/user/<filename>"),
                 },
             },
             "required": ["local_filename"],
@@ -364,8 +352,7 @@ TOOLS = [
     ToolDef(
         name="send_local_file",
         description=(
-            "Send a locally saved file to the chat. "
-            "Use this when the user asks to see or download a saved file."
+            "Send a locally saved file to the chat. " "Use this when the user asks to see or download a saved file."
         ),
         parameters={
             "type": "object",
@@ -395,8 +382,7 @@ TOOLS = [
                 "filename": {
                     "type": "string",
                     "description": (
-                        "Name for the file with extension "
-                        "(e.g., 'page.html', 'data.json', 'script.py')"
+                        "Name for the file with extension " "(e.g., 'page.html', 'data.json', 'script.py')"
                     ),
                 },
                 "content": {

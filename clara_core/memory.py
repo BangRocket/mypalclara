@@ -110,9 +110,7 @@ def load_initial_profile(user_id: str) -> None:
 
     print("[mem0] Creating flag file to prevent duplicate loads...")
     try:
-        PROFILE_LOADED_FLAG.write_text(
-            f"loading started at {datetime.now().isoformat()}"
-        )
+        PROFILE_LOADED_FLAG.write_text(f"loading started at {datetime.now().isoformat()}")
     except Exception as e:
         print(f"[mem0] ERROR: Could not create flag file: {e}")
 
@@ -157,9 +155,7 @@ class MemoryManager:
             RuntimeError: If not initialized
         """
         if cls._instance is None:
-            raise RuntimeError(
-                "MemoryManager not initialized. Call MemoryManager.initialize() first."
-            )
+            raise RuntimeError("MemoryManager not initialized. Call MemoryManager.initialize() first.")
         return cls._instance
 
     @classmethod
@@ -276,19 +272,12 @@ class MemoryManager:
         """Generate/update summary for a thread."""
         from db.models import Message
 
-        all_msgs = (
-            db.query(Message)
-            .filter_by(session_id=thread.id)
-            .order_by(Message.created_at.asc())
-            .all()
-        )
+        all_msgs = db.query(Message).filter_by(session_id=thread.id).order_by(Message.created_at.asc()).all()
 
         if not all_msgs:
             return ""
 
-        conversation = "\n".join(
-            f"{m.role.upper()}: {m.content[:500]}" for m in all_msgs[-30:]
-        )
+        conversation = "\n".join(f"{m.role.upper()}: {m.content[:500]}" for m in all_msgs[-30:])
 
         summary_prompt = [
             {
@@ -347,6 +336,7 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR searching user memories: {e}")
             import traceback
+
             traceback.print_exc()
             user_res = {"results": []}
 
@@ -359,6 +349,7 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR searching project memories: {e}")
             import traceback
+
             traceback.print_exc()
             proj_res = {"results": []}
 
@@ -391,9 +382,7 @@ class MemoryManager:
         for r in user_res.get("results", []):
             metadata = r.get("metadata", {})
             if metadata.get("contact_id"):
-                contact_name = metadata.get(
-                    "contact_name", metadata.get("contact_id")
-                )
+                contact_name = metadata.get("contact_name", metadata.get("contact_id"))
                 mem_text = f"[About {contact_name}]: {r['memory']}"
                 if mem_text not in user_mems:
                     user_mems.append(mem_text)
@@ -405,10 +394,7 @@ class MemoryManager:
             proj_mems = proj_mems[:MAX_MEMORIES_PER_TYPE]
 
         if user_mems or proj_mems:
-            print(
-                f"[mem0] Found {len(user_mems)} user memories, "
-                f"{len(proj_mems)} project memories"
-            )
+            print(f"[mem0] Found {len(user_mems)} user memories, " f"{len(proj_mems)} project memories")
         return user_mems, proj_mems
 
     def add_to_mem0(
@@ -443,9 +429,7 @@ class MemoryManager:
             names = [p.get("name", p.get("id", "Unknown")) for p in participants]
             context_prefix = f"[Participants: {', '.join(names)}]\n"
 
-        history_slice = [
-            {"role": m.role, "content": m.content} for m in recent_msgs[-4:]
-        ] + [
+        history_slice = [{"role": m.role, "content": m.content} for m in recent_msgs[-4:]] + [
             {"role": "user", "content": context_prefix + user_message},
             {"role": "assistant", "content": assistant_reply},
         ]
@@ -458,12 +442,8 @@ class MemoryManager:
             "source_type": source_type,
         }
         if participants:
-            metadata["participant_ids"] = [
-                p.get("id") for p in participants if p.get("id")
-            ]
-            metadata["participant_names"] = [
-                p.get("name") for p in participants if p.get("name")
-            ]
+            metadata["participant_ids"] = [p.get("id") for p in participants if p.get("id")]
+            metadata["participant_names"] = [p.get("name") for p in participants if p.get("name")]
 
         try:
             result = MEM0.add(
@@ -484,6 +464,7 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR adding memories: {e}")
             import traceback
+
             traceback.print_exc()
 
     # ---------- prompt building ----------

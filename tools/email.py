@@ -179,16 +179,11 @@ TOOLS = [
             "properties": {
                 "unread_only": {
                     "type": "boolean",
-                    "description": (
-                        "If true, only show unread emails. "
-                        "Default is false (show all recent)."
-                    ),
+                    "description": ("If true, only show unread emails. " "Default is false (show all recent)."),
                 },
                 "limit": {
                     "type": "integer",
-                    "description": (
-                        "Maximum number of emails to return (default: 10, max: 25)"
-                    ),
+                    "description": ("Maximum number of emails to return (default: 10, max: 25)"),
                 },
             },
             "required": [],

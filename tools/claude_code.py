@@ -218,10 +218,7 @@ async def claude_code_execute(args: dict[str, Any], ctx: ToolContext) -> str:
             ToolUseBlock,
         )
     except ImportError:
-        return (
-            "Error: claude-agent-sdk not installed. "
-            "Run: pip install claude-agent-sdk"
-        )
+        return "Error: claude-agent-sdk not installed. " "Run: pip install claude-agent-sdk"
 
     prompt = args.get("prompt", "").strip()
     if not prompt:
@@ -287,9 +284,7 @@ async def claude_code_execute(args: dict[str, Any], ctx: ToolContext) -> str:
                         elif isinstance(block, ToolResultBlock):
                             # Summarize tool results (can be verbose)
                             if block.is_error:
-                                results.append(
-                                    f"[Tool Error: {block.content[:200]}...]"
-                                )
+                                results.append(f"[Tool Error: {block.content[:200]}...]")
                             elif len(block.content) > 500:
                                 chars = len(block.content)
                                 results.append(f"[Output truncated: {chars} chars]")
@@ -339,10 +334,7 @@ async def claude_code_get_workdir(args: dict[str, Any], ctx: ToolContext) -> str
     workdir = get_workdir(ctx.user_id)
     if workdir:
         return f"Current working directory: {workdir}"
-    return (
-        "No working directory configured. "
-        "Set CLAUDE_CODE_WORKDIR or use claude_code_set_workdir."
-    )
+    return "No working directory configured. " "Set CLAUDE_CODE_WORKDIR or use claude_code_set_workdir."
 
 
 async def claude_code_status(args: dict[str, Any], ctx: ToolContext) -> str:

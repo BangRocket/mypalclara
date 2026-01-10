@@ -62,9 +62,7 @@ async def _calendar_request(
     """
     token = await get_valid_token(user_id)
     if not token:
-        raise ValueError(
-            "Google account not connected. Use google_connect to connect first."
-        )
+        raise ValueError("Google account not connected. Use google_connect to connect first.")
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -89,9 +87,7 @@ async def _calendar_request(
         if response.status_code >= 400:
             error_data = response.json() if response.text else {}
             error_msg = error_data.get("error", {}).get("message", response.text)
-            raise ValueError(
-                f"Calendar API error ({response.status_code}): {error_msg}"
-            )
+            raise ValueError(f"Calendar API error ({response.status_code}): {error_msg}")
 
         return response.json()
 
@@ -130,9 +126,7 @@ async def calendar_list_events(args: dict[str, Any], ctx: ToolContext) -> str:
         params["q"] = query
 
     try:
-        result = await _calendar_request(
-            ctx.user_id, "GET", f"calendars/{calendar_id}/events", params=params
-        )
+        result = await _calendar_request(ctx.user_id, "GET", f"calendars/{calendar_id}/events", params=params)
 
         events = result.get("items", [])
         if not events:
@@ -152,9 +146,7 @@ async def calendar_list_events(args: dict[str, Any], ctx: ToolContext) -> str:
                 "start": start_time,
                 "end": end_time,
                 "location": event.get("location"),
-                "description": event.get("description", "")[:200]
-                if event.get("description")
-                else None,
+                "description": event.get("description", "")[:200] if event.get("description") else None,
                 "attendees": [a.get("email") for a in event.get("attendees", [])],
             }
             # Remove None values
@@ -181,9 +173,7 @@ async def calendar_get_event(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Error: event_id is required"
 
     try:
-        event = await _calendar_request(
-            ctx.user_id, "GET", f"calendars/{calendar_id}/events/{event_id}"
-        )
+        event = await _calendar_request(ctx.user_id, "GET", f"calendars/{calendar_id}/events/{event_id}")
 
         return json.dumps(event, indent=2)
 
@@ -237,9 +227,7 @@ async def calendar_create_event(args: dict[str, Any], ctx: ToolContext) -> str:
         event_body["attendees"] = [{"email": email} for email in attendees]
 
     try:
-        result = await _calendar_request(
-            ctx.user_id, "POST", f"calendars/{calendar_id}/events", json_data=event_body
-        )
+        result = await _calendar_request(ctx.user_id, "POST", f"calendars/{calendar_id}/events", json_data=event_body)
 
         return json.dumps(
             {
@@ -278,9 +266,7 @@ async def calendar_update_event(args: dict[str, Any], ctx: ToolContext) -> str:
 
     # First get the existing event
     try:
-        existing = await _calendar_request(
-            ctx.user_id, "GET", f"calendars/{calendar_id}/events/{event_id}"
-        )
+        existing = await _calendar_request(ctx.user_id, "GET", f"calendars/{calendar_id}/events/{event_id}")
     except Exception as e:
         return f"Error fetching event to update: {e}"
 
@@ -345,9 +331,7 @@ async def calendar_delete_event(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Error: event_id is required"
 
     try:
-        await _calendar_request(
-            ctx.user_id, "DELETE", f"calendars/{calendar_id}/events/{event_id}"
-        )
+        await _calendar_request(ctx.user_id, "DELETE", f"calendars/{calendar_id}/events/{event_id}")
 
         return json.dumps({"success": True, "message": f"Event {event_id} deleted."})
 

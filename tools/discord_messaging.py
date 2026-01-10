@@ -49,10 +49,7 @@ async def send_message_to_channel(args: dict[str, Any], ctx: ToolContext) -> str
     try:
         channel_id_int = int(channel_id)
     except (ValueError, TypeError):
-        return (
-            f"Error: Invalid channel_id '{channel_id}' - "
-            "must be a valid Discord channel ID (large integer)"
-        )
+        return f"Error: Invalid channel_id '{channel_id}' - " "must be a valid Discord channel ID (large integer)"
 
     # Get the channel
     try:
@@ -71,10 +68,7 @@ async def send_message_to_channel(args: dict[str, Any], ctx: ToolContext) -> str
 
     # Verify it's a text channel we can send to
     if not hasattr(channel, "send"):
-        return (
-            f"Error: Channel {channel_id} is not a text channel "
-            "that can receive messages"
-        )
+        return f"Error: Channel {channel_id} is not a text channel " "that can receive messages"
 
     # Check permissions
     if hasattr(channel, "guild") and channel.guild:
@@ -82,15 +76,9 @@ async def send_message_to_channel(args: dict[str, Any], ctx: ToolContext) -> str
         if me:
             permissions = channel.permissions_for(me)
             if not permissions.send_messages:
-                return (
-                    f"Error: Clara doesn't have permission to send messages "
-                    f"in #{channel.name}"
-                )
+                return f"Error: Clara doesn't have permission to send messages " f"in #{channel.name}"
             if embed_data and not permissions.embed_links:
-                return (
-                    f"Error: Clara doesn't have permission to embed links "
-                    f"in #{channel.name}"
-                )
+                return f"Error: Clara doesn't have permission to embed links " f"in #{channel.name}"
 
     # Build embed if provided
     embed = None
@@ -168,9 +156,7 @@ TOOLS = [
                 },
                 "content": {
                     "type": "string",
-                    "description": (
-                        "The message text to send. Supports Discord markdown."
-                    ),
+                    "description": ("The message text to send. Supports Discord markdown."),
                 },
                 "embed": {
                     "type": "object",

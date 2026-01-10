@@ -256,9 +256,7 @@ async def get_recent_proactive_history(user_id: str, limit: int = 5) -> list[dic
             {
                 "sent_at": m.sent_at.isoformat() if m.sent_at else None,
                 "priority": m.priority,
-                "message": m.message[:100] + "..."
-                if len(m.message) > 100
-                else m.message,
+                "message": m.message[:100] + "..." if len(m.message) > 100 else m.message,
                 "responded": m.response_received == "true",
             }
             for m in messages
@@ -271,12 +269,7 @@ async def get_last_proactive_time(user_id: str) -> datetime | None:
     """Get the timestamp of the last proactive message to a user."""
     db = SessionLocal()
     try:
-        last = (
-            db.query(ProactiveMessage)
-            .filter_by(user_id=user_id)
-            .order_by(ProactiveMessage.sent_at.desc())
-            .first()
-        )
+        last = db.query(ProactiveMessage).filter_by(user_id=user_id).order_by(ProactiveMessage.sent_at.desc()).first()
         return last.sent_at if last else None
     finally:
         db.close()
@@ -287,11 +280,7 @@ async def get_active_users(days: int = 7) -> list[str]:
     db = SessionLocal()
     try:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
-        patterns = (
-            db.query(UserInteractionPattern)
-            .filter(UserInteractionPattern.last_interaction_at >= cutoff)
-            .all()
-        )
+        patterns = db.query(UserInteractionPattern).filter(UserInteractionPattern.last_interaction_at >= cutoff).all()
         return [p.user_id for p in patterns]
     finally:
         db.close()
@@ -316,9 +305,7 @@ async def build_context_payload(
         time_since = now - last_dt
         hours_since = time_since.total_seconds() / 3600
         time_since_str = (
-            f"{int(hours_since)} hours"
-            if hours_since >= 1
-            else f"{int(time_since.total_seconds() / 60)} minutes"
+            f"{int(hours_since)} hours" if hours_since >= 1 else f"{int(time_since.total_seconds() / 60)} minutes"
         )
     else:
         time_since_str = "unknown"
@@ -349,30 +336,18 @@ async def build_context_payload(
         else "never",
         "time_since_last": time_since_str,
         "last_channel": patterns.last_interaction_channel if patterns else "unknown",
-        "last_summary": patterns.last_interaction_summary
-        if patterns
-        else "No previous interaction",
+        "last_summary": patterns.last_interaction_summary if patterns else "No previous interaction",
         "last_energy": patterns.last_interaction_energy if patterns else "unknown",
-        "explicit_signals": json.dumps(explicit_signals)
-        if explicit_signals
-        else "none",
-        "calendar_events": json.dumps(calendar_events)
-        if calendar_events
-        else "No calendar access",
+        "explicit_signals": json.dumps(explicit_signals) if explicit_signals else "none",
+        "calendar_events": json.dumps(calendar_events) if calendar_events else "No calendar access",
         "pending_notes": json.dumps(pending_notes) if pending_notes else "None",
         "active_hours": active_hours,
         "avg_response_time": f"{patterns.avg_response_time_seconds // 60} minutes"
         if patterns and patterns.avg_response_time_seconds
         else "unknown",
-        "success_rate": patterns.proactive_success_rate
-        if patterns and patterns.proactive_success_rate
-        else 50,
-        "silence_hours": round(hours_since, 1)
-        if hours_since != float("inf")
-        else "unknown",
-        "proactive_history": json.dumps(proactive_history)
-        if proactive_history
-        else "None",
+        "success_rate": patterns.proactive_success_rate if patterns and patterns.proactive_success_rate else 50,
+        "silence_hours": round(hours_since, 1) if hours_since != float("inf") else "unknown",
+        "proactive_history": json.dumps(proactive_history) if proactive_history else "None",
     }
 
 
@@ -445,9 +420,7 @@ async def check_rate_limit(user_id: str, priority: str) -> bool:
     hours_since = time_since.total_seconds() / 3600
 
     if hours_since < min_gap_hours:
-        logger.debug(
-            f"Rate limited: {hours_since:.1f}h < {min_gap_hours}h min gap for {priority}"
-        )
+        logger.debug(f"Rate limited: {hours_since:.1f}h < {min_gap_hours}h min gap for {priority}")
         return False
 
     return True
@@ -525,9 +498,7 @@ async def execute_speak_decision(
             reason=reason,
         )
 
-        logger.info(
-            f"Sent proactive message to {user_id} ({priority}): {content[:50]}..."
-        )
+        logger.info(f"Sent proactive message to {user_id} ({priority}): {content[:50]}...")
         return True
 
     except Exception as e:
@@ -546,9 +517,7 @@ async def proactive_check_loop(client: "Client", llm_callable: Any):
         logger.info("Proactive engine disabled")
         return
 
-    logger.info(
-        f"Proactive engine started (poll every {PROACTIVE_POLL_MINUTES} minutes)"
-    )
+    logger.info(f"Proactive engine started (poll every {PROACTIVE_POLL_MINUTES} minutes)")
 
     while True:
         try:
@@ -568,9 +537,7 @@ async def proactive_check_loop(client: "Client", llm_callable: Any):
                     calendar_events = None
 
                     # Make decision
-                    decision = await make_proactive_decision(
-                        user_id, llm_callable, calendar_events
-                    )
+                    decision = await make_proactive_decision(user_id, llm_callable, calendar_events)
 
                     if not decision:
                         continue

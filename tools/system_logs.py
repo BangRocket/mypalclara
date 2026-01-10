@@ -231,8 +231,7 @@ TOOLS = [
     ToolDef(
         name="get_recent_logs",
         description=(
-            "Get the most recent log entries. "
-            "Useful for seeing what just happened or monitoring activity."
+            "Get the most recent log entries. " "Useful for seeing what just happened or monitoring activity."
         ),
         parameters={
             "type": "object",
@@ -288,6 +287,7 @@ async def initialize() -> None:
 
     try:
         from db import SessionLocal
+
         _session_factory = SessionLocal
         print("[system_logs] Loaded - connected to database")
     except Exception as e:

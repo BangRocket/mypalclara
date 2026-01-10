@@ -251,6 +251,7 @@ async def screenshot_page(args: dict[str, Any], ctx: ToolContext) -> str:
 
             # Generate filename from URL
             from urllib.parse import urlparse
+
             parsed = urlparse(url)
             domain = parsed.netloc.replace(".", "_")
             filename = f"screenshot_{domain}.png"
@@ -335,6 +336,7 @@ async def extract_page_data(args: dict[str, Any], ctx: ToolContext) -> str:
 
             # Format results
             import json
+
             return f"Extracted data:\n```json\n{json.dumps(results, indent=2)}\n```"
 
         finally:
@@ -861,7 +863,7 @@ TOOLS = [
                     "type": "object",
                     "description": (
                         "Map of name -> CSS selector. Add [] suffix for multiple elements. "
-                        "Example: {\"title\": \"h1\", \"links\": \"a.nav-link[]\"}"
+                        'Example: {"title": "h1", "links": "a.nav-link[]"}'
                     ),
                     "additionalProperties": {"type": "string"},
                 },
@@ -997,8 +999,7 @@ TOOLS = [
     ToolDef(
         name="browser_screenshot_session",
         description=(
-            "Take a screenshot of the current page in a browser session. "
-            "Returns the screenshot as a file."
+            "Take a screenshot of the current page in a browser session. " "Returns the screenshot as a file."
         ),
         parameters={
             "type": "object",
@@ -1071,8 +1072,7 @@ TOOLS = [
     ToolDef(
         name="browser_close_session",
         description=(
-            "Close a browser session. By default, saves cookies before closing "
-            "so the session can be restored later."
+            "Close a browser session. By default, saves cookies before closing " "so the session can be restored later."
         ),
         parameters={
             "type": "object",
@@ -1119,6 +1119,7 @@ async def initialize() -> None:
 
     try:
         from playwright.async_api import async_playwright
+
         _available = True
         logger.info("[playwright] Module loaded - browser automation available")
     except ImportError:

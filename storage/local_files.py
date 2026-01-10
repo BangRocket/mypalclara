@@ -85,8 +85,7 @@ LOCAL_FILE_TOOLS = [
         "function": {
             "name": "list_local_files",
             "description": (
-                "List files saved in local storage. "
-                "Shows files you've saved or that were uploaded by the user."
+                "List files saved in local storage. " "Shows files you've saved or that were uploaded by the user."
             ),
             "parameters": {
                 "type": "object",
@@ -145,16 +144,12 @@ LOCAL_FILE_TOOLS = [
                 "properties": {
                     "sandbox_path": {
                         "type": "string",
-                        "description": (
-                            "Path to the file in the sandbox "
-                            "(e.g., '/home/user/output.csv')"
-                        ),
+                        "description": ("Path to the file in the sandbox " "(e.g., '/home/user/output.csv')"),
                     },
                     "local_filename": {
                         "type": "string",
                         "description": (
-                            "Optional: name for the local file. "
-                            "If not provided, uses the original filename."
+                            "Optional: name for the local file. " "If not provided, uses the original filename."
                         ),
                     },
                 },
@@ -181,8 +176,7 @@ LOCAL_FILE_TOOLS = [
                     "sandbox_path": {
                         "type": "string",
                         "description": (
-                            "Optional: destination path in the sandbox. "
-                            "Defaults to /home/user/<filename>"
+                            "Optional: destination path in the sandbox. " "Defaults to /home/user/<filename>"
                         ),
                     },
                 },
@@ -228,15 +222,11 @@ LOCAL_FILE_TOOLS = [
                     },
                     "limit": {
                         "type": "integer",
-                        "description": (
-                            "Maximum messages to search through (default: 200, max: 1000)"
-                        ),
+                        "description": ("Maximum messages to search through (default: 200, max: 1000)"),
                     },
                     "from_user": {
                         "type": "string",
-                        "description": (
-                            "Optional: only search messages from this username"
-                        ),
+                        "description": ("Optional: only search messages from this username"),
                     },
                 },
                 "required": ["query"],
@@ -257,9 +247,7 @@ LOCAL_FILE_TOOLS = [
                 "properties": {
                     "count": {
                         "type": "integer",
-                        "description": (
-                            "Number of messages to retrieve (default: 50, max: 200)"
-                        ),
+                        "description": ("Number of messages to retrieve (default: 50, max: 200)"),
                     },
                     "before_hours": {
                         "type": "number",
@@ -270,9 +258,7 @@ LOCAL_FILE_TOOLS = [
                     },
                     "user_filter": {
                         "type": "string",
-                        "description": (
-                            "Optional: only include messages from this username"
-                        ),
+                        "description": ("Optional: only include messages from this username"),
                     },
                 },
                 "required": [],
@@ -316,10 +302,7 @@ class LocalFileManager:
         safe = safe.lstrip(".")
         return safe or "unnamed_file"
 
-    def save_file(
-        self, user_id: str, filename: str, content: str | bytes,
-        channel_id: str | None = None
-    ) -> FileResult:
+    def save_file(self, user_id: str, filename: str, content: str | bytes, channel_id: str | None = None) -> FileResult:
         """Save content to a local file."""
         try:
             safe_name = self._sanitize_filename(filename)
@@ -458,9 +441,7 @@ class LocalFileManager:
             return file_path
         return None
 
-    def save_from_bytes(
-        self, user_id: str, filename: str, data: bytes, channel_id: str | None = None
-    ) -> FileResult:
+    def save_from_bytes(self, user_id: str, filename: str, data: bytes, channel_id: str | None = None) -> FileResult:
         """Save binary data to a file."""
         return self.save_file(user_id, filename, data, channel_id)
 
@@ -526,10 +507,7 @@ class S3FileManager:
             return f"{safe_user}/{safe_channel}/{safe_name}"
         return f"{safe_user}/{safe_name}"
 
-    def save_file(
-        self, user_id: str, filename: str, content: str | bytes,
-        channel_id: str | None = None
-    ) -> FileResult:
+    def save_file(self, user_id: str, filename: str, content: str | bytes, channel_id: str | None = None) -> FileResult:
         """Save content to S3."""
         try:
             safe_name = self._sanitize_filename(filename)
@@ -702,9 +680,7 @@ class S3FileManager:
             logger.error(f"[s3] Failed to download {filename}: {e}")
             return None
 
-    def save_from_bytes(
-        self, user_id: str, filename: str, data: bytes, channel_id: str | None = None
-    ) -> FileResult:
+    def save_from_bytes(self, user_id: str, filename: str, data: bytes, channel_id: str | None = None) -> FileResult:
         """Save binary data to S3."""
         return self.save_file(user_id, filename, data, channel_id)
 

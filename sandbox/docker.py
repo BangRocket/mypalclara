@@ -74,10 +74,7 @@ DOCKER_TOOLS = [
                     },
                     "description": {
                         "type": "string",
-                        "description": (
-                            "Brief description of what this code does "
-                            "(for logging/display purposes)"
-                        ),
+                        "description": ("Brief description of what this code does " "(for logging/display purposes)"),
                     },
                 },
                 "required": ["code"],
@@ -120,9 +117,7 @@ DOCKER_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": (
-                            "The file path to read (e.g., '/home/user/output.txt')"
-                        ),
+                        "description": ("The file path to read (e.g., '/home/user/output.txt')"),
                     },
                 },
                 "required": ["path"],
@@ -166,9 +161,7 @@ DOCKER_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": (
-                            "The directory path to list (default: '/home/user')"
-                        ),
+                        "description": ("The directory path to list (default: '/home/user')"),
                     },
                 },
                 "required": [],
@@ -179,10 +172,7 @@ DOCKER_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_shell",
-            "description": (
-                "Run a shell command in the sandbox. "
-                "Useful for system operations, git, curl, etc."
-            ),
+            "description": ("Run a shell command in the sandbox. " "Useful for system operations, git, curl, etc."),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -209,16 +199,11 @@ DOCKER_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": (
-                            "Path to the archive file to extract "
-                            "(e.g., '/home/user/archive.zip')"
-                        ),
+                        "description": ("Path to the archive file to extract " "(e.g., '/home/user/archive.zip')"),
                     },
                     "destination": {
                         "type": "string",
-                        "description": (
-                            "Directory to extract to (default: same directory as archive)"
-                        ),
+                        "description": ("Directory to extract to (default: same directory as archive)"),
                     },
                 },
                 "required": ["path"],
@@ -244,9 +229,7 @@ DOCKER_TOOLS = [
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": (
-                            "Maximum number of results to return (default: 5, max: 10)"
-                        ),
+                        "description": ("Maximum number of results to return (default: 5, max: 10)"),
                     },
                     "search_depth": {
                         "type": "string",
@@ -399,9 +382,7 @@ class DockerSandboxManager:
                     for cmd in git_config_cmds:
                         await loop.run_in_executor(
                             None,
-                            lambda c=cmd: container.exec_run(
-                                ["sh", "-c", c], user="root"
-                            ),
+                            lambda c=cmd: container.exec_run(["sh", "-c", c], user="root"),
                         )
 
                 session = ContainerSession(
@@ -455,16 +436,11 @@ class DockerSandboxManager:
 
                 session.base_packages = packages.copy()
                 session.installed_packages = packages.copy()
-                print(
-                    f"[docker] Tracked {len(packages)} pre-installed packages "
-                    f"for {session.user_id}"
-                )
+                print(f"[docker] Tracked {len(packages)} pre-installed packages " f"for {session.user_id}")
         except Exception as e:
             print(f"[docker] Failed to init package tracking: {e}")
 
-    async def execute_code(
-        self, user_id: str, code: str, description: str = ""
-    ) -> ExecutionResult:
+    async def execute_code(self, user_id: str, code: str, description: str = "") -> ExecutionResult:
         """Execute Python code in a user's container."""
         start_time = datetime.now(UTC)
 
@@ -527,9 +503,7 @@ class DockerSandboxManager:
                 execution_time=elapsed,
             )
 
-    async def _write_to_container(
-        self, container: Container, path: str, content: str | bytes
-    ):
+    async def _write_to_container(self, container: Container, path: str, content: str | bytes):
         """Write content to a file in the container using tar."""
         loop = asyncio.get_event_loop()
 
@@ -584,9 +558,7 @@ class DockerSandboxManager:
 
         return result
 
-    async def ensure_packages(
-        self, user_id: str, packages: list[str]
-    ) -> ExecutionResult:
+    async def ensure_packages(self, user_id: str, packages: list[str]) -> ExecutionResult:
         """Ensure multiple packages are installed (batch install).
 
         Only installs packages that aren't already tracked.
@@ -629,9 +601,7 @@ class DockerSandboxManager:
         """Read a file from a user's container."""
         container = await self.get_sandbox(user_id)
         if not container:
-            return ExecutionResult(
-                success=False, output="", error="Sandbox not available"
-            )
+            return ExecutionResult(success=False, output="", error="Sandbox not available")
 
         try:
             loop = asyncio.get_event_loop()
@@ -655,15 +625,11 @@ class DockerSandboxManager:
         except Exception as e:
             return ExecutionResult(success=False, output="", error=str(e))
 
-    async def write_file(
-        self, user_id: str, path: str, content: str | bytes
-    ) -> ExecutionResult:
+    async def write_file(self, user_id: str, path: str, content: str | bytes) -> ExecutionResult:
         """Write a file to a user's container."""
         container = await self.get_sandbox(user_id)
         if not container:
-            return ExecutionResult(
-                success=False, output="", error="Sandbox not available"
-            )
+            return ExecutionResult(success=False, output="", error="Sandbox not available")
 
         try:
             # Ensure directory exists
@@ -681,15 +647,11 @@ class DockerSandboxManager:
         except Exception as e:
             return ExecutionResult(success=False, output="", error=str(e))
 
-    async def list_files(
-        self, user_id: str, path: str = "/home/user"
-    ) -> ExecutionResult:
+    async def list_files(self, user_id: str, path: str = "/home/user") -> ExecutionResult:
         """List files in a directory in a user's container."""
         container = await self.get_sandbox(user_id)
         if not container:
-            return ExecutionResult(
-                success=False, output="", error="Sandbox not available"
-            )
+            return ExecutionResult(success=False, output="", error="Sandbox not available")
 
         try:
             loop = asyncio.get_event_loop()
@@ -717,9 +679,7 @@ class DockerSandboxManager:
         """Run a shell command in a user's container."""
         container = await self.get_sandbox(user_id)
         if not container:
-            return ExecutionResult(
-                success=False, output="", error="Sandbox not available"
-            )
+            return ExecutionResult(success=False, output="", error="Sandbox not available")
 
         try:
             loop = asyncio.get_event_loop()
@@ -751,9 +711,7 @@ class DockerSandboxManager:
         except Exception as e:
             return ExecutionResult(success=False, output="", error=str(e))
 
-    async def unzip_file(
-        self, user_id: str, path: str, destination: str | None = None
-    ) -> ExecutionResult:
+    async def unzip_file(self, user_id: str, path: str, destination: str | None = None) -> ExecutionResult:
         """Extract an archive in a user's container."""
         # Determine destination directory
         if not destination:
@@ -773,10 +731,7 @@ class DockerSandboxManager:
             cmd = f"gunzip -k '{path}'"
         else:
             # Try unzip then tar
-            cmd = (
-                f"unzip -o '{path}' -d '{destination}' 2>/dev/null || "
-                f"tar -xf '{path}' -C '{destination}'"
-            )
+            cmd = f"unzip -o '{path}' -d '{destination}' 2>/dev/null || " f"tar -xf '{path}' -C '{destination}'"
 
         # Create destination and extract
         result = await self.run_shell(user_id, f"mkdir -p '{destination}' && {cmd}")
@@ -788,9 +743,7 @@ class DockerSandboxManager:
 
         return result
 
-    async def web_search(
-        self, query: str, max_results: int = 5, search_depth: str = "basic"
-    ) -> ExecutionResult:
+    async def web_search(self, query: str, max_results: int = 5, search_depth: str = "basic") -> ExecutionResult:
         """Search the web using Tavily API."""
         if not TAVILY_API_KEY:
             return ExecutionResult(
@@ -845,19 +798,13 @@ class DockerSandboxManager:
                 error=f"Web search failed: {str(e)}",
             )
 
-    async def handle_tool_call(
-        self, user_id: str, tool_name: str, arguments: dict
-    ) -> ExecutionResult:
+    async def handle_tool_call(self, user_id: str, tool_name: str, arguments: dict) -> ExecutionResult:
         """Handle a tool call from the LLM."""
         print(f"[docker] handle_tool_call: {tool_name} with args: {arguments}")
 
         try:
             if tool_name == "execute_python":
-                code = (
-                    arguments.get("code")
-                    or arguments.get("python_code")
-                    or arguments.get("script")
-                )
+                code = arguments.get("code") or arguments.get("python_code") or arguments.get("script")
                 if not code:
                     return ExecutionResult(
                         success=False,
@@ -881,11 +828,7 @@ class DockerSandboxManager:
                 return await self.install_package(user_id, package)
 
             elif tool_name == "read_file":
-                path = (
-                    arguments.get("path")
-                    or arguments.get("file_path")
-                    or arguments.get("filename")
-                )
+                path = arguments.get("path") or arguments.get("file_path") or arguments.get("filename")
                 if not path:
                     return ExecutionResult(
                         success=False,
@@ -895,16 +838,8 @@ class DockerSandboxManager:
                 return await self.read_file(user_id, path)
 
             elif tool_name == "write_file":
-                path = (
-                    arguments.get("path")
-                    or arguments.get("file_path")
-                    or arguments.get("filename")
-                )
-                content = (
-                    arguments.get("content")
-                    or arguments.get("data")
-                    or arguments.get("text")
-                )
+                path = arguments.get("path") or arguments.get("file_path") or arguments.get("filename")
+                content = arguments.get("content") or arguments.get("data") or arguments.get("text")
                 if not path or content is None:
                     return ExecutionResult(
                         success=False,
@@ -930,11 +865,7 @@ class DockerSandboxManager:
                 return await self.run_shell(user_id, command)
 
             elif tool_name == "unzip_file":
-                path = (
-                    arguments.get("path")
-                    or arguments.get("file_path")
-                    or arguments.get("archive")
-                )
+                path = arguments.get("path") or arguments.get("file_path") or arguments.get("archive")
                 if not path:
                     return ExecutionResult(
                         success=False,
@@ -948,11 +879,7 @@ class DockerSandboxManager:
                 )
 
             elif tool_name == "web_search":
-                query = (
-                    arguments.get("query")
-                    or arguments.get("q")
-                    or arguments.get("search")
-                )
+                query = arguments.get("query") or arguments.get("q") or arguments.get("search")
                 if not query:
                     return ExecutionResult(
                         success=False,
@@ -1018,9 +945,7 @@ class DockerSandboxManager:
             "active_sessions": len(self.sessions),
             "sessions": {
                 user_id: {
-                    "container_id": session.container.short_id
-                    if hasattr(session.container, "short_id")
-                    else "unknown",
+                    "container_id": session.container.short_id if hasattr(session.container, "short_id") else "unknown",
                     "created_at": session.created_at.isoformat(),
                     "last_used": session.last_used.isoformat(),
                     "execution_count": session.execution_count,

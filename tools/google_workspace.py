@@ -92,9 +92,7 @@ async def _google_request(
     """
     token = await get_valid_token(user_id)
     if not token:
-        raise ValueError(
-            "Google account not connected. Use google_connect to connect first."
-        )
+        raise ValueError("Google account not connected. Use google_connect to connect first.")
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -187,19 +185,11 @@ async def google_status(args: dict[str, Any], ctx: ToolContext) -> str:
 
     try:
         with SessionLocal() as session:
-            token_record = (
-                session.query(GoogleOAuthToken)
-                .filter(GoogleOAuthToken.user_id == ctx.user_id)
-                .first()
-            )
+            token_record = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == ctx.user_id).first()
             if token_record:
                 debug_info["token_found"] = True
                 debug_info["token_user_id"] = token_record.user_id
-                debug_info["expires_at"] = (
-                    token_record.expires_at.isoformat()
-                    if token_record.expires_at
-                    else None
-                )
+                debug_info["expires_at"] = token_record.expires_at.isoformat() if token_record.expires_at else None
                 debug_info["has_refresh_token"] = bool(token_record.refresh_token)
             else:
                 debug_info["token_found"] = False
@@ -209,9 +199,7 @@ async def google_status(args: dict[str, Any], ctx: ToolContext) -> str:
                 if total_tokens > 0:
                     # Show what user_ids exist (redacted)
                     all_users = session.query(GoogleOAuthToken.user_id).all()
-                    debug_info["existing_user_ids"] = [
-                        u[0][:20] + "..." if len(u[0]) > 20 else u[0] for u in all_users
-                    ]
+                    debug_info["existing_user_ids"] = [u[0][:20] + "..." if len(u[0]) > 20 else u[0] for u in all_users]
     except Exception as e:
         debug_info["db_error"] = str(e)
 
@@ -378,9 +366,7 @@ async def sheets_list(args: dict[str, Any], ctx: ToolContext) -> str:
             }
             for f in files
         ]
-        return json.dumps(
-            {"count": len(spreadsheets), "spreadsheets": spreadsheets}, indent=2
-        )
+        return json.dumps({"count": len(spreadsheets), "spreadsheets": spreadsheets}, indent=2)
     except Exception as e:
         return f"Error: {e}"
 
@@ -487,9 +473,7 @@ async def drive_upload(args: dict[str, Any], ctx: ToolContext) -> str:
             if response.status_code >= 400:
                 return f"Error uploading content: {response.text}"
 
-            return json.dumps(
-                {"file_id": file_id, "name": name, "uploaded": True}, indent=2
-            )
+            return json.dumps({"file_id": file_id, "name": name, "uploaded": True}, indent=2)
     except Exception as e:
         return f"Error: {e}"
 
@@ -580,9 +564,7 @@ async def drive_create_folder(args: dict[str, Any], ctx: ToolContext) -> str:
             f"{DRIVE_API_URL}/files",
             json_data=metadata,
         )
-        return json.dumps(
-            {"folder_id": data.get("id"), "name": data.get("name")}, indent=2
-        )
+        return json.dumps({"folder_id": data.get("id"), "name": data.get("name")}, indent=2)
     except Exception as e:
         return f"Error: {e}"
 
@@ -605,9 +587,7 @@ async def drive_share(args: dict[str, Any], ctx: ToolContext) -> str:
             f"{DRIVE_API_URL}/files/{file_id}/permissions",
             json_data={"type": "user", "role": role, "emailAddress": email},
         )
-        return json.dumps(
-            {"shared": True, "permission_id": data.get("id"), "role": role}, indent=2
-        )
+        return json.dumps({"shared": True, "permission_id": data.get("id"), "role": role}, indent=2)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1090,9 +1070,7 @@ TOOLS = [
         description="Download file content from Google Drive.",
         parameters={
             "type": "object",
-            "properties": {
-                "file_id": {"type": "string", "description": "File ID to download"}
-            },
+            "properties": {"file_id": {"type": "string", "description": "File ID to download"}},
             "required": ["file_id"],
         },
         handler=drive_download,

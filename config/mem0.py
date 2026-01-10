@@ -117,9 +117,7 @@ def _get_graph_store_config() -> dict | None:
 
     if GRAPH_STORE_PROVIDER == "neo4j":
         if not NEO4J_URL or not NEO4J_PASSWORD:
-            print(
-                "[mem0] Graph store: Neo4j configured but NEO4J_URL or NEO4J_PASSWORD not set"
-            )
+            print("[mem0] Graph store: Neo4j configured but NEO4J_URL or NEO4J_PASSWORD not set")
             return None
 
         print(f"[mem0] Graph store: Neo4j at {NEO4J_URL}")
@@ -161,9 +159,7 @@ def _get_llm_config() -> dict | None:
     # Get API key: explicit MEM0_API_KEY > provider's default key
     api_key = MEM0_API_KEY or os.getenv(provider_config["api_key_env"])
     if not api_key:
-        print(
-            f"[mem0] No API key found for MEM0_PROVIDER={MEM0_PROVIDER} - mem0 LLM disabled"
-        )
+        print(f"[mem0] No API key found for MEM0_PROVIDER={MEM0_PROVIDER} - mem0 LLM disabled")
         return None
 
     # Get base URL: explicit MEM0_BASE_URL > provider's default URL

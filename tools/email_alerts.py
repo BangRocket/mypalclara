@@ -10,7 +10,6 @@ import json
 import os
 from typing import Any
 
-from ._base import ToolContext, ToolDef
 from db.connection import SessionLocal
 from db.models import EmailAccount, EmailAlert, EmailRule
 from email_service.credentials import encrypt_credential, is_encryption_configured
@@ -23,6 +22,8 @@ from email_service.presets import (
 from email_service.providers.gmail import GmailProvider
 from email_service.providers.imap import IMAPProvider
 from tools.google_oauth import is_user_connected
+
+from ._base import ToolContext, ToolDef
 
 # API service base URL for OAuth redirects
 CLARA_API_URL = os.getenv("CLARA_API_URL", "")
@@ -117,8 +118,9 @@ async def email_connect_gmail(args: dict[str, Any], ctx: ToolContext) -> str:
         )
 
     # Get email address from profile
-    from tools.google_oauth import get_valid_token
     import httpx
+
+    from tools.google_oauth import get_valid_token
 
     token = await get_valid_token(user_id)
     async with httpx.AsyncClient() as client:
@@ -165,10 +167,7 @@ async def email_connect_imap(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Both email_address and password are required."
 
     if not is_encryption_configured():
-        return (
-            "Email encryption is not configured. "
-            "Please set EMAIL_ENCRYPTION_KEY environment variable."
-        )
+        return "Email encryption is not configured. " "Please set EMAIL_ENCRYPTION_KEY environment variable."
 
     # Auto-detect IMAP server if not provided
     if not imap_server:
@@ -250,25 +249,15 @@ async def email_list_accounts(args: dict[str, Any], ctx: ToolContext) -> str:
     user_id = ctx.user_id
 
     with SessionLocal() as session:
-        accounts = (
-            session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
-        )
+        accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
 
         if not accounts:
             return "No email accounts connected. Use `email_connect_gmail` or `email_connect_imap` to add one."
 
         lines = ["**Connected Email Accounts:**\n"]
         for acc in accounts:
-            status_emoji = (
-                "✅"
-                if acc.status == "active"
-                else "⚠️"
-                if acc.status == "error"
-                else "🔴"
-            )
-            channel = (
-                f"<#{acc.alert_channel_id}>" if acc.alert_channel_id else "Not set"
-            )
+            status_emoji = "✅" if acc.status == "active" else "⚠️" if acc.status == "error" else "🔴"
+            channel = f"<#{acc.alert_channel_id}>" if acc.alert_channel_id else "Not set"
             lines.append(
                 f"{status_emoji} **{acc.email_address}** ({acc.provider_type})\n"
                 f"   Status: {acc.status} | Alerts: {channel} | Interval: {acc.poll_interval_minutes}min"
@@ -349,11 +338,7 @@ async def email_set_alert_channel(args: dict[str, Any], ctx: ToolContext) -> str
             return f"Alert channel set to <#{channel_id}> for {email_address}"
         else:
             # Update all accounts
-            accounts = (
-                session.query(EmailAccount)
-                .filter(EmailAccount.user_id == user_id)
-                .all()
-            )
+            accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
             if not accounts:
                 return "No email accounts found."
 
@@ -387,11 +372,7 @@ async def email_set_quiet_hours(args: dict[str, Any], ctx: ToolContext) -> str:
                 .first()
             ]
         else:
-            accounts = (
-                session.query(EmailAccount)
-                .filter(EmailAccount.user_id == user_id)
-                .all()
-            )
+            accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
 
         if not accounts or not accounts[0]:
             return "No email accounts found."
@@ -422,11 +403,7 @@ async def email_toggle_ping(args: dict[str, Any], ctx: ToolContext) -> str:
                 .first()
             ]
         else:
-            accounts = (
-                session.query(EmailAccount)
-                .filter(EmailAccount.user_id == user_id)
-                .all()
-            )
+            accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
 
         if not accounts or not accounts[0]:
             return "No email accounts found."
@@ -454,9 +431,7 @@ async def email_apply_preset(args: dict[str, Any], ctx: ToolContext) -> str:
         presets = list_presets()
         lines = ["Available presets:\n"]
         for p in presets:
-            lines.append(
-                f"- **{p['id']}**: {p['description']} (importance: {p['importance']})"
-            )
+            lines.append(f"- **{p['id']}**: {p['description']} (importance: {p['importance']})")
         return "\n".join(lines)
 
     info = get_preset_info(preset_name)
@@ -535,12 +510,7 @@ async def email_list_rules(args: dict[str, Any], ctx: ToolContext) -> str:
     user_id = ctx.user_id
 
     with SessionLocal() as session:
-        rules = (
-            session.query(EmailRule)
-            .filter(EmailRule.user_id == user_id)
-            .order_by(EmailRule.priority.desc())
-            .all()
-        )
+        rules = session.query(EmailRule).filter(EmailRule.user_id == user_id).order_by(EmailRule.priority.desc()).all()
 
         if not rules:
             return "No rules configured. Use `email_apply_preset` or `email_add_rule` to add rules."
@@ -600,9 +570,7 @@ async def email_status(args: dict[str, Any], ctx: ToolContext) -> str:
     user_id = ctx.user_id
 
     with SessionLocal() as session:
-        accounts = (
-            session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
-        )
+        accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
         rules = session.query(EmailRule).filter(EmailRule.user_id == user_id).all()
 
         if not accounts:
@@ -618,26 +586,16 @@ async def email_status(args: dict[str, Any], ctx: ToolContext) -> str:
 
         for acc in accounts:
             status_emoji = "✅" if acc.status == "active" else "⚠️"
-            channel = (
-                f"<#{acc.alert_channel_id}>" if acc.alert_channel_id else "Not set"
-            )
-            last_check = (
-                acc.last_checked_at.strftime("%Y-%m-%d %H:%M UTC")
-                if acc.last_checked_at
-                else "Never"
-            )
+            channel = f"<#{acc.alert_channel_id}>" if acc.alert_channel_id else "Not set"
+            last_check = acc.last_checked_at.strftime("%Y-%m-%d %H:%M UTC") if acc.last_checked_at else "Never"
 
-            lines.append(
-                f"{status_emoji} **{acc.email_address}** ({acc.provider_type})"
-            )
+            lines.append(f"{status_emoji} **{acc.email_address}** ({acc.provider_type})")
             lines.append(f"   Alert channel: {channel}")
             lines.append(f"   Last checked: {last_check}")
             lines.append(f"   Poll interval: {acc.poll_interval_minutes} minutes")
 
             if acc.quiet_hours_start is not None:
-                lines.append(
-                    f"   Quiet hours: {acc.quiet_hours_start}:00 - {acc.quiet_hours_end}:00"
-                )
+                lines.append(f"   Quiet hours: {acc.quiet_hours_start}:00 - {acc.quiet_hours_end}:00")
 
             if acc.last_error:
                 lines.append(f"   ⚠️ Error: {acc.last_error[:80]}")
@@ -681,8 +639,7 @@ async def email_recent_alerts(args: dict[str, Any], ctx: ToolContext) -> str:
                 "low": "⚪",
             }.get(alert.importance, "⚪")
             lines.append(
-                f"{importance_emoji} [{time_str}] {alert.email_subject[:50]}\n"
-                f"   From: {alert.email_from[:40]}"
+                f"{importance_emoji} [{time_str}] {alert.email_subject[:50]}\n" f"   From: {alert.email_from[:40]}"
             )
 
         return "\n".join(lines)
@@ -737,9 +694,7 @@ async def email_list_folders(args: dict[str, Any], ctx: ToolContext) -> str:
         for folder in folders:
             lines.append(f"- `{folder}`")
 
-        lines.append(
-            f'\nUse `email_list_inbox folder="<name>"` to list emails in a specific folder.'
-        )
+        lines.append('\nUse `email_list_inbox folder="<name>"` to list emails in a specific folder.')
         return "\n".join(lines)
 
     except Exception as e:
@@ -788,19 +743,13 @@ async def email_list_inbox(args: dict[str, Any], ctx: ToolContext) -> str:
             return f"No {'unread ' if unread_only else ''}emails in {folder_desc}."
 
         folder_label = folder if folder != "INBOX" else "Inbox"
-        lines = [
-            f"**{folder_label} ({account.email_address})** - {len(messages)} emails\n"
-        ]
+        lines = [f"**{folder_label} ({account.email_address})** - {len(messages)} emails\n"]
         for msg in messages:
             read_icon = "📭" if msg.is_read else "📬"
             attach_icon = "📎" if msg.has_attachments else ""
             date_str = msg.received_at.strftime("%m/%d %H:%M")
-            from_short = (
-                msg.from_addr[:30] + "..." if len(msg.from_addr) > 30 else msg.from_addr
-            )
-            subj_short = (
-                msg.subject[:40] + "..." if len(msg.subject) > 40 else msg.subject
-            )
+            from_short = msg.from_addr[:30] + "..." if len(msg.from_addr) > 30 else msg.from_addr
+            subj_short = msg.subject[:40] + "..." if len(msg.subject) > 40 else msg.subject
 
             lines.append(f"{read_icon}{attach_icon} [{date_str}] **{from_short}**")
             lines.append(f"   {subj_short}")
@@ -817,7 +766,9 @@ async def email_list_inbox(args: dict[str, Any], ctx: ToolContext) -> str:
 async def email_search(args: dict[str, Any], ctx: ToolContext) -> str:
     """Search emails with filters."""
     from datetime import datetime
+
     from config.logging import get_logger
+
     logger = get_logger("email.search")
 
     # Log raw args to debug
@@ -909,12 +860,8 @@ async def email_search(args: dict[str, Any], ctx: ToolContext) -> str:
             read_icon = "📭" if msg.is_read else "📬"
             attach_icon = "📎" if msg.has_attachments else ""
             date_str = msg.received_at.strftime("%m/%d %H:%M")
-            from_short = (
-                msg.from_addr[:30] + "..." if len(msg.from_addr) > 30 else msg.from_addr
-            )
-            subj_short = (
-                msg.subject[:40] + "..." if len(msg.subject) > 40 else msg.subject
-            )
+            from_short = msg.from_addr[:30] + "..." if len(msg.from_addr) > 30 else msg.from_addr
+            subj_short = msg.subject[:40] + "..." if len(msg.subject) > 40 else msg.subject
 
             lines.append(f"{read_icon}{attach_icon} [{date_str}] **{from_short}**")
             lines.append(f"   {subj_short}")
@@ -958,9 +905,7 @@ async def email_read(args: dict[str, Any], ctx: ToolContext) -> str:
 
     try:
         async with provider:
-            email_msg = await provider.get_email_by_id(
-                email_id, include_body=True, folder=folder
-            )
+            email_msg = await provider.get_email_by_id(email_id, include_body=True, folder=folder)
 
         if not email_msg:
             folder_hint = f" in folder '{folder}'" if folder != "INBOX" else ""

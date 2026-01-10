@@ -12,8 +12,6 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
-
-from config import API_KEY, MAX_CONTAINERS, validate_config
 from models import (
     CreateSandboxRequest,
     ExecuteCodeRequest,
@@ -28,6 +26,8 @@ from models import (
     WriteFileRequest,
 )
 from sandbox_manager import ExecutionResult, get_manager
+
+from config import API_KEY, MAX_CONTAINERS, validate_config
 
 __version__ = "1.0.0"
 
@@ -309,14 +309,10 @@ async def run_shell(user_id: str, request: ShellCommandRequest) -> ExecutionResp
     tags=["Execution"],
     dependencies=[Depends(verify_api_key)],
 )
-async def install_package(
-    user_id: str, request: InstallPackageRequest
-) -> ExecutionResponse:
+async def install_package(user_id: str, request: InstallPackageRequest) -> ExecutionResponse:
     """Install a pip package in the sandbox."""
     manager = get_manager()
-    result = await manager.install_package(
-        user_id, request.package, timeout=request.timeout
-    )
+    result = await manager.install_package(user_id, request.package, timeout=request.timeout)
     return _result_to_response(result)
 
 

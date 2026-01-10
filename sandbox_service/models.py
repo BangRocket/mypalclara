@@ -32,9 +32,7 @@ class ShellCommandRequest(BaseModel):
 class WriteFileRequest(BaseModel):
     """Request to write a file."""
 
-    path: str = Field(
-        ..., description="File path in sandbox (e.g., /workspace/script.py)"
-    )
+    path: str = Field(..., description="File path in sandbox (e.g., /workspace/script.py)")
     content: str = Field(..., description="File content (text or base64 encoded)")
     encoding: str = Field("utf-8", description="Content encoding: 'utf-8' or 'base64'")
 

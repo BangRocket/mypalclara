@@ -31,9 +31,9 @@ GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",  # Read access to all Drive files
-    "https://www.googleapis.com/auth/drive.file",      # Write access to app-created files
+    "https://www.googleapis.com/auth/drive.file",  # Write access to app-created files
     "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/calendar",        # Full calendar access
+    "https://www.googleapis.com/auth/calendar",  # Full calendar access
     "https://www.googleapis.com/auth/gmail.readonly",  # Read-only email access for monitoring
 ]
 
@@ -126,18 +126,12 @@ async def exchange_code_for_tokens(code: str, user_id: str) -> dict:
     # Store in database
     with SessionLocal() as session:
         # Check for existing token
-        existing = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        existing = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         if existing:
             # Update existing
             existing.access_token = token_data["access_token"]
-            existing.refresh_token = token_data.get(
-                "refresh_token", existing.refresh_token
-            )
+            existing.refresh_token = token_data.get("refresh_token", existing.refresh_token)
             existing.token_type = token_data.get("token_type", "Bearer")
             existing.expires_at = expires_at
             existing.scopes = json.dumps(GOOGLE_SCOPES)
@@ -168,11 +162,7 @@ async def get_valid_token(user_id: str) -> str | None:
         Valid access token or None if not connected
     """
     with SessionLocal() as session:
-        token_record = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token_record = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         if not token_record:
             return None
@@ -181,17 +171,13 @@ async def get_valid_token(user_id: str) -> str | None:
         now = datetime.now(UTC).replace(tzinfo=None)
         from datetime import timedelta
 
-        if token_record.expires_at and token_record.expires_at < now + timedelta(
-            minutes=5
-        ):
+        if token_record.expires_at and token_record.expires_at < now + timedelta(minutes=5):
             # Need to refresh
             if not token_record.refresh_token:
                 # No refresh token, user needs to re-auth
                 return None
 
-            new_access_token = await refresh_access_token(
-                user_id, token_record.refresh_token
-            )
+            new_access_token = await refresh_access_token(user_id, token_record.refresh_token)
             return new_access_token
 
         return token_record.access_token
@@ -232,17 +218,11 @@ async def refresh_access_token(user_id: str, refresh_token: str) -> str | None:
     expires_in = token_data.get("expires_in", 3600)
     from datetime import timedelta
 
-    expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-        seconds=expires_in
-    )
+    expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=expires_in)
 
     # Update in database
     with SessionLocal() as session:
-        token_record = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token_record = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         if token_record:
             token_record.access_token = token_data["access_token"]
@@ -265,11 +245,7 @@ async def revoke_token(user_id: str) -> bool:
         True if revoked successfully
     """
     with SessionLocal() as session:
-        token_record = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token_record = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         if not token_record:
             return True  # Already disconnected
@@ -302,9 +278,5 @@ def is_user_connected(user_id: str) -> bool:
         True if user has stored tokens
     """
     with SessionLocal() as session:
-        token_record = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token_record = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
         return token_record is not None
