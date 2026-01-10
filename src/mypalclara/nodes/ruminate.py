@@ -16,7 +16,7 @@ import re
 from anthropic import AsyncAnthropic
 
 from mypalclara.config.settings import settings
-from mypalclara.cortex import cortex_manager
+from mypalclara import memory
 from mypalclara.models.outputs import CognitiveOutput
 from mypalclara.models.state import ClaraState, MemoryContext, RuminationResult
 from mypalclara.prompts.clara import (
@@ -71,7 +71,8 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         memory_context = state.get("memory_context")
         if not memory_context:
             # Fallback if somehow missing
-            memory_context = await cortex_manager.get_full_context(
+            logger.info("[ruminate] Memory context missing, fetching fresh...")
+            memory_context = await memory.get_full_context(
                 user_id=event.user_id,
                 query=event.content or "",
                 project_id=event.metadata.get("project_id"),
@@ -84,11 +85,33 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         logger.info(f"[ruminate] Continuing after faculty (iteration {iterations})")
     else:
         # Fresh rumination - get full memory context
-        memory_context = await cortex_manager.get_full_context(
+        logger.info(f"[ruminate] === STARTING RUMINATION for user={event.user_id} ===")
+        logger.info(f"[ruminate] Input: {(event.content or '')[:100]}...")
+        memory_context = await memory.get_full_context(
             user_id=event.user_id,
             query=event.content or "",
             project_id=event.metadata.get("project_id"),
         )
+
+        # Log what's being injected into the prompt
+        logger.info("[ruminate] Memory context injected into prompt:")
+        logger.info(f"[ruminate]   - Identity facts: {len(memory_context.identity_facts)}")
+        logger.info(f"[ruminate]   - Working memories: {len(memory_context.working_memories)}")
+        logger.info(f"[ruminate]   - Semantic memories: {len(memory_context.retrieved_memories)}")
+        logger.info(
+            f"[ruminate]   - Session data: {list(memory_context.session.keys()) if memory_context.session else []}"
+        )
+
+        if memory_context.identity_facts:
+            logger.debug("[ruminate]   Identity facts preview:")
+            for fact in memory_context.identity_facts[:3]:
+                logger.debug(f"[ruminate]     • {fact[:80]}...")
+
+        if memory_context.retrieved_memories:
+            logger.debug("[ruminate]   Top semantic memories:")
+            for mem in memory_context.retrieved_memories[:3]:
+                logger.debug(f"[ruminate]     • sim={mem.get('similarity', 0):.3f} | {mem.get('content', '')[:60]}...")
+
         prompt = build_rumination_prompt(
             event=event,
             memory=memory_context,
@@ -110,15 +133,26 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
     result = parse_rumination_response(response_text)
 
     logger.info(f"[ruminate] Decision: {result.decision}")
+    if result.reasoning:
+        logger.debug(f"[ruminate] Reasoning: {result.reasoning[:150]}...")
+
+    # Log cognitive outputs (things to remember/observe)
+    if result.cognitive_outputs:
+        logger.info(f"[ruminate] Cognitive outputs to store: {len(result.cognitive_outputs)}")
+        for output in result.cognitive_outputs:
+            logger.info(f"[ruminate]   -> {output.type}: {output.content[:80]}... (importance={output.importance})")
 
     # Determine next step
     if result.decision == "speak":
         next_node = "speak"
+        if result.response_draft:
+            logger.debug(f"[ruminate] Response preview: {result.response_draft[:100]}...")
     elif result.decision == "command":
         next_node = "command"
         logger.info(f"[ruminate] Faculty: {result.faculty}, Intent: {result.intent}")
     else:
         next_node = "finalize"
+        logger.info(f"[ruminate] Wait reason: {result.wait_reason}")
 
     return {
         **state,

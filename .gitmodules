@@ -1,0 +1,6 @@
+[submodule "lib/cortex"]
+	path = lib/cortex
+	url = https://github.com/BangRocket/cortex
+[submodule "cortex"]
+	path = cortex
+	url = https://github.com/BangRocket/cortex.git

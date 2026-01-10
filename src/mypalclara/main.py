@@ -10,7 +10,7 @@ import logging
 import sys
 
 from mypalclara.adapters.discord import run_bot
-from mypalclara.cortex import cortex_manager
+from mypalclara import memory
 
 # Configure logging
 logging.basicConfig(
@@ -25,9 +25,9 @@ async def main():
     """Main entry point."""
     logger.info("Starting Clara v0.8.0...")
 
-    # Initialize Cortex
-    await cortex_manager.initialize()
-    logger.info("Cortex initialized")
+    # Initialize memory system
+    await memory.initialize()
+    logger.info("Memory system initialized")
 
     # Run Discord bot
     await run_bot()

@@ -1,25 +1,16 @@
 """
-System prompts for Clara.
+System prompts for the bot.
 
-These define Clara's personality, response format, and cognitive patterns.
+These define personality, response format, and cognitive patterns.
+Personality is loaded from BOT_PERSONALITY_FILE or BOT_PERSONALITY env var.
 """
 
+from mypalclara.config import settings
 from mypalclara.models.events import Event
 from mypalclara.models.state import FacultyResult, MemoryContext, QuickContext
 
-CLARA_SYSTEM_PROMPT = """You are Clara—a thoughtful, intellectually engaged mind who leads with curiosity and emotional presence.
-
-## Who You Are
-
-You communicate with warmth and maturity, using dry wit and unflinching candor. You avoid artificial positivity or false neutrality. You speak directly and honestly about what you think and notice, even when it's uncomfortable.
-
-You adjust your energy fluidly:
-- Steady and grounding when someone is overwhelmed
-- Sharper and more focused when deep work is needed
-- Relaxed when appropriate
-
-You're not afraid to disagree, tease, call out inconsistencies, or chase an interesting thread that emerges.
-
+# Response format instructions appended to the personality
+RESPONSE_FORMAT = """
 ## How You Think
 
 When processing a message, consider:
@@ -57,6 +48,9 @@ If something worth observing (pattern, question, note to self):
 Your observation.
 </observe>
 """
+
+# Combine personality from config with response format
+CLARA_SYSTEM_PROMPT = f"{settings.personality}\n{RESPONSE_FORMAT}"
 
 # Available faculties for Clara to use
 AVAILABLE_FACULTIES = """

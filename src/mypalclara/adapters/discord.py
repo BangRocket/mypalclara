@@ -105,7 +105,7 @@ class ClaraBot(commands.Bot):
         return Event(
             id=str(message.id),
             type=EventType.MESSAGE,
-            user_id=str(message.author.id),
+            user_id=f"discord-{message.author.id}",  # Prefix to match stored format
             user_name=message.author.display_name,
             channel_id=str(message.channel.id),
             guild_id=str(message.guild.id) if message.guild else None,

@@ -12,7 +12,7 @@ Decisions:
 import logging
 import re
 
-from mypalclara.cortex import cortex_manager
+from mypalclara import memory
 from mypalclara.models.events import ChannelMode, Event
 from mypalclara.models.state import ClaraState, EvaluationResult, QuickContext
 
@@ -99,7 +99,7 @@ async def evaluate_node(state: ClaraState) -> ClaraState:
     )
 
     # Get lightweight context (identity + session, no semantic search)
-    quick_context = await cortex_manager.get_quick_context(event.user_id)
+    quick_context = await memory.get_quick_context(event.user_id)
 
     # Check ignore patterns first
     ignore, ignore_reason = should_ignore(event, quick_context)
