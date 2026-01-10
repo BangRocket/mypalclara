@@ -337,6 +337,9 @@ class CortexManager:
                 logger.warning("[cortex] Could not generate query embedding")
                 return []
 
+            # Convert embedding list to string format for pgvector
+            embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+
             # Search using cosine similarity
             async with self.pg_pool.acquire() as conn:
                 rows = await conn.fetch(
@@ -348,7 +351,7 @@ class CortexManager:
                     ORDER BY embedding <=> $1::vector
                     LIMIT $3
                     """,
-                    query_embedding,
+                    embedding_str,
                     user_id,
                     limit,
                 )
@@ -391,6 +394,9 @@ class CortexManager:
                 logger.warning("[cortex] Could not generate embedding, skipping long-term storage")
                 return
 
+            # Convert embedding list to string format for pgvector
+            embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+
             # Store in database
             async with self.pg_pool.acquire() as conn:
                 await conn.execute(
@@ -400,7 +406,7 @@ class CortexManager:
                     """,
                     user_id,
                     content,
-                    embedding,
+                    embedding_str,
                     category,
                     json.dumps(metadata),
                 )
