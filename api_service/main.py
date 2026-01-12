@@ -123,9 +123,7 @@ def health():
     return {
         "status": "healthy",
         "service": "clara-api",
-        "google_oauth_configured": bool(
-            GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI
-        ),
+        "google_oauth_configured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI),
         "database_connected": engine is not None,
     }
 
@@ -134,9 +132,7 @@ def health():
 def ready():
     """Readiness check."""
     if not engine:
-        return JSONResponse(
-            {"ready": False, "reason": "database not configured"}, status_code=503
-        )
+        return JSONResponse({"ready": False, "reason": "database not configured"}, status_code=503)
     return {"ready": True}
 
 
@@ -208,9 +204,7 @@ async def google_callback(
     error: str | None = None,
 ):
     """Handle Google OAuth callback."""
-    logger.info(
-        f"OAuth callback received: code={bool(code)}, state={bool(state)}, error={error}"
-    )
+    logger.info(f"OAuth callback received: code={bool(code)}, state={bool(state)}, error={error}")
 
     if not google_is_configured():
         return _error_html("Google OAuth not configured on this server.")
@@ -251,27 +245,18 @@ async def google_callback(
         if not SessionLocal:
             logger.error("DATABASE_URL not configured - cannot store OAuth tokens!")
             return _error_html(
-                "Server configuration error: Database not configured. "
-                "Please contact the administrator."
+                "Server configuration error: Database not configured. " "Please contact the administrator."
             )
 
         expires_in = token_data.get("expires_in", 3600)
-        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-            seconds=expires_in
-        )
+        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=expires_in)
 
         with SessionLocal() as session:
-            existing = (
-                session.query(GoogleOAuthToken)
-                .filter(GoogleOAuthToken.user_id == user_id)
-                .first()
-            )
+            existing = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
             if existing:
                 existing.access_token = token_data["access_token"]
-                existing.refresh_token = token_data.get(
-                    "refresh_token", existing.refresh_token
-                )
+                existing.refresh_token = token_data.get("refresh_token", existing.refresh_token)
                 existing.token_type = token_data.get("token_type", "Bearer")
                 existing.expires_at = expires_at
                 existing.scopes = json.dumps(GOOGLE_SCOPES)
@@ -313,18 +298,12 @@ def google_status(user_id: str):
         }
 
     with SessionLocal() as session:
-        token = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         return {
             "configured": True,
             "connected": token is not None,
-            "expires_at": token.expires_at.isoformat()
-            if token and token.expires_at
-            else None,
+            "expires_at": token.expires_at.isoformat() if token and token.expires_at else None,
         }
 
 
@@ -335,11 +314,7 @@ def google_disconnect(user_id: str):
         return JSONResponse({"error": "database not configured"}, status_code=503)
 
     with SessionLocal() as session:
-        token = (
-            session.query(GoogleOAuthToken)
-            .filter(GoogleOAuthToken.user_id == user_id)
-            .first()
-        )
+        token = session.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user_id).first()
 
         if token:
             session.delete(token)

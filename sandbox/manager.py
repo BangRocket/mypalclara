@@ -1,199 +1,203 @@
-"""Unified sandbox manager for Clara.
+"""
+Sandbox manager providing unified interface to remote sandbox service.
 
-Provides a single interface that can use either local Docker or remote sandbox.
-Automatically selects the appropriate backend based on configuration.
+This module provides a singleton SandboxManager that wraps the RemoteSandboxClient
+and provides the interface expected by the code and files faculties.
 """
 
-from __future__ import annotations
+import logging
+from typing import Optional
 
-import os
-from typing import Any
+from sandbox.remote_client import ExecutionResult, RemoteSandboxClient
 
-from .docker import DOCKER_AVAILABLE, DockerSandboxManager, ExecutionResult
-from .remote_client import RemoteSandboxClient, get_remote_client
+logger = logging.getLogger(__name__)
 
-# Mode configuration
-# - "local": Only use local Docker
-# - "remote": Only use remote sandbox API
-# - "auto": Use remote if configured, fall back to local
-SANDBOX_MODE = os.getenv("SANDBOX_MODE", "auto")
+# Singleton instance
+_manager: Optional["SandboxManager"] = None
 
 
-class UnifiedSandboxManager:
-    """Unified sandbox manager that switches between local and remote.
+def get_sandbox_manager() -> "SandboxManager":
+    """Get the singleton sandbox manager instance."""
+    global _manager
+    if _manager is None:
+        _manager = SandboxManager()
+    return _manager
 
-    Mode selection:
-    - "local": Only use local Docker
-    - "remote": Only use remote sandbox API
-    - "auto" (default): Use remote if configured, fall back to local
 
-    Usage:
-        manager = get_sandbox_manager()
-        result = await manager.execute_code("user123", "print('hello')")
+class SandboxManager:
+    """
+    Unified sandbox manager for remote code execution.
 
-    Environment variables:
-        SANDBOX_MODE: "local", "remote", or "auto"
-        SANDBOX_API_URL: Remote sandbox URL (required for remote mode)
-        SANDBOX_API_KEY: Remote sandbox API key (required for remote mode)
+    Provides methods for code execution, shell commands, package management,
+    and file operations through the remote sandbox service.
     """
 
-    def __init__(self, mode: str | None = None):
-        self.mode = mode or SANDBOX_MODE
-        self._local: DockerSandboxManager | None = None
-        self._remote: RemoteSandboxClient | None = None
-        self._active_backend: str | None = None
-
-    @property
-    def local(self) -> DockerSandboxManager:
-        """Get local Docker manager (lazy initialization)."""
-        if self._local is None:
-            self._local = DockerSandboxManager()
-        return self._local
-
-    @property
-    def remote(self) -> RemoteSandboxClient:
-        """Get remote client (lazy initialization)."""
-        if self._remote is None:
-            self._remote = get_remote_client()
-        return self._remote
-
-    def _select_backend(self) -> str:
-        """Select which backend to use based on mode and availability."""
-        if self.mode == "local":
-            if DOCKER_AVAILABLE and self.local.is_available():
-                return "local"
-            return "none"
-
-        elif self.mode == "remote":
-            if self.remote.is_available():
-                return "remote"
-            return "none"
-
-        else:  # auto
-            # Prefer remote if configured
-            if self.remote.is_available():
-                return "remote"
-            # Fall back to local Docker
-            if DOCKER_AVAILABLE and self.local.is_available():
-                return "local"
-            return "none"
+    def __init__(self):
+        self._client = RemoteSandboxClient()
+        logger.info(
+            f"[sandbox] Manager initialized (remote: {self._client.api_url or 'not configured'})"
+        )
 
     def is_available(self) -> bool:
-        """Check if any sandbox backend is available."""
-        return self._select_backend() != "none"
+        """Check if sandbox is available."""
+        return self._client.is_configured()
 
-    async def health_check(self) -> bool:
-        """Check if the active backend is healthy."""
-        backend = self._select_backend()
-        if backend == "remote":
-            return await self.remote.health_check()
-        elif backend == "local":
-            return self.local.is_available()
-        return False
+    async def health_check(self) -> dict:
+        """Check sandbox service health."""
+        return await self._client.health_check()
 
-    def _get_manager(self) -> DockerSandboxManager | RemoteSandboxClient | None:
-        """Get the active manager based on mode."""
-        backend = self._select_backend()
-        self._active_backend = backend
-        if backend == "remote":
-            return self.remote
-        elif backend == "local":
-            return self.local
-        return None
+    async def get_status(self, user_id: str) -> dict:
+        """Get status of a user's sandbox."""
+        return await self._client.get_status(user_id)
 
-    # =========================================================================
-    # Forward all methods to the active backend
-    # =========================================================================
+    async def create_sandbox(self, user_id: str) -> dict:
+        """Create or get a sandbox for the user."""
+        return await self._client.create_sandbox(user_id)
+
+    async def stop_sandbox(self, user_id: str) -> bool:
+        """Stop a user's sandbox."""
+        return await self._client.stop_sandbox(user_id)
+
+    async def restart_sandbox(self, user_id: str) -> dict:
+        """Restart a user's sandbox."""
+        return await self._client.restart_sandbox(user_id)
+
+    # ==========================================================================
+    # Code Execution
+    # ==========================================================================
 
     async def execute_code(
         self,
         user_id: str,
         code: str,
         description: str = "",
+        timeout: int = 30,
     ) -> ExecutionResult:
-        """Execute Python code in the sandbox."""
-        manager = self._get_manager()
-        if not manager:
+        """
+        Execute Python code in the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            code: Python code to execute
+            description: Brief description for logging
+            timeout: Execution timeout in seconds (max 300)
+
+        Returns:
+            ExecutionResult with success, output, error, exit_code, execution_time
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
-        return await manager.execute_code(user_id, code, description)
+
+        return await self._client.execute_code(user_id, code, description, timeout)
 
     async def run_shell(
         self,
         user_id: str,
         command: str,
+        timeout: int = 60,
     ) -> ExecutionResult:
-        """Run shell command in the sandbox."""
-        manager = self._get_manager()
-        if not manager:
+        """
+        Run a shell command in the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            command: Shell command to execute
+            timeout: Execution timeout in seconds (max 300)
+
+        Returns:
+            ExecutionResult with success, output, error, exit_code, execution_time
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
-        return await manager.run_shell(user_id, command)
+
+        return await self._client.run_shell(user_id, command, timeout)
 
     async def install_package(
         self,
         user_id: str,
         package: str,
+        timeout: int = 120,
     ) -> ExecutionResult:
-        """Install pip package in the sandbox."""
-        manager = self._get_manager()
-        if not manager:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="No sandbox backend available",
-            )
-        return await manager.install_package(user_id, package)
-
-    async def ensure_packages(
-        self,
-        user_id: str,
-        packages: list[str],
-    ) -> ExecutionResult:
-        """Ensure multiple packages are installed (batch install).
-
-        Only installs packages that aren't already tracked.
         """
-        manager = self._get_manager()
-        if not manager:
+        Install a pip package in the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            package: Package spec (e.g., 'pandas>=2.0')
+            timeout: Installation timeout in seconds (max 300)
+
+        Returns:
+            ExecutionResult with success, output, error
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
-        # ensure_packages is only available on local backend
-        if hasattr(manager, "ensure_packages"):
-            return await manager.ensure_packages(user_id, packages)
-        # Fall back to individual installs for remote
-        for pkg in packages:
-            result = await manager.install_package(user_id, pkg)
-            if not result.success:
-                return result
-        return ExecutionResult(
-            success=True,
-            output=f"All {len(packages)} packages installed",
-        )
 
-    async def read_file(
+        return await self._client.install_package(user_id, package, timeout)
+
+    async def list_packages(self, user_id: str) -> ExecutionResult:
+        """List installed pip packages in the sandbox."""
+        if not self.is_available():
+            return ExecutionResult(
+                success=False,
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
+            )
+
+        return await self._client.list_packages(user_id)
+
+    # ==========================================================================
+    # File Operations
+    # ==========================================================================
+
+    async def list_files(
         self,
         user_id: str,
-        path: str,
+        path: str = "/workspace",
     ) -> ExecutionResult:
-        """Read file from the sandbox."""
-        manager = self._get_manager()
-        if not manager:
+        """
+        List files in a directory.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            path: Directory path to list (default: /workspace)
+
+        Returns:
+            ExecutionResult with file listing in output
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
-        return await manager.read_file(user_id, path)
+
+        return await self._client.list_files(user_id, path)
+
+    async def read_file(self, user_id: str, path: str) -> ExecutionResult:
+        """
+        Read a file from the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            path: File path to read
+
+        Returns:
+            ExecutionResult with file content in output
+        """
+        if not self.is_available():
+            return ExecutionResult(
+                success=False,
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
+            )
+
+        return await self._client.read_file(user_id, path)
 
     async def write_file(
         self,
@@ -201,142 +205,65 @@ class UnifiedSandboxManager:
         path: str,
         content: str | bytes,
     ) -> ExecutionResult:
-        """Write file to the sandbox."""
-        manager = self._get_manager()
-        if not manager:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="No sandbox backend available",
-            )
-        return await manager.write_file(user_id, path, content)
+        """
+        Write a file to the sandbox.
 
-    async def list_files(
-        self,
-        user_id: str,
-        path: str = "/home/user",
-    ) -> ExecutionResult:
-        """List files in the sandbox."""
-        manager = self._get_manager()
-        if not manager:
+        Args:
+            user_id: User identifier for sandbox isolation
+            path: File path to write
+            content: File content (text or bytes)
+
+        Returns:
+            ExecutionResult with success status
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
-        return await manager.list_files(user_id, path)
+
+        return await self._client.write_file(user_id, path, content)
+
+    async def delete_file(self, user_id: str, path: str) -> ExecutionResult:
+        """
+        Delete a file from the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            path: File path to delete
+
+        Returns:
+            ExecutionResult with success status
+        """
+        if not self.is_available():
+            return ExecutionResult(
+                success=False,
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
+            )
+
+        return await self._client.delete_file(user_id, path)
 
     async def unzip_file(
         self,
         user_id: str,
         path: str,
-        destination: str | None = None,
+        destination: Optional[str] = None,
     ) -> ExecutionResult:
-        """Extract archive in the sandbox."""
-        manager = self._get_manager()
-        if not manager:
+        """
+        Extract an archive file in the sandbox.
+
+        Args:
+            user_id: User identifier for sandbox isolation
+            path: Path to archive file
+            destination: Extraction destination (default: same directory)
+
+        Returns:
+            ExecutionResult with extraction output
+        """
+        if not self.is_available():
             return ExecutionResult(
                 success=False,
-                output="",
-                error="No sandbox backend available",
-            )
-        return await manager.unzip_file(user_id, path, destination)
-
-    async def web_search(
-        self,
-        query: str,
-        max_results: int = 5,
-        search_depth: str = "basic",
-    ) -> ExecutionResult:
-        """Web search (only available on local backend)."""
-        manager = self._get_manager()
-        if not manager:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="No sandbox backend available",
+                error="Sandbox not configured. Set SANDBOX_API_URL and SANDBOX_API_KEY.",
             )
 
-        # Web search is only available on local Docker sandbox
-        if self._active_backend == "local" and hasattr(manager, "web_search"):
-            return await manager.web_search(query, max_results, search_depth)
-        else:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="Web search not available on remote sandbox.",
-            )
-
-    async def handle_tool_call(
-        self,
-        user_id: str,
-        tool_name: str,
-        arguments: dict,
-    ) -> ExecutionResult:
-        """Handle tool call (unified interface)."""
-        manager = self._get_manager()
-        if not manager:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="No sandbox backend available",
-            )
-        return await manager.handle_tool_call(user_id, tool_name, arguments)
-
-    async def get_sandbox(self, user_id: str) -> Any:
-        """Get or create sandbox for user."""
-        manager = self._get_manager()
-        if not manager:
-            return None
-        return await manager.get_sandbox(user_id)
-
-    # =========================================================================
-    # Lifecycle & Statistics
-    # =========================================================================
-
-    async def cleanup_all(self) -> None:
-        """Cleanup all sandbox sessions."""
-        if self._local:
-            await self._local.cleanup_all()
-        if self._remote:
-            await self._remote.close()
-
-    async def cleanup_idle_sessions(self) -> int:
-        """Cleanup idle sessions (local only)."""
-        if self._active_backend == "local" and self._local:
-            return await self._local.cleanup_idle_sessions()
-        return 0
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get combined statistics."""
-        backend = self._select_backend()
-        manager = self._get_manager()
-        stats = manager.get_stats() if manager else {"available": False}
-        stats["mode"] = self.mode
-        stats["active_backend"] = backend
-        return stats
-
-
-# =============================================================================
-# Global Singleton
-# =============================================================================
-
-_unified_manager: UnifiedSandboxManager | None = None
-
-
-def get_sandbox_manager() -> UnifiedSandboxManager:
-    """Get the global unified sandbox manager.
-
-    This replaces the previous get_sandbox_manager() from docker.py.
-    Uses SANDBOX_MODE environment variable to determine backend.
-    """
-    global _unified_manager
-    if _unified_manager is None:
-        _unified_manager = UnifiedSandboxManager()
-    return _unified_manager
-
-
-def reset_sandbox_manager() -> None:
-    """Reset the global sandbox manager (for testing)."""
-    global _unified_manager
-    _unified_manager = None
+        return await self._client.unzip_file(user_id, path, destination)

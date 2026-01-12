@@ -1,179 +1,145 @@
-"""Remote sandbox client for Clara.
+"""
+Remote sandbox client for the self-hosted sandbox service.
 
-HTTP client that communicates with the VPS sandbox service.
-Provides the same interface as DockerSandboxManager for seamless switching.
+Provides HTTP client for code execution, shell commands, and file operations.
 """
 
-from __future__ import annotations
-
 import base64
+import logging
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
+from typing import Optional
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 # Configuration
-SANDBOX_API_URL = os.getenv("SANDBOX_API_URL")  # e.g., https://sandbox.example.com
-SANDBOX_API_KEY = os.getenv("SANDBOX_API_KEY")
+SANDBOX_API_URL = os.getenv("SANDBOX_API_URL", "")
+SANDBOX_API_KEY = os.getenv("SANDBOX_API_KEY", "")
 SANDBOX_TIMEOUT = int(os.getenv("SANDBOX_TIMEOUT", "60"))
 
 
 @dataclass
 class ExecutionResult:
-    """Result of code execution (matches sandbox/docker.py interface)."""
+    """Result from code/command execution."""
 
     success: bool
-    output: str
-    error: str | None = None
-    files: list[dict] = field(default_factory=list)
+    output: str = ""
+    error: Optional[str] = None
+    exit_code: int = 0
     execution_time: float = 0.0
 
 
 class RemoteSandboxClient:
-    """HTTP client for remote sandbox API.
-
-    Provides the same interface as DockerSandboxManager for seamless switching.
-    All methods return ExecutionResult for consistency.
-
-    Usage:
-        client = RemoteSandboxClient()
-        result = await client.execute_code("user123", "print('hello')")
-        if result.success:
-            print(result.output)
-    """
+    """HTTP client for the remote sandbox service."""
 
     def __init__(
         self,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        timeout: int | None = None,
+        api_url: str = "",
+        api_key: str = "",
+        timeout: int = 60,
     ):
-        self.base_url = (base_url or SANDBOX_API_URL or "").rstrip("/")
+        self.api_url = (api_url or SANDBOX_API_URL).rstrip("/")
         self.api_key = api_key or SANDBOX_API_KEY
         self.timeout = timeout or SANDBOX_TIMEOUT
-        self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers={"X-API-Key": self.api_key or ""},
-                timeout=httpx.Timeout(self.timeout),
-            )
-        return self._client
+        if not self.api_url:
+            logger.warning("[sandbox] SANDBOX_API_URL not configured")
+        if not self.api_key:
+            logger.warning("[sandbox] SANDBOX_API_KEY not configured")
 
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+    def is_configured(self) -> bool:
+        """Check if the client is properly configured."""
+        return bool(self.api_url and self.api_key)
 
-    def is_available(self) -> bool:
-        """Check if remote sandbox is configured."""
-        return bool(self.base_url and self.api_key)
+    async def health_check(self) -> dict:
+        """Check if the sandbox service is healthy."""
+        if not self.api_url:
+            return {"status": "unconfigured", "error": "SANDBOX_API_URL not set"}
 
-    async def health_check(self) -> bool:
-        """Check if remote service is healthy."""
-        if not self.is_available():
-            return False
         try:
-            client = await self._get_client()
-            response = await client.get("/health")
-            data = response.json()
-            return data.get("status") == "healthy" and data.get("docker", False)
-        except Exception:
-            return False
-
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        json: dict | None = None,
-        timeout: int | None = None,
-    ) -> ExecutionResult:
-        """Make API request and return ExecutionResult."""
-        try:
-            client = await self._get_client()
-            request_timeout = httpx.Timeout(timeout or self.timeout)
-            response = await client.request(
-                method, path, json=json, timeout=request_timeout
-            )
-
-            if response.status_code == 401:
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error="Authentication failed: Invalid API key",
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/health",
+                    timeout=10.0,
                 )
-            elif response.status_code == 404:
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error="Sandbox not found",
-                )
-            elif response.status_code == 503:
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error="Service unavailable: " + response.text,
-                )
-            elif response.status_code >= 400:
-                try:
-                    error_data = response.json()
-                    error_msg = error_data.get("error", response.text)
-                except Exception:
-                    error_msg = response.text
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error=f"API error ({response.status_code}): {error_msg}",
-                )
-
-            data = response.json()
-            return ExecutionResult(
-                success=data.get("success", True),
-                output=data.get("output", ""),
-                error=data.get("error"),
-                execution_time=data.get("execution_time", 0.0),
-            )
-
-        except httpx.TimeoutException:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="Request timed out",
-            )
-        except httpx.ConnectError:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error="Failed to connect to sandbox service",
-            )
+                return response.json()
         except Exception as e:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error=f"Request failed: {str(e)}",
-            )
+            logger.exception(f"[sandbox] Health check failed: {e}")
+            return {"status": "error", "error": str(e)}
 
-    # =========================================================================
-    # Sandbox Lifecycle
-    # =========================================================================
+    def _headers(self) -> dict:
+        """Get request headers with API key."""
+        return {"X-API-Key": self.api_key}
 
-    async def get_sandbox(self, user_id: str) -> bool:
-        """Ensure sandbox exists for user. Returns True if available."""
-        result = await self._request("POST", f"/sandbox/{user_id}/create")
-        return result.success
+    def _parse_response(self, data: dict) -> ExecutionResult:
+        """Parse API response into ExecutionResult."""
+        return ExecutionResult(
+            success=data.get("success", False),
+            output=data.get("output", ""),
+            error=data.get("error"),
+            exit_code=data.get("exit_code", 0),
+            execution_time=data.get("execution_time", 0.0),
+        )
 
-    async def destroy_sandbox(self, user_id: str) -> ExecutionResult:
-        """Destroy user's sandbox."""
-        return await self._request("DELETE", f"/sandbox/{user_id}")
+    async def create_sandbox(self, user_id: str) -> dict:
+        """Create or get a sandbox for the user."""
+        if not self.is_configured():
+            return {"error": "Sandbox not configured"}
 
-    # =========================================================================
-    # Code Execution (matches DockerSandboxManager interface)
-    # =========================================================================
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/create",
+                    headers=self._headers(),
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[sandbox] Create sandbox failed: {e.response.text}")
+            return {"error": f"HTTP {e.response.status_code}: {e.response.text}"}
+        except Exception as e:
+            logger.exception(f"[sandbox] Create sandbox failed: {e}")
+            return {"error": str(e)}
+
+    async def get_status(self, user_id: str) -> dict:
+        """Get status of a user's sandbox."""
+        if not self.is_configured():
+            return {"error": "Sandbox not configured"}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/sandbox/{user_id}/status",
+                    headers=self._headers(),
+                    timeout=10.0,
+                )
+                if response.status_code == 404:
+                    return {"status": "not_found"}
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.exception(f"[sandbox] Get status failed: {e}")
+            return {"error": str(e)}
+
+    async def stop_sandbox(self, user_id: str) -> bool:
+        """Stop a user's sandbox."""
+        if not self.is_configured():
+            return False
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/stop",
+                    headers=self._headers(),
+                    timeout=10.0,
+                )
+                return response.status_code == 200
+        except Exception as e:
+            logger.exception(f"[sandbox] Stop sandbox failed: {e}")
+            return False
 
     async def execute_code(
         self,
@@ -182,13 +148,33 @@ class RemoteSandboxClient:
         description: str = "",
         timeout: int = 30,
     ) -> ExecutionResult:
-        """Execute Python code in sandbox."""
-        return await self._request(
-            "POST",
-            f"/sandbox/{user_id}/execute",
-            {"code": code, "description": description, "timeout": timeout},
-            timeout=timeout + 10,  # Extra time for network
-        )
+        """Execute Python code in the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/execute",
+                    headers=self._headers(),
+                    json={
+                        "code": code,
+                        "description": description,
+                        "timeout": min(timeout, 300),
+                    },
+                    timeout=float(self.timeout),
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[sandbox] Execute code failed: {e.response.text}")
+            return ExecutionResult(
+                success=False,
+                error=f"HTTP {e.response.status_code}: {e.response.text}",
+            )
+        except Exception as e:
+            logger.exception(f"[sandbox] Execute code failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def run_shell(
         self,
@@ -196,13 +182,32 @@ class RemoteSandboxClient:
         command: str,
         timeout: int = 60,
     ) -> ExecutionResult:
-        """Run shell command in sandbox."""
-        return await self._request(
-            "POST",
-            f"/sandbox/{user_id}/shell",
-            {"command": command, "timeout": timeout},
-            timeout=timeout + 10,
-        )
+        """Run a shell command in the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/shell",
+                    headers=self._headers(),
+                    json={
+                        "command": command,
+                        "timeout": min(timeout, 300),
+                    },
+                    timeout=float(self.timeout),
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[sandbox] Shell command failed: {e.response.text}")
+            return ExecutionResult(
+                success=False,
+                error=f"HTTP {e.response.status_code}: {e.response.text}",
+            )
+        except Exception as e:
+            logger.exception(f"[sandbox] Shell command failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def install_package(
         self,
@@ -210,52 +215,102 @@ class RemoteSandboxClient:
         package: str,
         timeout: int = 120,
     ) -> ExecutionResult:
-        """Install pip package in sandbox."""
-        return await self._request(
-            "POST",
-            f"/sandbox/{user_id}/pip/install",
-            {"package": package, "timeout": timeout},
-            timeout=timeout + 10,
-        )
+        """Install a pip package in the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
 
-    # =========================================================================
-    # File Operations
-    # =========================================================================
-
-    async def read_file(self, user_id: str, path: str) -> ExecutionResult:
-        """Read file from sandbox."""
         try:
-            client = await self._get_client()
-            response = await client.get(
-                f"/sandbox/{user_id}/file",
-                params={"path": path},
-            )
-
-            if response.status_code != 200:
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error=f"Failed to read file: {response.status_code}",
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/pip/install",
+                    headers=self._headers(),
+                    json={
+                        "package": package,
+                        "timeout": min(timeout, 300),
+                    },
+                    timeout=float(self.timeout + 60),  # Extra time for installs
                 )
-
-            data = response.json()
-            content = data.get("content", "")
-
-            # Decode base64 if needed
-            if data.get("encoding") == "base64":
-                content = base64.b64decode(content).decode("utf-8", errors="replace")
-
-            return ExecutionResult(
-                success=True,
-                output=content,
-            )
-
-        except Exception as e:
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[sandbox] Install package failed: {e.response.text}")
             return ExecutionResult(
                 success=False,
-                output="",
-                error=str(e),
+                error=f"HTTP {e.response.status_code}: {e.response.text}",
             )
+        except Exception as e:
+            logger.exception(f"[sandbox] Install package failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
+
+    async def list_packages(self, user_id: str) -> ExecutionResult:
+        """List installed pip packages."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/sandbox/{user_id}/pip/list",
+                    headers=self._headers(),
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except Exception as e:
+            logger.exception(f"[sandbox] List packages failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
+
+    async def list_files(
+        self,
+        user_id: str,
+        path: str = "/workspace",
+    ) -> ExecutionResult:
+        """List files in a directory."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/sandbox/{user_id}/files",
+                    headers=self._headers(),
+                    params={"path": path},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except Exception as e:
+            logger.exception(f"[sandbox] List files failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
+
+    async def read_file(self, user_id: str, path: str) -> ExecutionResult:
+        """Read a file from the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/sandbox/{user_id}/file",
+                    headers=self._headers(),
+                    params={"path": path},
+                    timeout=30.0,
+                )
+
+                if response.status_code == 404:
+                    return ExecutionResult(success=False, error="File not found")
+
+                response.raise_for_status()
+                data = response.json()
+
+                content = data.get("content", "")
+                if data.get("encoding") == "base64":
+                    content = base64.b64decode(content).decode("utf-8", errors="replace")
+
+                return ExecutionResult(success=True, output=content)
+        except Exception as e:
+            logger.exception(f"[sandbox] Read file failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def write_file(
         self,
@@ -263,172 +318,96 @@ class RemoteSandboxClient:
         path: str,
         content: str | bytes,
     ) -> ExecutionResult:
-        """Write file to sandbox."""
-        encoding = "utf-8"
-        if isinstance(content, bytes):
-            content = base64.b64encode(content).decode("ascii")
-            encoding = "base64"
+        """Write a file to the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
 
-        return await self._request(
-            "POST",
-            f"/sandbox/{user_id}/file",
-            {"path": path, "content": content, "encoding": encoding},
-        )
-
-    async def list_files(
-        self,
-        user_id: str,
-        path: str = "/workspace",
-    ) -> ExecutionResult:
-        """List files in sandbox directory."""
         try:
-            client = await self._get_client()
-            response = await client.get(
-                f"/sandbox/{user_id}/files",
-                params={"path": path},
-            )
+            # Handle bytes content
+            if isinstance(content, bytes):
+                encoded_content = base64.b64encode(content).decode("ascii")
+                encoding = "base64"
+            else:
+                encoded_content = content
+                encoding = "utf-8"
 
-            if response.status_code != 200:
-                return ExecutionResult(
-                    success=False,
-                    output="",
-                    error=f"Failed to list files: {response.status_code}",
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/file",
+                    headers=self._headers(),
+                    json={
+                        "path": path,
+                        "content": encoded_content,
+                        "encoding": encoding,
+                    },
+                    timeout=30.0,
                 )
-
-            data = response.json()
-            return ExecutionResult(
-                success=data.get("success", True),
-                output=data.get("output", ""),
-                error=data.get("error"),
-            )
-
+                response.raise_for_status()
+                return self._parse_response(response.json())
         except Exception as e:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error=str(e),
-            )
+            logger.exception(f"[sandbox] Write file failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
+
+    async def delete_file(self, user_id: str, path: str) -> ExecutionResult:
+        """Delete a file from the sandbox."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{self.api_url}/sandbox/{user_id}/file",
+                    headers=self._headers(),
+                    params={"path": path},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except Exception as e:
+            logger.exception(f"[sandbox] Delete file failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def unzip_file(
         self,
         user_id: str,
         path: str,
-        destination: str | None = None,
+        destination: Optional[str] = None,
     ) -> ExecutionResult:
-        """Extract archive in sandbox."""
-        return await self._request(
-            "POST",
-            f"/sandbox/{user_id}/unzip",
-            {"path": path, "destination": destination},
-            timeout=120,
-        )
+        """Extract an archive file."""
+        if not self.is_configured():
+            return ExecutionResult(success=False, error="Sandbox not configured")
 
-    # =========================================================================
-    # Web Search (delegated to local implementation if available)
-    # =========================================================================
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/unzip",
+                    headers=self._headers(),
+                    json={
+                        "path": path,
+                        "destination": destination,
+                    },
+                    timeout=60.0,
+                )
+                response.raise_for_status()
+                return self._parse_response(response.json())
+        except Exception as e:
+            logger.exception(f"[sandbox] Unzip file failed: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
-    async def web_search(
-        self,
-        query: str,
-        max_results: int = 5,
-        search_depth: str = "basic",
-    ) -> ExecutionResult:
-        """Web search is not available via remote sandbox.
+    async def restart_sandbox(self, user_id: str) -> dict:
+        """Restart a user's sandbox."""
+        if not self.is_configured():
+            return {"error": "Sandbox not configured"}
 
-        Use the local web_search tool instead.
-        """
-        return ExecutionResult(
-            success=False,
-            output="",
-            error="Web search is not available via remote sandbox. Use local web_search tool.",
-        )
-
-    # =========================================================================
-    # Tool Call Handler (matches DockerSandboxManager interface)
-    # =========================================================================
-
-    async def handle_tool_call(
-        self,
-        user_id: str,
-        tool_name: str,
-        arguments: dict,
-    ) -> ExecutionResult:
-        """Handle tool call (same interface as DockerSandboxManager)."""
-        # Route to appropriate method based on tool name
-        if tool_name == "execute_python":
-            code = (
-                arguments.get("code")
-                or arguments.get("python_code")
-                or arguments.get("script", "")
-            )
-            return await self.execute_code(
-                user_id,
-                code,
-                arguments.get("description", ""),
-            )
-        elif tool_name == "install_package":
-            return await self.install_package(
-                user_id,
-                arguments.get("package", ""),
-            )
-        elif tool_name == "read_file":
-            return await self.read_file(user_id, arguments.get("path", ""))
-        elif tool_name == "write_file":
-            return await self.write_file(
-                user_id,
-                arguments.get("path", ""),
-                arguments.get("content", ""),
-            )
-        elif tool_name == "list_files":
-            return await self.list_files(
-                user_id,
-                arguments.get("path", "/workspace"),
-            )
-        elif tool_name == "run_shell":
-            return await self.run_shell(user_id, arguments.get("command", ""))
-        elif tool_name == "unzip_file":
-            return await self.unzip_file(
-                user_id,
-                arguments.get("path", ""),
-                arguments.get("destination"),
-            )
-        elif tool_name == "web_search":
-            return await self.web_search(
-                arguments.get("query", ""),
-                arguments.get("max_results", 5),
-                arguments.get("search_depth", "basic"),
-            )
-        else:
-            return ExecutionResult(
-                success=False,
-                output="",
-                error=f"Unknown tool: {tool_name}",
-            )
-
-    # =========================================================================
-    # Statistics
-    # =========================================================================
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get client statistics."""
-        return {
-            "available": self.is_available(),
-            "base_url": self.base_url,
-            "timeout": self.timeout,
-            "mode": "remote",
-        }
-
-
-# =============================================================================
-# Global Singleton
-# =============================================================================
-
-_remote_client: RemoteSandboxClient | None = None
-
-
-def get_remote_client() -> RemoteSandboxClient:
-    """Get the global remote sandbox client."""
-    global _remote_client
-    if _remote_client is None:
-        _remote_client = RemoteSandboxClient()
-    return _remote_client
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}/sandbox/{user_id}/restart",
+                    headers=self._headers(),
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.exception(f"[sandbox] Restart sandbox failed: {e}")
+            return {"error": str(e)}

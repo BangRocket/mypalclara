@@ -77,7 +77,7 @@ def migrate_sqlite_to_postgres():
     PostgresSession = sessionmaker(bind=postgres_engine)
 
     # Import models
-    from db.models import Base, Project, Session, Message, ChannelSummary
+    from db.models import Base, ChannelSummary, Message, Project, Session
 
     # Create tables in PostgreSQL
     print("[migrate] Creating tables in PostgreSQL...")
@@ -91,9 +91,7 @@ def migrate_sqlite_to_postgres():
         for p in projects:
             existing = pg_db.query(Project).filter(Project.id == p.id).first()
             if not existing:
-                pg_db.add(
-                    Project(id=p.id, owner_id=p.owner_id, name=p.name)
-                )
+                pg_db.add(Project(id=p.id, owner_id=p.owner_id, name=p.name))
         pg_db.commit()
 
         # Sessions
@@ -165,8 +163,8 @@ def migrate_qdrant_to_pgvector():
     1. Export memories from Qdrant-backed mem0
     2. Re-add them to pgvector-backed mem0
     """
-    from qdrant_client import QdrantClient
     from mem0 import Memory
+    from qdrant_client import QdrantClient
 
     # Check for required env vars
     pgvector_url = os.getenv("MEM0_DATABASE_URL")
@@ -227,11 +225,13 @@ def migrate_qdrant_to_pgvector():
     backup_file = data_dir / "qdrant_backup.json"
     backup_data = []
     for p in points:
-        backup_data.append({
-            "id": str(p.id),
-            "vector": p.vector,
-            "payload": p.payload,
-        })
+        backup_data.append(
+            {
+                "id": str(p.id),
+                "vector": p.vector,
+                "payload": p.payload,
+            }
+        )
     with open(backup_file, "w") as f:
         json.dump(backup_data, f)
     print(f"[migrate] Backup saved to {backup_file}")
@@ -281,16 +281,20 @@ def migrate_qdrant_to_pgvector():
             user_id = payload.get("user_id", "")
             agent_id = payload.get("agent_id", "")
             run_id = payload.get("run_id", "")
-            metadata = json.dumps({k: v for k, v in payload.items()
-                                   if k not in ["data", "memory", "user_id", "agent_id", "run_id"]})
+            metadata = json.dumps(
+                {k: v for k, v in payload.items() if k not in ["data", "memory", "user_id", "agent_id", "run_id"]}
+            )
             vector = point.vector
 
             try:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO memories (id, memory, metadata_, user_id, agent_id, run_id, embedding)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
-                """, (memory_id, memory_text, metadata, user_id, agent_id, run_id, vector))
+                """,
+                    (memory_id, memory_text, metadata, user_id, agent_id, run_id, vector),
+                )
                 imported += 1
             except Exception as e:
                 print(f"[migrate] Error importing vector {memory_id}: {e}")

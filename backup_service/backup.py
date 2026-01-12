@@ -153,11 +153,16 @@ def check_db_connection(db_url: str, db_name: str) -> bool:
             result = subprocess.run(
                 [
                     "psql",
-                    "-h", db["host"],
-                    "-p", str(db["port"]),
-                    "-U", db["user"],
-                    "-d", db["database"],
-                    "-c", "SELECT 1",
+                    "-h",
+                    db["host"],
+                    "-p",
+                    str(db["port"]),
+                    "-U",
+                    db["user"],
+                    "-d",
+                    db["database"],
+                    "-c",
+                    "SELECT 1",
                 ],
                 capture_output=True,
                 env=env,
@@ -238,10 +243,14 @@ def dump_database(db_url: str, db_name: str) -> bytes | None:
 
     cmd = [
         "pg_dump",
-        "-h", db["host"],
-        "-p", str(db["port"]),
-        "-U", db["user"],
-        "-d", db["database"],
+        "-h",
+        db["host"],
+        "-p",
+        str(db["port"]),
+        "-U",
+        db["user"],
+        "-d",
+        db["database"],
         "--format=plain",
         "--no-owner",
         "--no-acl",
@@ -448,8 +457,7 @@ def run_backup() -> bool:
     # Summary
     logger.info("=" * 60)
     logger.info(
-        f"Backup complete: {results['success']} succeeded, "
-        f"{results['failed']} failed, {results['skipped']} skipped"
+        f"Backup complete: {results['success']} succeeded, " f"{results['failed']} failed, {results['skipped']} skipped"
     )
 
     backup_state["status"] = "completed" if results["failed"] == 0 else "partial"

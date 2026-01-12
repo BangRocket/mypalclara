@@ -62,6 +62,39 @@ poetry run python clear_dbs.py --user <id> # Clear specific user
 - **Session summary**: LLM-generated summary stored when session times out
 - Sessions auto-timeout after 30 minutes of inactivity (`SESSION_IDLE_MINUTES`)
 
+### v0.8.0 LangGraph Architecture (New)
+
+The `src/mypalclara/` package implements a new LangGraph-based architecture where Clara is a "single mind" with faculties (skilled capabilities) rather than an orchestrator of separate agents.
+
+**Entry Point:**
+- `discord_bot_v2.py` - New entry point for LangGraph architecture
+
+**Core Components:**
+- `src/mypalclara/graph.py` - LangGraph orchestration
+- `src/mypalclara/nodes/` - Processing nodes:
+  - `evaluate.py` - Reflexive triage (no LLM, pattern matching)
+  - `ruminate.py` - Conscious thought (LLM reasoning)
+  - `command.py` - Action through faculties
+  - `speak.py` - Prepare response
+  - `finalize.py` - Store memories, update session
+
+**Cortex Memory System:**
+- `src/mypalclara/cortex/manager.py` - Redis (fast) + Postgres/pgvector (semantic)
+- Redis keys: `identity:{user_id}`, `session:{user_id}`, `working:{user_id}`
+- Falls back to in-memory when Redis unavailable
+
+**Faculties:**
+- `src/mypalclara/faculties/github.py` - GitHub operations via intent parsing
+
+**Running v0.8.0:**
+```bash
+# Start Redis (optional, falls back to in-memory)
+docker-compose --profile cortex up -d redis
+
+# Run new architecture
+poetry run python discord_bot_v2.py
+```
+
 ## Environment Variables
 
 ### Required
@@ -135,6 +168,18 @@ Note: For `MEM0_PROVIDER=anthropic`, uses native Anthropic SDK with `anthropic_b
 - `ENABLE_GRAPH_MEMORY` - Enable graph memory for relationship tracking (default: false)
 - `GRAPH_STORE_PROVIDER` - Graph store provider: "neo4j" (default) or "kuzu" (embedded)
 - `NEO4J_URL`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` - Neo4j connection (when using neo4j provider)
+
+### Cortex Memory (v0.8.0+)
+For the new LangGraph architecture's memory system:
+- `CORTEX_REDIS_HOST` - Redis host (default: localhost)
+- `CORTEX_REDIS_PORT` - Redis port (default: 6379)
+- `CORTEX_POSTGRES_HOST` - Postgres host for semantic search (default: localhost)
+- `CORTEX_POSTGRES_PORT` - Postgres port (default: 5432)
+- `CORTEX_POSTGRES_USER` - Postgres user (default: cortex)
+- `CORTEX_POSTGRES_PASSWORD` - Postgres password
+- `CORTEX_POSTGRES_DATABASE` - Postgres database (default: cortex)
+- `CORTEX_EMBEDDING_API_KEY` - API key for embeddings (default: uses OPENAI_API_KEY)
+- `CORTEX_EMBEDDING_MODEL` - Embedding model (default: text-embedding-3-small)
 
 ### PostgreSQL (Production)
 For production, use managed PostgreSQL instead of SQLite/Qdrant:
