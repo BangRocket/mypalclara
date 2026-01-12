@@ -5,28 +5,21 @@ receivers:
         - job_name: 'clara-discord'
           scrape_interval: 60s
           static_configs:
-            - targets: ['${METRICS_TARGET}']
+            - targets: ['${env:METRICS_TARGET}']
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  prometheusremotewrite:
-    endpoint: ${PROMETHEUS_REMOTE_WRITE_URL}
-    auth:
-      authenticator: basicauth/metrics
-
-extensions:
-  basicauth/metrics:
-    client_auth:
-      username: ${PROMETHEUS_USERNAME}
-      password: ${PROMETHEUS_PASSWORD}
+  otlphttp:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+    headers:
+      Authorization: ${env:OTEL_EXPORTER_OTLP_AUTH}
 
 service:
-  extensions: [basicauth/metrics]
   pipelines:
     metrics:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [otlphttp]

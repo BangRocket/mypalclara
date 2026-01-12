@@ -1,12 +1,13 @@
 # OpenTelemetry Collector for Clara Metrics
 
-Scrapes Prometheus metrics from the Discord bot and pushes to Grafana Cloud.
+Scrapes Prometheus metrics from the Discord bot and pushes to Grafana Cloud via OTLP.
 
 ## Railway Environment Variables
 
 | Variable | Value |
 |----------|-------|
 | `METRICS_TARGET` | `discord.railway.internal:9090` |
-| `PROMETHEUS_REMOTE_WRITE_URL` | `https://prometheus-prod-56-prod-us-east-2.grafana.net/api/prom/push` |
-| `PROMETHEUS_USERNAME` | `2910401` |
-| `PROMETHEUS_PASSWORD` | Your Grafana Cloud API key |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://otlp-gateway-prod-us-east-2.grafana.net/otlp` |
+| `OTEL_EXPORTER_OTLP_AUTH` | `Basic Z2xjX2V5SnZJam9pTVRZek9USTROeUlzSW00aU9pSnpkR0ZqYXkweE5Ea3pNRGcwTFdGc2JHOTVMVzE1Y0dGc1pteHZJaXdpYXlJNklqZFhVVGRxTXpaUVZ6aDNVWGxxV0RkSWVUVTFiazAzT1NJc0ltMGlPbnNpY2lJNkluQnliMlF0ZFhNdFpXRnpkQzB3SW4xOToxNDkzMDg0` |
+
+Note: The auth value is the URL-decoded version of the header (replace `%20` with space).
