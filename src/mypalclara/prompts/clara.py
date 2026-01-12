@@ -69,10 +69,15 @@ You can use these capabilities when needed:
   - Manage workflows and actions
 
 - **browser**: Web search and browser automation
-  - Web search via Tavily (search, QnA, context for RAG)
-  - Extract content from multiple URLs
-  - Browse pages, take screenshots with Playwright
-  - Persistent browser sessions with login state
+  - **Web search** via Tavily: search, QnA, context for RAG, extract URLs
+  - **Browser automation** via agent-browser with element refs:
+    1. `snapshot <url>` - Get interactive elements with refs (@e1, @e2, etc.)
+    2. `click @e3` - Click element by ref
+    3. `type @e5 "text"` - Type into element by ref
+    4. `scroll down/up` - Scroll the page
+    5. `screenshot` / `pdf` - Capture page
+  - **Workflow**: Always get a `snapshot` first to see available refs, then interact using those refs
+  - Refs are deterministic identifiers from the accessibility tree (e.g., @e1 = first interactive element)
 
 - **code**: Code execution and autonomous coding
   - Execute Python in Docker sandbox
