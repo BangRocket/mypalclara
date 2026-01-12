@@ -245,15 +245,42 @@ class BrowserFaculty(Faculty):
     def _extract_url(self, text: str) -> Optional[str]:
         """Extract URL from text."""
         import re
+
+        # Direct URL pattern
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
         match = re.search(url_pattern, text)
         if match:
             return match.group(0)
 
+        # Domain pattern (e.g., example.com)
         domain_pattern = r'\b([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z]{2,}\b'
         match = re.search(domain_pattern, text)
         if match:
             return f"https://{match.group(0)}"
+
+        # Common site names to URLs
+        text_lower = text.lower()
+        site_mappings = {
+            "reddit": "https://www.reddit.com",
+            "google": "https://www.google.com",
+            "github": "https://github.com",
+            "twitter": "https://twitter.com",
+            "x.com": "https://x.com",
+            "youtube": "https://www.youtube.com",
+            "facebook": "https://www.facebook.com",
+            "linkedin": "https://www.linkedin.com",
+            "wikipedia": "https://www.wikipedia.org",
+            "amazon": "https://www.amazon.com",
+            "hacker news": "https://news.ycombinator.com",
+            "hackernews": "https://news.ycombinator.com",
+            "hn": "https://news.ycombinator.com",
+            "stack overflow": "https://stackoverflow.com",
+            "stackoverflow": "https://stackoverflow.com",
+        }
+
+        for site_name, url in site_mappings.items():
+            if site_name in text_lower:
+                return url
 
         return None
 
