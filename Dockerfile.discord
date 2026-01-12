@@ -20,8 +20,8 @@ COPY pyproject.toml poetry.lock* ./
 # Configure Poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
 
-# Install dependencies (production only)
-RUN poetry install --only main --no-interaction --no-ansi
+# Install dependencies (production only, --no-root skips installing the project itself)
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # Install Playwright browsers and dependencies (optional, for browser faculty)
 RUN playwright install chromium --with-deps || true
