@@ -24,8 +24,10 @@ from mypalclara.prompts.clara import (
     build_continuation_prompt,
     build_rumination_prompt,
 )
+from mypalclara.tracing import get_tracer
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 # Max command iterations to prevent infinite loops
 # Should be high enough for multi-step tasks (get repo, get file, search, etc.)
@@ -46,8 +48,19 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
     - Draws on her memory (Cortex)
     - Decides: speak directly, use a faculty, or wait
     """
+    with tracer.start_as_current_span("ruminate") as span:
+        return await _ruminate_impl(state, span)
+
+
+async def _ruminate_impl(state: ClaraState, span) -> ClaraState:
+    """Implementation of rumination with tracing."""
     event = state["event"]
     quick_context = state.get("quick_context")
+
+    # Add event context to span
+    span.set_attribute("user.id", event.user_id)
+    span.set_attribute("event.type", event.type)
+    span.set_attribute("event.channel", event.channel_id or "unknown")
 
     # Check if we're continuing after a faculty execution
     faculty_result = state.get("faculty_result")
@@ -73,11 +86,13 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         if not memory_context:
             # Fallback if somehow missing
             logger.info("[ruminate] Memory context missing, fetching fresh...")
-            memory_context = await memory.get_full_context(
-                user_id=event.user_id,
-                query=event.content or "",
-                project_id=event.metadata.get("project_id"),
-            )
+            with tracer.start_as_current_span("fetch_memory_context") as mem_span:
+                mem_span.set_attribute("memory.fallback", True)
+                memory_context = await memory.get_full_context(
+                    user_id=event.user_id,
+                    query=event.content or "",
+                    project_id=event.metadata.get("project_id"),
+                )
         prompt = build_continuation_prompt(
             event=event,
             memory=memory_context,
@@ -88,11 +103,16 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         # Fresh rumination - get full memory context
         logger.info(f"[ruminate] === STARTING RUMINATION for user={event.user_id} ===")
         logger.info(f"[ruminate] Input: {(event.content or '')[:100]}...")
-        memory_context = await memory.get_full_context(
-            user_id=event.user_id,
-            query=event.content or "",
-            project_id=event.metadata.get("project_id"),
-        )
+        with tracer.start_as_current_span("fetch_memory_context") as mem_span:
+            mem_span.set_attribute("memory.fallback", False)
+            memory_context = await memory.get_full_context(
+                user_id=event.user_id,
+                query=event.content or "",
+                project_id=event.metadata.get("project_id"),
+            )
+            mem_span.set_attribute("memory.identity_facts", len(memory_context.identity_facts))
+            mem_span.set_attribute("memory.working_memories", len(memory_context.working_memories))
+            mem_span.set_attribute("memory.semantic_memories", len(memory_context.retrieved_memories))
 
         # Log what's being injected into the prompt
         logger.info("[ruminate] Memory context injected into prompt:")
@@ -131,16 +151,29 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
 
     # Clara thinks
     client = _get_client()
-    response = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=2048,
-        system=CLARA_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    with tracer.start_as_current_span("llm_call") as llm_span:
+        llm_span.set_attribute("llm.model", settings.anthropic_model)
+        llm_span.set_attribute("llm.max_tokens", 2048)
+        llm_span.set_attribute("llm.provider", "anthropic")
+
+        response = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=2048,
+            system=CLARA_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Record token usage
+        if hasattr(response, "usage"):
+            llm_span.set_attribute("llm.input_tokens", response.usage.input_tokens)
+            llm_span.set_attribute("llm.output_tokens", response.usage.output_tokens)
 
     # Parse structured response
     response_text = response.content[0].text
     result = parse_rumination_response(response_text)
+
+    # Add decision to parent span
+    span.set_attribute("ruminate.decision", result.decision)
 
     logger.info(f"[ruminate] Decision: {result.decision}")
     if result.reasoning:

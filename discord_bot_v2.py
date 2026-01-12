@@ -52,6 +52,14 @@ async def main():
         get_metrics_port,
         is_metrics_enabled,
     )
+    from mypalclara.tracing import init_tracing, is_tracing_enabled, get_otel_endpoint
+
+    # Initialize OpenTelemetry tracing
+    if is_tracing_enabled():
+        if init_tracing():
+            logger.info(f"OpenTelemetry tracing enabled, exporting to {get_otel_endpoint()}")
+    else:
+        logger.info("OpenTelemetry tracing disabled")
 
     # Initialize Cortex memory system
     logger.info("Initializing Cortex memory system...")

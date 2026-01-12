@@ -1,4 +1,5 @@
 receivers:
+  # Prometheus scraping for metrics
   prometheus:
     config:
       scrape_configs:
@@ -7,9 +8,27 @@ receivers:
           static_configs:
             - targets: ['${env:METRICS_TARGET}']
 
+  # OTLP receiver for traces from the Discord bot
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
   batch:
     timeout: 10s
+
+  # Add resource attributes to match Grafana Cloud test query
+  resource:
+    attributes:
+      - key: service.namespace
+        value: ${env:OTEL_SERVICE_NAMESPACE}
+        action: upsert
+      - key: deployment.environment
+        value: ${env:OTEL_DEPLOYMENT_ENV}
+        action: upsert
 
 exporters:
   otlphttp:
@@ -28,5 +47,9 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [batch]
+      processors: [batch, resource]
+      exporters: [otlphttp]
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
       exporters: [otlphttp]
