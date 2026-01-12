@@ -1,0 +1,24 @@
+server:
+  log_level: info
+
+metrics:
+  wal_directory: /tmp/wal
+  global:
+    scrape_interval: 15s
+    external_labels:
+      environment: ${RAILWAY_ENVIRONMENT:stage}
+      service: clara
+  configs:
+    - name: clara_metrics
+      scrape_configs:
+        - job_name: 'clara-discord'
+          static_configs:
+            - targets: ['${METRICS_TARGET:discord.railway.internal:9090}']
+          metrics_path: /metrics
+          scrape_interval: 15s
+          scrape_timeout: 10s
+      remote_write:
+        - url: ${GRAFANA_REMOTE_WRITE_URL}
+          basic_auth:
+            username: ${GRAFANA_CLOUD_USER}
+            password: ${GRAFANA_CLOUD_API_KEY}
