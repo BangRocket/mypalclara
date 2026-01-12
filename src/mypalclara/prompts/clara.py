@@ -179,7 +179,7 @@ def build_rumination_prompt(
     history_section = ""
     if event.conversation_history:
         history_section = "## Recent Conversation\n\n"
-        for msg in event.conversation_history[-15:]:  # Last 15 messages
+        for msg in event.conversation_history[-25:]:  # Last 25 messages
             prefix = "**Clara:**" if msg.is_clara else f"**{msg.author}:**"
             # Truncate long messages
             content = msg.content[:500] + "..." if len(msg.content) > 500 else msg.content

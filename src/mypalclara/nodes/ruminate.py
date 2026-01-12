@@ -115,6 +115,13 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
                 content = mem.get('content', '')[:60]
                 logger.debug(f"[ruminate]     • sim={sim:.3f} | {content}...")
 
+        # Log conversation history
+        history_count = len(event.conversation_history) if event.conversation_history else 0
+        logger.info(f"[ruminate]   - Conversation history: {history_count} messages")
+        if event.conversation_history and history_count > 0:
+            logger.debug(f"[ruminate]   First msg: {event.conversation_history[0].author}: {event.conversation_history[0].content[:50]}...")
+            logger.debug(f"[ruminate]   Last msg: {event.conversation_history[-1].author}: {event.conversation_history[-1].content[:50]}...")
+
         prompt = build_rumination_prompt(
             event=event,
             memory=memory_context,

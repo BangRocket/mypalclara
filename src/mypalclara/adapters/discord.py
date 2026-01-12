@@ -17,7 +17,7 @@ from mypalclara.models.events import Attachment, ChannelMode, Event, EventType, 
 logger = logging.getLogger(__name__)
 
 # How many messages to fetch for context
-HISTORY_LIMIT = 20
+HISTORY_LIMIT = 30
 
 
 class ClaraBot(commands.Bot):
@@ -143,7 +143,7 @@ class ClaraBot(commands.Bot):
 
             # Reverse to get chronological order (oldest first)
             history.reverse()
-            logger.debug(f"[discord] Fetched {len(history)} messages of history")
+            logger.info(f"[discord] Fetched {len(history)} messages of conversation history")
 
         except discord.errors.Forbidden:
             logger.warning("[discord] No permission to fetch message history")
