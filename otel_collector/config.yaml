@@ -14,10 +14,17 @@ processors:
 exporters:
   otlphttp:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
-    headers:
-      Authorization: ${env:OTEL_EXPORTER_OTLP_AUTH}
+    auth:
+      authenticator: basicauth/grafana
+
+extensions:
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_INSTANCE_ID}
+      password: ${env:GRAFANA_API_KEY}
 
 service:
+  extensions: [basicauth/grafana]
   pipelines:
     metrics:
       receivers: [prometheus]
