@@ -196,17 +196,17 @@ class BrowserFaculty(Faculty):
         # Snapshot (get interactive elements)
         if "snapshot" in intent_lower or "elements" in intent_lower or "interactive" in intent_lower:
             url = self._extract_url(intent)
-            return "snapshot", {"url": url}
+            return "snapshot", {"url": url, "intent": intent}
 
         # Screenshot
         if "screenshot" in intent_lower:
             url = self._extract_url(intent)
-            return "screenshot", {"url": url}
+            return "screenshot", {"url": url, "intent": intent}
 
         # PDF
         if "pdf" in intent_lower:
             url = self._extract_url(intent)
-            return "pdf", {"url": url}
+            return "pdf", {"url": url, "intent": intent}
 
         # Click (using ref like @e1)
         if "click" in intent_lower:
@@ -226,10 +226,14 @@ class BrowserFaculty(Faculty):
             direction = "down" if "down" in intent_lower else "up" if "up" in intent_lower else "down"
             return "scroll", {"direction": direction}
 
-        # Browse/visit page (default for URLs)
+        # Browse/visit page (default for URLs or site references)
         url = self._extract_url(intent)
         if url:
-            return "browse", {"url": url}
+            return "browse", {"url": url, "intent": intent}
+
+        # Check if intent mentions visiting/browsing a site (even without explicit URL)
+        if any(word in intent_lower for word in ["visit", "go to", "open", "browse", "navigate", "homepage"]):
+            return "browse", {"url": None, "intent": intent}
 
         # Default to web search
         return "web_search", {"query": intent}
@@ -258,29 +262,37 @@ class BrowserFaculty(Faculty):
         if match:
             return f"https://{match.group(0)}"
 
-        # Common site names to URLs
-        text_lower = text.lower()
-        site_mappings = {
-            "reddit": "https://www.reddit.com",
-            "google": "https://www.google.com",
-            "github": "https://github.com",
-            "twitter": "https://twitter.com",
-            "x.com": "https://x.com",
-            "youtube": "https://www.youtube.com",
-            "facebook": "https://www.facebook.com",
-            "linkedin": "https://www.linkedin.com",
-            "wikipedia": "https://www.wikipedia.org",
-            "amazon": "https://www.amazon.com",
-            "hacker news": "https://news.ycombinator.com",
-            "hackernews": "https://news.ycombinator.com",
-            "hn": "https://news.ycombinator.com",
-            "stack overflow": "https://stackoverflow.com",
-            "stackoverflow": "https://stackoverflow.com",
-        }
+        return None
 
-        for site_name, url in site_mappings.items():
-            if site_name in text_lower:
+    async def _resolve_url_from_intent(self, text: str) -> Optional[str]:
+        """Use Tavily to find a URL based on natural language intent."""
+        # First try direct extraction
+        url = self._extract_url(text)
+        if url:
+            return url
+
+        # No direct URL found, try Tavily search
+        if not TAVILY_API_KEY:
+            return None
+
+        try:
+            def _search():
+                client = self._get_tavily()
+                # Search for the site/page mentioned in the intent
+                return client.search(
+                    query=f"site homepage URL {text}",
+                    search_depth="basic",
+                    max_results=1,
+                )
+
+            result = await self._run_sync(_search)
+            results = result.get("results", [])
+            if results:
+                url = results[0].get("url")
+                logger.info(f"[browser] Resolved URL via Tavily: {url}")
                 return url
+        except Exception as e:
+            logger.warning(f"[browser] Failed to resolve URL via Tavily: {e}")
 
         return None
 
@@ -470,8 +482,14 @@ class BrowserFaculty(Faculty):
     async def _browse(self, params: dict) -> FacultyResult:
         """Navigate to a URL and get page content."""
         url = params.get("url", "")
+        intent = params.get("intent", "")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
+
         if not url:
-            return FacultyResult(success=False, summary="No URL provided", error="Missing url")
+            return FacultyResult(success=False, summary="No URL provided or could not resolve from intent", error="Missing url")
 
         try:
             # Navigate and get snapshot with interactive elements
@@ -496,6 +514,11 @@ class BrowserFaculty(Faculty):
     async def _snapshot(self, params: dict) -> FacultyResult:
         """Get interactive elements snapshot with refs for clicking/typing."""
         url = params.get("url")
+        intent = params.get("intent", "")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
 
         try:
             if url:
@@ -616,7 +639,12 @@ class BrowserFaculty(Faculty):
     async def _screenshot(self, params: dict) -> FacultyResult:
         """Take a screenshot of the current page."""
         url = params.get("url")
+        intent = params.get("intent", "")
         output = params.get("output", "screenshot.png")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
 
         try:
             if url:
@@ -639,7 +667,12 @@ class BrowserFaculty(Faculty):
     async def _pdf(self, params: dict) -> FacultyResult:
         """Save page as PDF."""
         url = params.get("url")
+        intent = params.get("intent", "")
         output = params.get("output", "page.pdf")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
 
         try:
             if url:
