@@ -52,8 +52,7 @@ pygithub = "^2.8.1"
 # Azure DevOps SDK
 azure-devops = "^7.1.0b4"
 
-# Browser automation & web search
-playwright = "^1.49.0"
+# Web search (browser automation via agent-browser CLI)
 tavily-python = "^0.7.0"
 
 # Google Workspace SDK
