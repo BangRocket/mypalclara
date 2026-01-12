@@ -2,7 +2,7 @@
 Pydantic models for Clara's data structures.
 """
 
-from mypalclara.models.events import Attachment, ChannelMode, Event, EventType
+from mypalclara.models.events import Attachment, ChannelMode, Event, EventType, HistoricalMessage
 from mypalclara.models.outputs import CognitiveOutput
 from mypalclara.models.state import (
     ClaraState,
@@ -18,6 +18,7 @@ __all__ = [
     "EventType",
     "ChannelMode",
     "Attachment",
+    "HistoricalMessage",
     "QuickContext",
     "MemoryContext",
     "EvaluationResult",

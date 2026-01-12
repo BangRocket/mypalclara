@@ -12,9 +12,12 @@ from discord.ext import commands
 
 from mypalclara.config.settings import settings
 from mypalclara.graph import process_event
-from mypalclara.models.events import Attachment, ChannelMode, Event, EventType
+from mypalclara.models.events import Attachment, ChannelMode, Event, EventType, HistoricalMessage
 
 logger = logging.getLogger(__name__)
+
+# How many messages to fetch for context
+HISTORY_LIMIT = 20
 
 
 class ClaraBot(commands.Bot):
@@ -47,15 +50,56 @@ class ClaraBot(commands.Bot):
         if message.author.bot:
             return
 
-        # Build event
-        event = self._message_to_event(message)
+        # Fetch conversation history
+        history = await self._fetch_history(message.channel, before=message)
+
+        # Build event with history
+        event = self._message_to_event(message, history)
 
         content_preview = event.content[:50] if event.content else "(no content)"
         logger.info(f"[discord] Event from {event.user_name}: {content_preview}...")
 
-        # Process through Clara's graph
+        # Track status message for editing
+        status_message = None
+        last_status = None
+
+        async def on_status(node_name: str, state: dict):
+            """Handle status updates from the graph."""
+            nonlocal status_message, last_status
+
+            # Show tool use status when entering command node
+            if node_name == "command":
+                rumination = state.get("rumination")
+                if rumination and rumination.faculty:
+                    faculty = rumination.faculty
+                    intent = rumination.intent or ""
+                    intent_preview = intent[:100] + "..." if len(intent) > 100 else intent
+
+                    status_text = f"*Using {faculty}:* {intent_preview}"
+
+                    # Avoid duplicate messages
+                    if status_text != last_status:
+                        last_status = status_text
+                        if status_message:
+                            # Edit existing status message
+                            try:
+                                await status_message.edit(content=status_text)
+                            except discord.errors.NotFound:
+                                status_message = await message.channel.send(status_text)
+                        else:
+                            status_message = await message.channel.send(status_text)
+
+        # Process through Clara's graph with typing indicator
         try:
-            result = await process_event(event)
+            async with message.channel.typing():
+                result = await process_event(event, on_status=on_status)
+
+            # Delete status message if we're about to send response
+            if status_message and result.get("response"):
+                try:
+                    await status_message.delete()
+                except discord.errors.NotFound:
+                    pass
 
             # Send response if we have one
             if result.get("response"):
@@ -75,7 +119,42 @@ class ClaraBot(commands.Bot):
         except Exception as e:
             logger.exception(f"[discord] Error processing event: {e}")
 
-    def _message_to_event(self, message: discord.Message) -> Event:
+    async def _fetch_history(
+        self, channel: discord.TextChannel, before: discord.Message
+    ) -> list[HistoricalMessage]:
+        """Fetch recent conversation history from the channel."""
+        history = []
+
+        try:
+            async for msg in channel.history(limit=HISTORY_LIMIT, before=before):
+                # Skip system messages
+                if msg.type != discord.MessageType.default:
+                    continue
+
+                is_clara = msg.author.id == self.clara_user_id
+                history.append(
+                    HistoricalMessage(
+                        author="Clara" if is_clara else msg.author.display_name,
+                        content=msg.content or "(attachment)",
+                        is_clara=is_clara,
+                        timestamp=msg.created_at,
+                    )
+                )
+
+            # Reverse to get chronological order (oldest first)
+            history.reverse()
+            logger.debug(f"[discord] Fetched {len(history)} messages of history")
+
+        except discord.errors.Forbidden:
+            logger.warning("[discord] No permission to fetch message history")
+        except Exception as e:
+            logger.error(f"[discord] Error fetching history: {e}")
+
+        return history
+
+    def _message_to_event(
+        self, message: discord.Message, history: list[HistoricalMessage] | None = None
+    ) -> Event:
         """Convert Discord message to normalized Event."""
 
         # Check if Clara was mentioned
@@ -115,6 +194,7 @@ class ClaraBot(commands.Bot):
             mentioned=mentioned,
             reply_to_clara=reply_to_clara,
             channel_mode=channel_mode,
+            conversation_history=history or [],
             metadata={
                 "message_type": str(message.type),
                 "jump_url": message.jump_url,

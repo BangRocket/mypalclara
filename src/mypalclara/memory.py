@@ -111,19 +111,47 @@ async def remember(
     category: Optional[str] = None,
     metadata: Optional[dict] = None,
 ):
-    """Store a memory."""
+    """Store a memory.
+
+    Maps to cortex's store() with:
+    - importance -> emotional_score
+    - category -> stored in metadata (memory_type is always episodic for now)
+    """
+    mem_metadata = metadata or {}
+    if category:
+        mem_metadata["category"] = category
+
     return await _get_manager().store(
         user_id=user_id,
         content=content,
-        importance=importance,
-        category=category,
-        metadata=metadata or {},
+        emotional_score=importance,
+        metadata=mem_metadata,
     )
 
 
 async def update_session(user_id: str, updates: dict):
     """Update session state."""
     return await _get_manager().update_session(user_id, updates)
+
+
+async def update_identity(user_id: str, content: str):
+    """
+    Store an identity fact about the user.
+
+    Identity facts are always loaded for the user and appear in
+    'What I know about this person' in prompts.
+
+    The content should be a fact like:
+    - "Name: John"
+    - "Works at: Acme Corp"
+    - "Prefers: formal communication"
+    """
+    # Generate a key from the content (use hash to keep keys short)
+    import hashlib
+    key = f"fact_{hashlib.md5(content.encode()).hexdigest()[:8]}"
+
+    logger.info(f"[memory] Storing identity fact for {user_id}: {content[:50]}...")
+    return await _get_manager().update_identity(user_id, key, content)
 
 
 async def initialize():

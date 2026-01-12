@@ -17,9 +17,10 @@ class CognitiveOutput(BaseModel):
     Types:
     - remember: Store as a memory (persisted in Cortex)
     - observe: Internal observation (may inform future behavior)
+    - identity: Core fact about this person (name, job, family, preferences)
     """
 
-    type: Literal["remember", "observe"]
+    type: Literal["remember", "observe", "identity"]
     content: str
     category: Optional[str] = None  # "fact", "preference", "pattern", etc.
     importance: float = Field(default=0.5, ge=0.0, le=1.0)

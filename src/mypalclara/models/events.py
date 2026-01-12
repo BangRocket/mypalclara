@@ -40,6 +40,15 @@ class Attachment(BaseModel):
     size: Optional[int] = None
 
 
+class HistoricalMessage(BaseModel):
+    """A message from conversation history."""
+
+    author: str
+    content: str
+    is_clara: bool = False
+    timestamp: Optional[datetime] = None
+
+
 class Event(BaseModel):
     """
     Normalized event from any source (Discord, scheduled, etc.).
@@ -67,6 +76,9 @@ class Event(BaseModel):
     mentioned: bool = False
     reply_to_clara: bool = False
     channel_mode: ChannelMode = ChannelMode.ASSISTANT
+
+    # Conversation history (recent messages for context)
+    conversation_history: list[HistoricalMessage] = Field(default_factory=list)
 
     # Raw data for debugging
     metadata: dict = Field(default_factory=dict)

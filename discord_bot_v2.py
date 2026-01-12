@@ -46,12 +46,23 @@ async def main():
 
     # Import after path setup
     from mypalclara.adapters.discord import run_bot
-    from mypalclara.cortex import cortex_manager
+    from mypalclara import memory
+    from mypalclara.metrics_server import (
+        start_metrics_server,
+        get_metrics_port,
+        is_metrics_enabled,
+    )
 
     # Initialize Cortex memory system
     logger.info("Initializing Cortex memory system...")
-    await cortex_manager.initialize()
+    await memory.initialize()
     logger.info("Cortex ready")
+
+    # Start metrics server (for Prometheus scraping)
+    if is_metrics_enabled():
+        port = get_metrics_port()
+        if start_metrics_server(port=port):
+            logger.info(f"Prometheus metrics available at http://localhost:{port}/metrics")
 
     # Start Discord bot
     logger.info("Starting Discord bot...")

@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     discord_bot_token: str = ""
     discord_client_id: str = ""
 
+    # Database (shared with api_service for OAuth tokens)
+    database_url: Optional[str] = None
+
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+    clara_api_url: str = ""
+
     # LLM
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-20250514"

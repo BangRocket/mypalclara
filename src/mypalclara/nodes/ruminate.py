@@ -28,7 +28,8 @@ from mypalclara.prompts.clara import (
 logger = logging.getLogger(__name__)
 
 # Max command iterations to prevent infinite loops
-MAX_COMMAND_ITERATIONS = 3
+# Should be high enough for multi-step tasks (get repo, get file, search, etc.)
+MAX_COMMAND_ITERATIONS = 8
 
 
 def _get_client() -> AsyncAnthropic:
@@ -110,7 +111,9 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         if memory_context.retrieved_memories:
             logger.debug("[ruminate]   Top semantic memories:")
             for mem in memory_context.retrieved_memories[:3]:
-                logger.debug(f"[ruminate]     • sim={mem.get('similarity', 0):.3f} | {mem.get('content', '')[:60]}...")
+                sim = mem.get('similarity') or 0
+                content = mem.get('content', '')[:60]
+                logger.debug(f"[ruminate]     • sim={sim:.3f} | {content}...")
 
         prompt = build_rumination_prompt(
             event=event,
@@ -203,6 +206,16 @@ def parse_rumination_response(text: str) -> RuminationResult:
                 type="observe",
                 content=observe_content,
                 importance=0.3,
+            )
+        )
+
+    identity_content = extract("identity")
+    if identity_content:
+        cognitive_outputs.append(
+            CognitiveOutput(
+                type="identity",
+                content=identity_content,
+                importance=0.8,  # Identity facts are high importance
             )
         )
 

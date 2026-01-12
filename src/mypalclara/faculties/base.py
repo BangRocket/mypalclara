@@ -31,6 +31,8 @@ class Faculty(ABC):
         self,
         intent: str,
         constraints: Optional[list[str]] = None,
+        user_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
     ) -> FacultyResult:
         """
         Execute Clara's intent using this faculty's skills.
@@ -38,6 +40,8 @@ class Faculty(ABC):
         Args:
             intent: What Clara is trying to accomplish
             constraints: Boundaries on the action (optional)
+            user_id: User ID for context-specific operations
+            channel_id: Channel ID for context-specific operations
 
         Returns:
             FacultyResult with success status, data, and summary

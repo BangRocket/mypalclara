@@ -54,6 +54,14 @@ async def finalize_node(state: ClaraState) -> ClaraState:
                     category="observation",
                     metadata={"type": "observe"},
                 )
+            elif output.type == "identity":
+                logger.info(f"[finalize] [{i}] IDENTITY: {output.content[:100]}...")
+                # Store as identity fact - this goes to Redis identity store
+                # which is always loaded for the user
+                await memory.update_identity(
+                    user_id=event.user_id,
+                    content=output.content,
+                )
     else:
         logger.debug("[finalize] No cognitive outputs to store")
 

@@ -76,8 +76,26 @@ def create_graph() -> StateGraph:
 clara_graph = create_graph()
 
 
-async def process_event(event) -> dict:
-    """Process an event through Clara's graph."""
+async def process_event(event, on_status=None) -> dict:
+    """
+    Process an event through Clara's graph.
+
+    Args:
+        event: The event to process
+        on_status: Optional async callback for status updates.
+                   Called with (node_name, state) when entering nodes.
+    """
     initial_state = ClaraState(event=event)
-    result = await clara_graph.ainvoke(initial_state)
-    return result
+
+    if on_status:
+        # Stream to get intermediate updates
+        result = None
+        async for state in clara_graph.astream(initial_state):
+            # state is a dict with node_name -> output
+            for node_name, node_output in state.items():
+                await on_status(node_name, node_output)
+                result = node_output
+        return result or {}
+    else:
+        # Simple invoke without status updates
+        return await clara_graph.ainvoke(initial_state)

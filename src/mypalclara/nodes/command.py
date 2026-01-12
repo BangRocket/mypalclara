@@ -47,10 +47,17 @@ async def command_node(state: ClaraState) -> ClaraState:
         }
 
     try:
-        # Execute Clara's intent
+        # Get user context from event
+        event = state.get("event")
+        user_id = event.user_id if event else "default"
+        channel_id = event.channel_id if event else None
+
+        # Execute Clara's intent with user context
         result = await faculty.execute(
             intent=intent or "",
             constraints=constraints,
+            user_id=user_id,
+            channel_id=channel_id,
         )
 
         logger.info(f"[command:{faculty_name}] Complete: {result.success}")

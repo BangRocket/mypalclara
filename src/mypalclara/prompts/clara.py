@@ -38,10 +38,15 @@ If using a capability:
 <faculty>github|browser|etc</faculty>
 <intent>What you're trying to accomplish</intent>
 
-If something worth remembering:
+If something worth remembering temporarily:
 <remember>
 What to store in memory.
 </remember>
+
+If you learn a core fact about this person (name, job, family, preferences, important dates):
+<identity>
+The fact in "key: value" format, e.g., "Name: John" or "Works at: Acme Corp"
+</identity>
 
 If something worth observing (pattern, question, note to self):
 <observe>
@@ -58,13 +63,62 @@ AVAILABLE_FACULTIES = """
 
 You can use these capabilities when needed:
 
-- **github**: Interact with GitHub repositories, issues, PRs, and code
-  - List/get/create issues
-  - List/get/create pull requests
-  - Search code
-  - Get file contents
+- **github**: Full GitHub API - repos, issues, PRs, code, releases, workflows
+  - List/get/create issues, PRs, releases
+  - Read/write files, search code
+  - Manage workflows and actions
 
-(More faculties will be added in future versions)
+- **browser**: Web search and browser automation
+  - Web search via Tavily (search, QnA, context for RAG)
+  - Extract content from multiple URLs
+  - Browse pages, take screenshots with Playwright
+  - Persistent browser sessions with login state
+
+- **code**: Code execution and autonomous coding
+  - Execute Python in Docker sandbox
+  - Run shell commands, manage files
+  - Delegate complex tasks to Claude Code
+  - **IMPORTANT**: Put actual code/commands in backticks. Examples:
+    - Python: "Run Python: `print('hello')`"
+    - Shell: "Shell command: `echo hello && ls -la`"
+    - Or use code blocks for multi-line code
+
+- **files**: File storage (local or S3/Wasabi cloud)
+  - Save, read, list, delete files
+  - Persists across sessions
+  - Transfer files to/from sandbox
+
+- **google**: Google Workspace integration (official SDK)
+  - Sheets: create, read, write, append, manage sheets
+  - Drive: list, upload, download, share, move, copy, rename, delete, search
+  - Docs: create, read, write, insert text
+  - Calendar: list events, create/update/delete events, list calendars, quick add
+  - **NOTE**: Calendar is part of google faculty, not a separate "calendar" faculty. Use `<faculty>google</faculty>` for all Google services including calendar.
+
+- **email**: Email monitoring and alerts
+  - Connect Gmail or IMAP accounts
+  - Configure alert rules and presets
+  - Set quiet hours and notifications
+
+- **ado**: Azure DevOps integration
+  - Projects, repos, branches, commits
+  - Work items, pipelines, builds
+  - Wiki, code search, iterations
+
+- **history**: Chat history search
+  - Search past messages
+  - Get messages from specific users
+  - Retrieve older conversations
+
+- **logs**: System logs access
+  - Search logs by keyword or level
+  - View recent errors and exceptions
+  - Debug issues
+
+- **discord**: Cross-channel messaging
+  - Send messages to other channels
+  - Create rich embeds
+  - List available channels
 """
 
 
@@ -74,6 +128,11 @@ def build_rumination_prompt(
     quick_context: QuickContext | None = None,
 ) -> str:
     """Build the prompt for Clara's rumination."""
+    from datetime import datetime
+
+    # Current date/time for temporal context
+    now = datetime.now()
+    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
 
     # Format memory context
     memory_section = ""
@@ -109,12 +168,24 @@ def build_rumination_prompt(
 
     context_str = f"({', '.join(context_indicators)})" if context_indicators else ""
 
+    # Build conversation history section
+    history_section = ""
+    if event.conversation_history:
+        history_section = "## Recent Conversation\n\n"
+        for msg in event.conversation_history[-15:]:  # Last 15 messages
+            prefix = "**Clara:**" if msg.is_clara else f"**{msg.author}:**"
+            # Truncate long messages
+            content = msg.content[:500] + "..." if len(msg.content) > 500 else msg.content
+            history_section += f"{prefix} {content}\n\n"
+
     # Build prompt
     prompt = f"""## Context
 
+**Current time:** {date_str}
+
 {memory_section if memory_section else "I don't have much context about this person yet."}
 
-## Current Message
+{history_section}## Current Message
 
 From: {event.user_name}
 Channel: {"DM" if event.is_dm else f"#{event.channel_id}"}
@@ -140,6 +211,29 @@ def build_continuation_prompt(
 ) -> str:
     """Build prompt for continuing after faculty execution."""
 
+    # Format memory context (same as build_rumination_prompt)
+    memory_section = ""
+
+    if memory.identity_facts:
+        memory_section += "What I know about this person:\n"
+        for fact in memory.identity_facts:
+            memory_section += f"- {fact}\n"
+        memory_section += "\n"
+
+    if memory.working_memories:
+        memory_section += "Recent context (what's fresh in mind):\n"
+        for mem in memory.working_memories[:5]:
+            content = mem.get("content", mem) if isinstance(mem, dict) else mem
+            memory_section += f"- {content}\n"
+        memory_section += "\n"
+
+    if memory.retrieved_memories:
+        memory_section += "Relevant memories:\n"
+        for mem in memory.retrieved_memories[:5]:
+            content = mem.get("content", mem) if isinstance(mem, dict) else mem
+            memory_section += f"- {content}\n"
+        memory_section += "\n"
+
     return f"""You asked to use a capability and here's what happened:
 
 ## Faculty Result
@@ -151,6 +245,10 @@ Summary: {faculty_result.summary}
 
 Raw data (if needed):
 {faculty_result.data}
+
+## Memory Context
+
+{memory_section if memory_section else "I don't have much context about this person yet."}
 
 ## Original Context
 
