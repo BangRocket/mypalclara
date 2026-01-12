@@ -1,17 +1,32 @@
+// Fleet management - Grafana Cloud manages remote write config
+remotecfg {
+  url = env("GCLOUD_FM_URL")
+  id = env("GCLOUD_FM_HOSTED_ID")
+  poll_frequency = env("GCLOUD_FM_POLL_FREQUENCY")
+
+  basic_auth {
+    username = env("GCLOUD_FM_HOSTED_ID")
+    password = env("GCLOUD_RW_API_KEY")
+  }
+}
+
+// Scrape Clara's Discord bot metrics
 prometheus.scrape "clara" {
   targets = [{
     __address__ = env("METRICS_TARGET"),
   }]
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
   scrape_interval = "60s"
+  job_name = "clara-discord"
 }
 
+// Push to Grafana Cloud
 prometheus.remote_write "grafana_cloud" {
   endpoint {
-    url = env("GRAFANA_REMOTE_WRITE_URL")
+    url = env("GCLOUD_HOSTED_METRICS_URL")
     basic_auth {
-      username = env("GRAFANA_CLOUD_USER")
-      password = env("GRAFANA_CLOUD_API_KEY")
+      username = env("GCLOUD_HOSTED_METRICS_ID")
+      password = env("GCLOUD_RW_API_KEY")
     }
   }
 }

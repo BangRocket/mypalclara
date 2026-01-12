@@ -2,22 +2,23 @@
 
 Scrapes Prometheus metrics from the Discord bot and pushes to Grafana Cloud.
 
-## Setup
+## Railway Environment Variables
 
-### 1. Deploy to Railway
-
-1. Create a new service in Railway from this directory
-2. Set root directory to `grafana_agent`
-3. Set environment variables:
+Set these on the grafana-agent Railway service:
 
 | Variable | Value |
 |----------|-------|
-| `GRAFANA_REMOTE_WRITE_URL` | `https://prometheus-prod-56-prod-us-east-2.grafana.net/api/prom/push` |
-| `GRAFANA_CLOUD_USER` | `2910401` |
-| `GRAFANA_CLOUD_API_KEY` | Your API key |
+| `GCLOUD_HOSTED_METRICS_ID` | `2910401` |
+| `GCLOUD_HOSTED_METRICS_URL` | `https://prometheus-prod-56-prod-us-east-2.grafana.net/api/prom/push` |
+| `GCLOUD_HOSTED_LOGS_ID` | `1450877` |
+| `GCLOUD_HOSTED_LOGS_URL` | `https://logs-prod-036.grafana.net/loki/api/v1/push` |
+| `GCLOUD_FM_URL` | `https://fleet-management-prod-008.grafana.net` |
+| `GCLOUD_FM_POLL_FREQUENCY` | `60s` |
+| `GCLOUD_FM_HOSTED_ID` | `1493084` |
+| `GCLOUD_RW_API_KEY` | Your API key |
 | `METRICS_TARGET` | `discord.railway.internal:9090` |
 
-### 2. Verify
+## Verify
 
 1. Check Railway logs for successful scrapes
 2. In Grafana Cloud, go to **Explore** → select your Prometheus datasource
