@@ -129,10 +129,17 @@ def build_rumination_prompt(
 ) -> str:
     """Build the prompt for Clara's rumination."""
     from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    # Current date/time for temporal context
-    now = datetime.now()
-    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
+    from mypalclara.config.settings import settings
+
+    # Current date/time for temporal context (in configured timezone)
+    try:
+        tz = ZoneInfo(settings.timezone)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p %Z")
 
     # Format memory context
     memory_section = ""

@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # MCP (for faculties)
     mcp_github_token: Optional[str] = None
 
+    # Timezone for datetime display (IANA timezone name)
+    timezone: str = "America/New_York"
+
     # Feature flags
     evaluate_use_llm: bool = False  # Use LLM in Evaluate (not recommended)
     ors_enabled: bool = True  # Organic Response System
