@@ -1,5 +1,4 @@
-# Discord Bot Dockerfile for MyPalClara
-# For local development with docker-compose
+# Discord Bot Dockerfile for MyPalClara v0.8.0 (LangGraph Architecture)
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -8,6 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    git \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,30 +23,31 @@ RUN poetry config virtualenvs.create false
 # Install dependencies (production only)
 RUN poetry install --only main --no-interaction --no-ansi
 
-# Install Playwright browsers and dependencies
-RUN playwright install chromium --with-deps
+# Install Playwright browsers and dependencies (optional, for browser faculty)
+RUN playwright install chromium --with-deps || true
 
 # Copy application code
-COPY *.py ./
-COPY clara_core/ ./clara_core/
-COPY config/ ./config/
-COPY db/ ./db/
-COPY sandbox/ ./sandbox/
-COPY storage/ ./storage/
-COPY tools/ ./tools/
-COPY email_service/ ./email_service/
-COPY vendor/ ./vendor/
+COPY discord_bot_v2.py ./
+COPY src/ ./src/
 COPY personalities/ ./personalities/
 COPY scripts/ ./scripts/
-COPY VERSION ./
+
+# Clone Cortex (submodule not available in Railway builds)
+RUN git clone --depth 1 https://github.com/BangRocket/cortex.git lib/cortex
+
+# Copy VERSION if it exists
+COPY VERSION* ./
 
 # Create directories for persistent data
 RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
 ENV CLARA_FILES_DIR=/app/clara_files
 
-# Expose monitor dashboard port
-EXPOSE 8001
+# Add src to Python path
+ENV PYTHONPATH=/app/src:/app/lib/cortex/src:$PYTHONPATH
 
-# Run the Discord bot
-CMD ["python", "discord_bot.py"]
+# Expose ports (metrics + monitor)
+EXPOSE 8001 9090
+
+# Run the Discord bot (v2 LangGraph architecture)
+CMD ["python", "discord_bot_v2.py"]
