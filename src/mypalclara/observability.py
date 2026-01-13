@@ -1,32 +1,30 @@
 """
-Observability - Direct export of traces and metrics to Grafana Cloud.
+Observability - OpenTelemetry traces and metrics.
 
-No collector needed - exports directly via OTLP to Grafana Cloud.
+Supports two modes:
+1. Via Alloy/Collector: Set OTEL_EXPORTER_ENDPOINT to send to a local collector
+2. Direct to Grafana Cloud: Set GRAFANA_* vars for direct export
 
 Usage:
     from mypalclara.observability import init_observability, get_tracer, get_meter
 
-    # Initialize at startup (once)
     init_observability()
 
-    # Create traces
     tracer = get_tracer(__name__)
-    with tracer.start_as_current_span("my-operation") as span:
-        span.set_attribute("key", "value")
-
-    # Create metrics
-    meter = get_meter(__name__)
-    counter = meter.create_counter("my_counter")
-    counter.add(1, {"label": "value"})
+    with tracer.start_as_current_span("my-operation"):
+        pass
 
 Environment Variables:
-    GRAFANA_OTLP_ENDPOINT: Grafana Cloud OTLP endpoint (required)
-    GRAFANA_INSTANCE_ID: Grafana Cloud instance ID (required)
-    GRAFANA_API_KEY: Grafana Cloud API key (required)
+    OTEL_ENABLED: Enable observability (default: true)
+    OTEL_EXPORTER_ENDPOINT: OTLP endpoint (e.g., http://alloy.railway.internal:4317)
     OTEL_SERVICE_NAME: Service name (default: clara-discord)
     OTEL_SERVICE_NAMESPACE: Namespace (default: mypalclara)
     OTEL_DEPLOYMENT_ENV: Environment (default: production)
-    OTEL_ENABLED: Enable observability (default: true)
+
+    For direct Grafana Cloud export (if OTEL_EXPORTER_ENDPOINT not set):
+    GRAFANA_OTLP_ENDPOINT: Grafana Cloud OTLP endpoint
+    GRAFANA_INSTANCE_ID: Instance ID for auth
+    GRAFANA_API_KEY: API key for auth
 """
 
 import base64
@@ -42,7 +40,7 @@ _meter = None
 
 def init_observability() -> bool:
     """
-    Initialize OpenTelemetry with direct export to Grafana Cloud.
+    Initialize OpenTelemetry with OTLP export.
 
     Returns:
         True if initialized successfully, False otherwise
@@ -59,18 +57,83 @@ def init_observability() -> bool:
         _init_noop()
         return False
 
-    # Check for required Grafana Cloud config
-    endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
-    instance_id = os.environ.get("GRAFANA_INSTANCE_ID")
-    api_key = os.environ.get("GRAFANA_API_KEY")
+    # Determine export mode
+    otel_endpoint = os.environ.get("OTEL_EXPORTER_ENDPOINT")
+    grafana_endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
+    grafana_instance = os.environ.get("GRAFANA_INSTANCE_ID")
+    grafana_key = os.environ.get("GRAFANA_API_KEY")
 
-    if not all([endpoint, instance_id, api_key]):
+    if otel_endpoint:
+        # Mode 1: Export to local collector (Alloy)
+        return _init_with_collector(otel_endpoint)
+    elif grafana_endpoint and grafana_instance and grafana_key:
+        # Mode 2: Direct export to Grafana Cloud
+        return _init_direct_grafana(grafana_endpoint, grafana_instance, grafana_key)
+    else:
         logger.warning(
-            "Grafana Cloud not configured (missing GRAFANA_OTLP_ENDPOINT, "
-            "GRAFANA_INSTANCE_ID, or GRAFANA_API_KEY). Observability disabled."
+            "Observability not configured. Set OTEL_EXPORTER_ENDPOINT for Alloy, "
+            "or GRAFANA_OTLP_ENDPOINT + GRAFANA_INSTANCE_ID + GRAFANA_API_KEY for direct export."
         )
         _init_noop()
         return False
+
+
+def _init_with_collector(endpoint: str) -> bool:
+    """Initialize with a local OTLP collector (Alloy)."""
+    global _initialized, _tracer, _meter
+
+    try:
+        from opentelemetry import metrics, trace
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+            OTLPMetricExporter,
+        )
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError as e:
+        logger.warning(f"OpenTelemetry packages not installed: {e}")
+        _init_noop()
+        return False
+
+    try:
+        resource = _create_resource()
+
+        # Traces via gRPC
+        trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+        trace_provider = TracerProvider(resource=resource)
+        trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+        trace.set_tracer_provider(trace_provider)
+
+        # Metrics via gRPC
+        metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
+        metric_reader = PeriodicExportingMetricReader(
+            metric_exporter, export_interval_millis=60000
+        )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+        metrics.set_meter_provider(meter_provider)
+
+        _tracer = trace.get_tracer(__name__)
+        _meter = metrics.get_meter(__name__)
+        _initialized = True
+
+        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
+        logger.info(f"Observability initialized via collector: {endpoint} (service={service_name})")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to initialize observability: {e}")
+        _init_noop()
+        return False
+
+
+def _init_direct_grafana(endpoint: str, instance_id: str, api_key: str) -> bool:
+    """Initialize with direct export to Grafana Cloud."""
+    global _initialized, _tracer, _meter
 
     try:
         from opentelemetry import metrics, trace
@@ -91,65 +154,59 @@ def init_observability() -> bool:
         return False
 
     try:
-        # Get service configuration
-        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-        service_namespace = os.environ.get("OTEL_SERVICE_NAMESPACE", "mypalclara")
-        deployment_env = os.environ.get("OTEL_DEPLOYMENT_ENV", "production")
+        resource = _create_resource()
 
-        # Create resource with attributes Grafana Cloud expects
-        resource = Resource.create({
-            "service.name": service_name,
-            "service.namespace": service_namespace,
-            "deployment.environment": deployment_env,
-            "service.version": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:8],
-        })
-
-        # Build auth header for Grafana Cloud
-        # Format: Basic base64(instance_id:api_key)
+        # Build auth header
         auth_string = f"{instance_id}:{api_key}"
         auth_bytes = base64.b64encode(auth_string.encode()).decode()
         headers = {"Authorization": f"Basic {auth_bytes}"}
 
-        # Initialize Traces
+        # Traces via HTTP
         trace_exporter = OTLPSpanExporter(
-            endpoint=f"{endpoint}/v1/traces",
-            headers=headers,
+            endpoint=f"{endpoint}/v1/traces", headers=headers
         )
         trace_provider = TracerProvider(resource=resource)
         trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
         trace.set_tracer_provider(trace_provider)
 
-        # Initialize Metrics
+        # Metrics via HTTP
         metric_exporter = OTLPMetricExporter(
-            endpoint=f"{endpoint}/v1/metrics",
-            headers=headers,
+            endpoint=f"{endpoint}/v1/metrics", headers=headers
         )
         metric_reader = PeriodicExportingMetricReader(
-            metric_exporter,
-            export_interval_millis=60000,  # Export every 60 seconds
+            metric_exporter, export_interval_millis=60000
         )
-        meter_provider = MeterProvider(
-            resource=resource,
-            metric_readers=[metric_reader],
-        )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
 
-        # Store references
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
 
-        logger.info(
-            f"Observability initialized: service={service_name}, "
-            f"namespace={service_namespace}, env={deployment_env}, "
-            f"endpoint={endpoint}"
-        )
+        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
+        logger.info(f"Observability initialized direct to Grafana: {endpoint} (service={service_name})")
         return True
 
     except Exception as e:
         logger.error(f"Failed to initialize observability: {e}")
         _init_noop()
         return False
+
+
+def _create_resource():
+    """Create OpenTelemetry resource with service attributes."""
+    from opentelemetry.sdk.resources import Resource
+
+    service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
+    service_namespace = os.environ.get("OTEL_SERVICE_NAMESPACE", "mypalclara")
+    deployment_env = os.environ.get("OTEL_DEPLOYMENT_ENV", "production")
+
+    return Resource.create({
+        "service.name": service_name,
+        "service.namespace": service_namespace,
+        "deployment.environment": deployment_env,
+        "service.version": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:8],
+    })
 
 
 def _init_noop():
@@ -179,9 +236,15 @@ def get_meter(name: str = __name__):
 
 def is_enabled() -> bool:
     """Check if observability is enabled and configured."""
-    return (
-        os.environ.get("OTEL_ENABLED", "true").lower() in ("true", "1", "yes")
-        and os.environ.get("GRAFANA_OTLP_ENDPOINT")
-        and os.environ.get("GRAFANA_INSTANCE_ID")
-        and os.environ.get("GRAFANA_API_KEY")
-    )
+    if os.environ.get("OTEL_ENABLED", "true").lower() not in ("true", "1", "yes"):
+        return False
+
+    # Either collector or direct Grafana
+    has_collector = bool(os.environ.get("OTEL_EXPORTER_ENDPOINT"))
+    has_grafana = all([
+        os.environ.get("GRAFANA_OTLP_ENDPOINT"),
+        os.environ.get("GRAFANA_INSTANCE_ID"),
+        os.environ.get("GRAFANA_API_KEY"),
+    ])
+
+    return has_collector or has_grafana

@@ -64,10 +64,11 @@ google-auth-httplib2 = "^0.2.0"
 # S3/Wasabi cloud storage
 boto3 = "^1.35.0"
 
-# OpenTelemetry (direct export to Grafana Cloud)
+# OpenTelemetry
 opentelemetry-api = "^1.29.0"
 opentelemetry-sdk = "^1.29.0"
 opentelemetry-exporter-otlp-proto-http = "^1.29.0"
+opentelemetry-exporter-otlp-proto-grpc = "^1.29.0"
 opentelemetry-instrumentation-httpx = "^0.50b0"
 opentelemetry-instrumentation-sqlalchemy = "^0.50b0"
 
