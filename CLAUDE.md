@@ -648,38 +648,21 @@ psql $DATABASE_URL < clara_YYYYMMDD_HHMMSS.sql
 
 ### Observability (Metrics & Tracing)
 
-OpenTelemetry-based observability with metrics and distributed tracing, exported to Grafana Cloud.
+OpenTelemetry-based observability with direct export to Grafana Cloud. No collector service needed.
 
-**Location:** `otel_collector/`
-
-**Architecture:**
-- Discord bot exposes Prometheus metrics on port 9090
-- Discord bot sends OTLP traces to the collector
-- OTEL collector scrapes metrics and receives traces
-- OTEL collector exports both to Grafana Cloud
-
-**Discord Bot Environment Variables:**
-- `METRICS_ENABLED` - Enable Prometheus metrics (default: true)
-- `METRICS_PORT` - Prometheus metrics port (default: 9090)
-- `OTEL_ENABLED` - Enable OpenTelemetry tracing (default: true)
-- `OTEL_SERVICE_NAME` - Service name for traces (default: clara-discord)
-- `OTEL_SERVICE_NAMESPACE` - Service namespace (default: mypalclara)
-- `OTEL_DEPLOYMENT_ENV` - Deployment environment (default: production)
-- `OTEL_EXPORTER_ENDPOINT` - OTLP collector endpoint (default: http://localhost:4317)
-
-**OTEL Collector Environment Variables:**
-- `METRICS_TARGET` - Discord bot metrics endpoint (e.g., discord.railway.internal:9090)
-- `OTEL_EXPORTER_OTLP_ENDPOINT` - Grafana Cloud OTLP endpoint
+**Environment Variables:**
+- `GRAFANA_OTLP_ENDPOINT` - Grafana Cloud OTLP endpoint (e.g., `https://otlp-gateway-prod-us-east-2.grafana.net/otlp`)
 - `GRAFANA_INSTANCE_ID` - Grafana Cloud instance ID
 - `GRAFANA_API_KEY` - Grafana Cloud API key
-- `OTEL_SERVICE_NAMESPACE` - Service namespace (default: mypalclara)
-- `OTEL_DEPLOYMENT_ENV` - Deployment environment (default: production)
+- `OTEL_ENABLED` - Enable observability (default: true)
+- `OTEL_SERVICE_NAME` - Service name (default: clara-discord)
+- `OTEL_SERVICE_NAMESPACE` - Namespace (default: mypalclara)
+- `OTEL_DEPLOYMENT_ENV` - Environment (default: production)
 
-**Railway Deployment:**
-1. Create new service from `otel_collector/` directory
-2. Set root directory to `otel_collector`
-3. Set environment variables (GRAFANA_API_KEY as secret)
-4. On Discord bot, set `OTEL_EXPORTER_ENDPOINT=http://otel-collector.railway.internal:4317`
+**Setup:**
+1. Get OTLP endpoint from Grafana Cloud (Connections → Add new connection → OpenTelemetry)
+2. Create an API key with MetricsPublisher and TracesPublisher permissions
+3. Set the environment variables on the Discord bot service
 
 **Grafana Cloud Test Query:**
 ```

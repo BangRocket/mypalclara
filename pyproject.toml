@@ -63,12 +63,11 @@ google-auth-httplib2 = "^0.2.0"
 
 # S3/Wasabi cloud storage
 boto3 = "^1.35.0"
-prometheus-client = "^0.23.1"
 
-# OpenTelemetry tracing
+# OpenTelemetry (direct export to Grafana Cloud)
 opentelemetry-api = "^1.29.0"
 opentelemetry-sdk = "^1.29.0"
-opentelemetry-exporter-otlp = "^1.29.0"
+opentelemetry-exporter-otlp-proto-http = "^1.29.0"
 opentelemetry-instrumentation-httpx = "^0.50b0"
 opentelemetry-instrumentation-sqlalchemy = "^0.50b0"
 

@@ -47,30 +47,19 @@ async def main():
     # Import after path setup
     from mypalclara.adapters.discord import run_bot
     from mypalclara import memory
-    from mypalclara.metrics_server import (
-        start_metrics_server,
-        get_metrics_port,
-        is_metrics_enabled,
-    )
-    from mypalclara.tracing import init_tracing, is_tracing_enabled, get_otel_endpoint
+    from mypalclara.observability import init_observability, is_enabled as observability_enabled
 
-    # Initialize OpenTelemetry tracing
-    if is_tracing_enabled():
-        if init_tracing():
-            logger.info(f"OpenTelemetry tracing enabled, exporting to {get_otel_endpoint()}")
+    # Initialize observability (traces + metrics direct to Grafana Cloud)
+    if observability_enabled():
+        if init_observability():
+            logger.info("Observability enabled (direct export to Grafana Cloud)")
     else:
-        logger.info("OpenTelemetry tracing disabled")
+        logger.info("Observability disabled (set GRAFANA_* env vars to enable)")
 
     # Initialize Cortex memory system
     logger.info("Initializing Cortex memory system...")
     await memory.initialize()
     logger.info("Cortex ready")
-
-    # Start metrics server (for Prometheus scraping)
-    if is_metrics_enabled():
-        port = get_metrics_port()
-        if start_metrics_server(port=port):
-            logger.info(f"Prometheus metrics available at http://localhost:{port}/metrics")
 
     # Start Discord bot
     logger.info("Starting Discord bot...")

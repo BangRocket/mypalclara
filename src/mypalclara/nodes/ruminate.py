@@ -24,7 +24,7 @@ from mypalclara.prompts.clara import (
     build_continuation_prompt,
     build_rumination_prompt,
 )
-from mypalclara.tracing import get_tracer
+from mypalclara.observability import get_tracer
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer(__name__)
