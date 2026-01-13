@@ -177,8 +177,22 @@ def build_rumination_prompt(
         context_indicators.append("They mentioned me directly")
     if event.reply_to_clara:
         context_indicators.append("This is a reply to something I said")
+    if event.is_continuation:
+        context_indicators.append("AUTO-CONTINUE: Following up on what I said I'd do")
 
     context_str = f"({', '.join(context_indicators)})" if context_indicators else ""
+
+    # Continuation prompt addition
+    continuation_section = ""
+    if event.is_continuation and event.continuation_context:
+        continuation_section = f"""
+## AUTO-CONTINUE MODE
+
+You just told the user you would: **{event.continuation_context}**
+
+Now actually do it. Use a faculty/capability to accomplish this task, then report back.
+Don't say "let me do X" again - just do it now.
+"""
 
     # Build attachments section (non-image files listed here; images passed separately)
     attachments_section = ""
@@ -226,12 +240,12 @@ Channel: {"DM" if event.is_dm else f"#{event.channel_id}"}
 
 Message:
 {event.content or "(no text, see attachments)"}{attachments_section}
-
+{continuation_section}
 {AVAILABLE_FACULTIES}
 
 ## Your Turn
 
-Think about what {event.user_name} needs. Then decide: respond directly, use a capability, or wait.
+{"Execute the task you said you'd do." if event.is_continuation else f"Think about what {event.user_name} needs. Then decide: respond directly, use a capability, or wait."}
 """
 
     return prompt
