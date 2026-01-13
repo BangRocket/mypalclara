@@ -50,13 +50,16 @@ def init_observability() -> bool:
     """
     global _initialized, _tracer, _meter
 
+    # Use print for guaranteed output (logging might not be set up yet)
+    print("[observability] init_observability() called", flush=True)
+
     if _initialized:
-        logger.debug("Observability already initialized")
+        print("[observability] Already initialized, returning True", flush=True)
         return True
 
     # Check if enabled
     if os.environ.get("OTEL_ENABLED", "true").lower() not in ("true", "1", "yes"):
-        logger.info("Observability disabled via OTEL_ENABLED=false")
+        print("[observability] Disabled via OTEL_ENABLED=false", flush=True)
         _init_noop()
         return False
 
@@ -66,10 +69,10 @@ def init_observability() -> bool:
     grafana_instance = os.environ.get("GRAFANA_INSTANCE_ID")
     grafana_key = os.environ.get("GRAFANA_API_KEY")
 
-    logger.info(f"[observability] OTEL_EXPORTER_ENDPOINT={otel_endpoint or '(not set)'}")
-    logger.info(f"[observability] GRAFANA_OTLP_ENDPOINT={grafana_endpoint or '(not set)'}")
-    logger.info(f"[observability] GRAFANA_INSTANCE_ID={grafana_instance or '(not set)'}")
-    logger.info(f"[observability] GRAFANA_API_KEY={'***' if grafana_key else '(not set)'}")
+    print(f"[observability] OTEL_EXPORTER_ENDPOINT={otel_endpoint or '(not set)'}", flush=True)
+    print(f"[observability] GRAFANA_OTLP_ENDPOINT={grafana_endpoint or '(not set)'}", flush=True)
+    print(f"[observability] GRAFANA_INSTANCE_ID={grafana_instance or '(not set)'}", flush=True)
+    print(f"[observability] GRAFANA_API_KEY={'***' if grafana_key else '(not set)'}", flush=True)
 
     if otel_endpoint:
         # Mode 1: Export to local collector (Alloy)
@@ -90,7 +93,10 @@ def _init_with_collector(endpoint: str) -> bool:
     """Initialize with a local OTLP collector (Alloy)."""
     global _initialized, _tracer, _meter
 
+    print(f"[observability] _init_with_collector({endpoint})", flush=True)
+
     try:
+        print("[observability] Importing opentelemetry packages...", flush=True)
         from opentelemetry import metrics, trace
         from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
             OTLPMetricExporter,
@@ -102,8 +108,9 @@ def _init_with_collector(endpoint: str) -> bool:
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        print("[observability] Imports successful", flush=True)
     except ImportError as e:
-        logger.error(f"OpenTelemetry packages not installed: {e}")
+        print(f"[observability] ERROR: OpenTelemetry packages not installed: {e}", flush=True)
         _init_noop()
         return False
 
