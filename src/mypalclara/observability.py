@@ -1,5 +1,5 @@
 """
-Observability - OpenTelemetry traces and metrics.
+Observability - OpenTelemetry traces, metrics, and logs.
 
 Supports two modes:
 1. Via Alloy/Collector: Set OTEL_EXPORTER_ENDPOINT to send to a local collector
@@ -14,12 +14,15 @@ Usage:
     with tracer.start_as_current_span("my-operation"):
         pass
 
+    # Logs are automatically captured from Python's logging module
+
 Environment Variables:
     OTEL_ENABLED: Enable observability (default: true)
     OTEL_EXPORTER_ENDPOINT: OTLP endpoint (e.g., http://alloy.railway.internal:4317)
     OTEL_SERVICE_NAME: Service name (default: clara-discord)
     OTEL_SERVICE_NAMESPACE: Namespace (default: mypalclara)
     OTEL_DEPLOYMENT_ENV: Environment (default: production)
+    OTEL_LOG_LEVEL: Minimum log level to export (default: INFO)
 
     For direct Grafana Cloud export (if OTEL_EXPORTER_ENDPOINT not set):
     GRAFANA_OTLP_ENDPOINT: Grafana Cloud OTLP endpoint
@@ -95,11 +98,17 @@ def _init_with_collector(endpoint: str) -> bool:
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
             OTLPSpanExporter,
         )
+        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
+            OTLPLogExporter,
+        )
         from opentelemetry.sdk.metrics import MeterProvider
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry._logs import set_logger_provider
     except ImportError as e:
         logger.warning(f"OpenTelemetry packages not installed: {e}")
         _init_noop()
@@ -122,12 +131,23 @@ def _init_with_collector(endpoint: str) -> bool:
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
 
+        # Logs via gRPC
+        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
+        logger_provider = LoggerProvider(resource=resource)
+        logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+        set_logger_provider(logger_provider)
+
+        # Attach OTEL handler to Python's root logger
+        log_level = getattr(logging, os.environ.get("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO)
+        otel_handler = LoggingHandler(level=log_level, logger_provider=logger_provider)
+        logging.getLogger().addHandler(otel_handler)
+
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
 
         service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-        logger.info(f"Observability initialized via collector: {endpoint} (service={service_name})")
+        logger.info(f"Observability initialized via collector: {endpoint} (service={service_name}, logs={log_level})")
         return True
 
     except Exception as e:

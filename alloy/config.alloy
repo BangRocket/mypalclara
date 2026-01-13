@@ -2,7 +2,7 @@
 // Receives OTLP from Discord bot, exports to Grafana Cloud
 
 // =============================================================================
-// OTLP Receiver - accepts traces and metrics from Discord bot
+// OTLP Receiver - accepts traces, metrics, and logs from Discord bot
 // =============================================================================
 otelcol.receiver.otlp "default" {
   grpc {
@@ -15,6 +15,7 @@ otelcol.receiver.otlp "default" {
   output {
     metrics = [otelcol.processor.batch.default.input]
     traces  = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
   }
 }
 
@@ -25,6 +26,7 @@ otelcol.processor.batch "default" {
   output {
     metrics = [otelcol.exporter.otlphttp.grafana.input]
     traces  = [otelcol.exporter.otlphttp.grafana.input]
+    logs    = [otelcol.exporter.otlphttp.grafana.input]
   }
 }
 
