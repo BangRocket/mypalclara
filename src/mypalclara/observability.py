@@ -63,6 +63,11 @@ def init_observability() -> bool:
     grafana_instance = os.environ.get("GRAFANA_INSTANCE_ID")
     grafana_key = os.environ.get("GRAFANA_API_KEY")
 
+    logger.info(f"[observability] OTEL_EXPORTER_ENDPOINT={otel_endpoint or '(not set)'}")
+    logger.info(f"[observability] GRAFANA_OTLP_ENDPOINT={grafana_endpoint or '(not set)'}")
+    logger.info(f"[observability] GRAFANA_INSTANCE_ID={grafana_instance or '(not set)'}")
+    logger.info(f"[observability] GRAFANA_API_KEY={'***' if grafana_key else '(not set)'}")
+
     if otel_endpoint:
         # Mode 1: Export to local collector (Alloy)
         return _init_with_collector(otel_endpoint)
