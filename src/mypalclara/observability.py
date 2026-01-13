@@ -98,60 +98,78 @@ def _init_with_collector(endpoint: str) -> bool:
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
             OTLPSpanExporter,
         )
-        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
-            OTLPLogExporter,
-        )
         from opentelemetry.sdk.metrics import MeterProvider
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-        from opentelemetry._logs import set_logger_provider
     except ImportError as e:
-        logger.warning(f"OpenTelemetry packages not installed: {e}")
+        logger.error(f"OpenTelemetry packages not installed: {e}")
         _init_noop()
         return False
 
+    # Optional: try to import log exporter (may not be available)
+    log_exporter = None
+    try:
+        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry._logs import set_logger_provider
+        log_exporter = True  # Mark as available
+    except ImportError as e:
+        logger.warning(f"OTLP log exporter not available, logs won't be exported: {e}")
+
     try:
         resource = _create_resource()
+        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
 
         # Traces via gRPC
+        logger.info(f"[observability] Setting up trace exporter to {endpoint}")
         trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
         trace_provider = TracerProvider(resource=resource)
         trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
         trace.set_tracer_provider(trace_provider)
+        logger.info("[observability] Trace provider configured")
 
         # Metrics via gRPC
+        logger.info(f"[observability] Setting up metric exporter to {endpoint}")
         metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
         metric_reader = PeriodicExportingMetricReader(
             metric_exporter, export_interval_millis=60000
         )
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
+        logger.info("[observability] Metric provider configured")
 
-        # Logs via gRPC
-        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
-        logger_provider = LoggerProvider(resource=resource)
-        logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-        set_logger_provider(logger_provider)
+        # Logs via gRPC (if available)
+        if log_exporter:
+            try:
+                from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+                from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+                from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+                from opentelemetry._logs import set_logger_provider
 
-        # Attach OTEL handler to Python's root logger
-        log_level = getattr(logging, os.environ.get("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO)
-        otel_handler = LoggingHandler(level=log_level, logger_provider=logger_provider)
-        logging.getLogger().addHandler(otel_handler)
+                logger.info(f"[observability] Setting up log exporter to {endpoint}")
+                log_exp = OTLPLogExporter(endpoint=endpoint, insecure=True)
+                logger_provider = LoggerProvider(resource=resource)
+                logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exp))
+                set_logger_provider(logger_provider)
+
+                log_level = getattr(logging, os.environ.get("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO)
+                otel_handler = LoggingHandler(level=log_level, logger_provider=logger_provider)
+                logging.getLogger().addHandler(otel_handler)
+                logger.info(f"[observability] Log provider configured (level={log_level})")
+            except Exception as e:
+                logger.warning(f"[observability] Failed to set up log exporter: {e}")
 
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
 
-        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-        logger.info(f"Observability initialized via collector: {endpoint} (service={service_name}, logs={log_level})")
+        logger.info(f"[observability] ✓ Initialized via collector: {endpoint} (service={service_name})")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to initialize observability: {e}")
+        logger.error(f"[observability] Failed to initialize: {e}", exc_info=True)
         _init_noop()
         return False
 
