@@ -1,9 +1,5 @@
 """
-Observability - OpenTelemetry traces, metrics, and logs.
-
-Supports two modes:
-1. Via Alloy/Collector: Set OTEL_EXPORTER_ENDPOINT to send to a local collector
-2. Direct to Grafana Cloud: Set GRAFANA_* vars for direct export
+Observability - OpenTelemetry traces, metrics, and logs via Axiom.
 
 Usage:
     from mypalclara.observability import init_observability, get_tracer, get_meter
@@ -14,53 +10,47 @@ Usage:
     with tracer.start_as_current_span("my-operation"):
         pass
 
-    # Logs are automatically captured from Python's logging module
-
 Environment Variables:
+    AXIOM_TOKEN: Axiom API token (required)
+    AXIOM_DATASET: Dataset name (default: clara)
     OTEL_ENABLED: Enable observability (default: true)
-    OTEL_EXPORTER_ENDPOINT: OTLP endpoint (e.g., http://alloy.railway.internal:4317)
     OTEL_SERVICE_NAME: Service name (default: clara-discord)
-    OTEL_SERVICE_NAMESPACE: Namespace (default: mypalclara)
-    OTEL_DEPLOYMENT_ENV: Environment (default: production)
     OTEL_LOG_LEVEL: Minimum log level to export (default: INFO)
-
-    For direct Grafana Cloud export (if OTEL_EXPORTER_ENDPOINT not set):
-    GRAFANA_OTLP_ENDPOINT: Grafana Cloud OTLP endpoint
-    GRAFANA_INSTANCE_ID: Instance ID for auth
-    GRAFANA_API_KEY: API key for auth
 """
 
-import base64
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
 _initialized = False
-_noop_initialized = False  # Track if we're in noop mode (can be upgraded to real)
+_noop_initialized = False
 _tracer = None
 _meter = None
+
+# Axiom OTLP endpoints
+AXIOM_OTLP_TRACES = "https://api.axiom.co/v1/traces"
+AXIOM_OTLP_LOGS = "https://api.axiom.co/v1/logs"
+AXIOM_OTLP_METRICS = "https://api.axiom.co/v1/metrics"
 
 
 def init_observability() -> bool:
     """
-    Initialize OpenTelemetry with OTLP export.
+    Initialize OpenTelemetry with Axiom export.
 
     Returns:
         True if initialized successfully, False otherwise
     """
-    global _initialized, _tracer, _meter
+    global _initialized, _noop_initialized, _tracer, _meter
 
-    # Use print for guaranteed output (logging might not be set up yet)
     print("[observability] init_observability() called", flush=True)
 
     if _initialized and not _noop_initialized:
-        # Already properly initialized (not just noop)
-        print("[observability] Already initialized with real exporters, returning True", flush=True)
+        print("[observability] Already initialized, returning True", flush=True)
         return True
 
     if _noop_initialized:
-        print("[observability] Was noop initialized, upgrading to real exporters...", flush=True)
+        print("[observability] Upgrading from noop to real exporters...", flush=True)
 
     # Check if enabled
     if os.environ.get("OTEL_ENABLED", "true").lower() not in ("true", "1", "yes"):
@@ -68,223 +58,103 @@ def init_observability() -> bool:
         _init_noop()
         return False
 
-    # Determine export mode
-    otel_endpoint = os.environ.get("OTEL_EXPORTER_ENDPOINT")
-    grafana_endpoint = os.environ.get("GRAFANA_OTLP_ENDPOINT")
-    grafana_instance = os.environ.get("GRAFANA_INSTANCE_ID")
-    grafana_key = os.environ.get("GRAFANA_API_KEY")
-
-    print(f"[observability] OTEL_EXPORTER_ENDPOINT={otel_endpoint or '(not set)'}", flush=True)
-    print(f"[observability] GRAFANA_OTLP_ENDPOINT={grafana_endpoint or '(not set)'}", flush=True)
-    print(f"[observability] GRAFANA_INSTANCE_ID={grafana_instance or '(not set)'}", flush=True)
-    print(f"[observability] GRAFANA_API_KEY={'***' if grafana_key else '(not set)'}", flush=True)
-
-    if otel_endpoint:
-        # Mode 1: Export to local collector (Alloy)
-        return _init_with_collector(otel_endpoint)
-    elif grafana_endpoint and grafana_instance and grafana_key:
-        # Mode 2: Direct export to Grafana Cloud
-        return _init_direct_grafana(grafana_endpoint, grafana_instance, grafana_key)
-    else:
-        logger.warning(
-            "Observability not configured. Set OTEL_EXPORTER_ENDPOINT for Alloy, "
-            "or GRAFANA_OTLP_ENDPOINT + GRAFANA_INSTANCE_ID + GRAFANA_API_KEY for direct export."
-        )
+    # Check for Axiom token
+    axiom_token = os.environ.get("AXIOM_TOKEN")
+    if not axiom_token:
+        print("[observability] AXIOM_TOKEN not set, using noop", flush=True)
         _init_noop()
         return False
 
-
-def _init_with_collector(endpoint: str) -> bool:
-    """Initialize with a local OTLP collector (Alloy)."""
-    global _initialized, _noop_initialized, _tracer, _meter
-
-    # Normalize endpoint - ensure http:// prefix for insecure gRPC
-    # Some OTLP exporter versions use scheme to determine TLS vs insecure
-    if not endpoint.startswith(("http://", "https://")):
-        endpoint = f"http://{endpoint}"
-
-    # Strip https:// and replace with http:// to force insecure
-    if endpoint.startswith("https://"):
-        endpoint = endpoint.replace("https://", "http://", 1)
-
-    print(f"[observability] _init_with_collector({endpoint})", flush=True)
-
-    try:
-        print("[observability] Importing opentelemetry packages...", flush=True)
-        from opentelemetry import metrics, trace
-        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-            OTLPMetricExporter,
-        )
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-            OTLPSpanExporter,
-        )
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        print("[observability] Imports successful", flush=True)
-    except ImportError as e:
-        print(f"[observability] ERROR: OpenTelemetry packages not installed: {e}", flush=True)
-        _init_noop()
-        return False
-
-    # Optional: try to import log exporter (may not be available)
-    log_exporter = None
-    try:
-        from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-        from opentelemetry._logs import set_logger_provider
-        log_exporter = True  # Mark as available
-    except ImportError as e:
-        logger.warning(f"OTLP log exporter not available, logs won't be exported: {e}")
-
-    try:
-        resource = _create_resource()
-        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-
-        # Traces via gRPC
-        logger.info(f"[observability] Setting up trace exporter to {endpoint}")
-        trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
-        trace_provider = TracerProvider(resource=resource)
-        trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
-        trace.set_tracer_provider(trace_provider)
-        logger.info("[observability] Trace provider configured")
-
-        # Metrics via gRPC
-        logger.info(f"[observability] Setting up metric exporter to {endpoint}")
-        metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
-        metric_reader = PeriodicExportingMetricReader(
-            metric_exporter, export_interval_millis=60000
-        )
-        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-        metrics.set_meter_provider(meter_provider)
-        logger.info("[observability] Metric provider configured")
-
-        # Logs via gRPC (if available)
-        if log_exporter:
-            try:
-                from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-                from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-                from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-                from opentelemetry._logs import set_logger_provider
-
-                logger.info(f"[observability] Setting up log exporter to {endpoint}")
-                log_exp = OTLPLogExporter(endpoint=endpoint, insecure=True)
-                logger_provider = LoggerProvider(resource=resource)
-                logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exp))
-                set_logger_provider(logger_provider)
-
-                log_level = getattr(logging, os.environ.get("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO)
-                otel_handler = LoggingHandler(level=log_level, logger_provider=logger_provider)
-                logging.getLogger().addHandler(otel_handler)
-                logger.info(f"[observability] Log provider configured (level={log_level})")
-            except Exception as e:
-                logger.warning(f"[observability] Failed to set up log exporter: {e}")
-
-        _tracer = trace.get_tracer(__name__)
-        _meter = metrics.get_meter(__name__)
-        _initialized = True
-        _noop_initialized = False  # We have real exporters now
-
-        print(f"[observability] ✓ Initialized via collector: {endpoint} (service={service_name})", flush=True)
-        return True
-
-    except Exception as e:
-        print(f"[observability] ERROR: Failed to initialize: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        _init_noop()
-        return False
-
-
-def _init_direct_grafana(endpoint: str, instance_id: str, api_key: str) -> bool:
-    """Initialize with direct export to Grafana Cloud."""
-    global _initialized, _noop_initialized, _tracer, _meter
+    axiom_dataset = os.environ.get("AXIOM_DATASET", "clara")
+    print(f"[observability] Initializing Axiom export (dataset={axiom_dataset})", flush=True)
 
     try:
         from opentelemetry import metrics, trace
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-            OTLPMetricExporter,
-        )
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-            OTLPSpanExporter,
-        )
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.metrics import MeterProvider
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError as e:
-        logger.warning(f"OpenTelemetry packages not installed: {e}")
+        print(f"[observability] OpenTelemetry packages not installed: {e}", flush=True)
         _init_noop()
         return False
 
     try:
-        resource = _create_resource()
+        # Build headers for Axiom
+        headers = {
+            "Authorization": f"Bearer {axiom_token}",
+            "X-Axiom-Dataset": axiom_dataset,
+        }
 
-        # Build auth header
-        auth_string = f"{instance_id}:{api_key}"
-        auth_bytes = base64.b64encode(auth_string.encode()).decode()
-        headers = {"Authorization": f"Basic {auth_bytes}"}
+        # Create resource
+        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
+        resource = Resource.create({
+            "service.name": service_name,
+            "service.namespace": "mypalclara",
+            "deployment.environment": os.environ.get("RAILWAY_ENVIRONMENT", "development"),
+            "service.version": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:8],
+        })
 
-        # Traces via HTTP
-        trace_exporter = OTLPSpanExporter(
-            endpoint=f"{endpoint}/v1/traces", headers=headers
-        )
+        # Traces
+        trace_exporter = OTLPSpanExporter(endpoint=AXIOM_OTLP_TRACES, headers=headers)
         trace_provider = TracerProvider(resource=resource)
         trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
         trace.set_tracer_provider(trace_provider)
+        print("[observability] Trace exporter configured", flush=True)
 
-        # Metrics via HTTP
-        metric_exporter = OTLPMetricExporter(
-            endpoint=f"{endpoint}/v1/metrics", headers=headers
-        )
-        metric_reader = PeriodicExportingMetricReader(
-            metric_exporter, export_interval_millis=60000
-        )
+        # Metrics
+        metric_exporter = OTLPMetricExporter(endpoint=AXIOM_OTLP_METRICS, headers=headers)
+        metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=60000)
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
+        print("[observability] Metric exporter configured", flush=True)
+
+        # Logs
+        try:
+            from opentelemetry._logs import set_logger_provider
+            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+            from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+            from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
+            log_exporter = OTLPLogExporter(endpoint=AXIOM_OTLP_LOGS, headers=headers)
+            logger_provider = LoggerProvider(resource=resource)
+            logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+            set_logger_provider(logger_provider)
+
+            log_level = getattr(logging, os.environ.get("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO)
+            otel_handler = LoggingHandler(level=log_level, logger_provider=logger_provider)
+            logging.getLogger().addHandler(otel_handler)
+            print(f"[observability] Log exporter configured (level={logging.getLevelName(log_level)})", flush=True)
+        except ImportError as e:
+            print(f"[observability] Log exporter not available: {e}", flush=True)
 
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
-        _noop_initialized = False  # We have real exporters now
+        _noop_initialized = False
 
-        service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-        logger.info(f"Observability initialized direct to Grafana: {endpoint} (service={service_name})")
+        print(f"[observability] ✓ Axiom initialized (service={service_name}, dataset={axiom_dataset})", flush=True)
         return True
 
     except Exception as e:
-        logger.error(f"Failed to initialize observability: {e}")
+        print(f"[observability] Failed to initialize: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         _init_noop()
         return False
 
 
-def _create_resource():
-    """Create OpenTelemetry resource with service attributes."""
-    from opentelemetry.sdk.resources import Resource
-
-    service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
-    service_namespace = os.environ.get("OTEL_SERVICE_NAMESPACE", "mypalclara")
-    deployment_env = os.environ.get("OTEL_DEPLOYMENT_ENV", "production")
-
-    return Resource.create({
-        "service.name": service_name,
-        "service.namespace": service_namespace,
-        "deployment.environment": deployment_env,
-        "service.version": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:8],
-    })
-
-
 def _init_noop():
-    """Initialize no-op tracer/meter for when observability is disabled or not yet configured."""
+    """Initialize no-op tracer/meter."""
     global _tracer, _meter, _initialized, _noop_initialized
     from opentelemetry import metrics, trace
     _tracer = trace.get_tracer(__name__)
     _meter = metrics.get_meter(__name__)
     _initialized = True
-    _noop_initialized = True  # Mark as noop so it can be upgraded later
+    _noop_initialized = True
 
 
 def get_tracer(name: str = __name__):
@@ -307,13 +177,4 @@ def is_enabled() -> bool:
     """Check if observability is enabled and configured."""
     if os.environ.get("OTEL_ENABLED", "true").lower() not in ("true", "1", "yes"):
         return False
-
-    # Either collector or direct Grafana
-    has_collector = bool(os.environ.get("OTEL_EXPORTER_ENDPOINT"))
-    has_grafana = all([
-        os.environ.get("GRAFANA_OTLP_ENDPOINT"),
-        os.environ.get("GRAFANA_INSTANCE_ID"),
-        os.environ.get("GRAFANA_API_KEY"),
-    ])
-
-    return has_collector or has_grafana
+    return bool(os.environ.get("AXIOM_TOKEN"))
