@@ -10,9 +10,11 @@ Decisions:
 - wait: Nothing to do right now
 """
 
+import base64
 import logging
 import re
 
+import httpx
 from anthropic import AsyncAnthropic
 
 from mypalclara.config.settings import settings
@@ -32,6 +34,67 @@ tracer = get_tracer(__name__)
 # Max command iterations to prevent infinite loops
 # Should be high enough for multi-step tasks (get repo, get file, search, etc.)
 MAX_COMMAND_ITERATIONS = 8
+
+# Supported image types for Claude
+IMAGE_MEDIA_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/png": "image/png",
+    "image/gif": "image/gif",
+    "image/webp": "image/webp",
+}
+
+
+async def _fetch_image_as_base64(url: str, content_type: str) -> dict | None:
+    """Fetch an image and return it as a Claude image content block."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            # Get media type (normalize to what Claude expects)
+            media_type = IMAGE_MEDIA_TYPES.get(content_type, "image/jpeg")
+
+            # Encode to base64
+            image_data = base64.standard_b64encode(response.content).decode("utf-8")
+
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": image_data,
+                },
+            }
+    except Exception as e:
+        logger.warning(f"[ruminate] Failed to fetch image {url}: {e}")
+        return None
+
+
+async def _build_message_content(prompt: str, event) -> list:
+    """Build message content array, including images if present."""
+    content = []
+
+    # Check for image attachments
+    if event.attachments:
+        image_attachments = [
+            a for a in event.attachments
+            if a.content_type and a.content_type.startswith("image/")
+        ]
+
+        # Fetch and add images
+        for attachment in image_attachments:
+            logger.info(f"[ruminate] Fetching image: {attachment.filename}")
+            image_block = await _fetch_image_as_base64(
+                attachment.url, attachment.content_type
+            )
+            if image_block:
+                content.append(image_block)
+                logger.info(f"[ruminate] Added image: {attachment.filename}")
+
+    # Add the text prompt
+    content.append({"type": "text", "text": prompt})
+
+    return content
 
 
 def _get_client() -> AsyncAnthropic:
@@ -151,16 +214,22 @@ async def _ruminate_impl(state: ClaraState, span) -> ClaraState:
 
     # Clara thinks
     client = _get_client()
+
+    # Build message content (may include images)
+    message_content = await _build_message_content(prompt, event)
+    has_images = any(c.get("type") == "image" for c in message_content)
+
     with tracer.start_as_current_span("llm_call") as llm_span:
         llm_span.set_attribute("llm.model", settings.anthropic_model)
         llm_span.set_attribute("llm.max_tokens", 2048)
         llm_span.set_attribute("llm.provider", "anthropic")
+        llm_span.set_attribute("llm.has_images", has_images)
 
         response = await client.messages.create(
             model=settings.anthropic_model,
             max_tokens=2048,
             system=CLARA_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": message_content}],
         )
 
         # Record token usage

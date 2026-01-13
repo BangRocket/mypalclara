@@ -180,6 +180,27 @@ def build_rumination_prompt(
 
     context_str = f"({', '.join(context_indicators)})" if context_indicators else ""
 
+    # Build attachments section (non-image files listed here; images passed separately)
+    attachments_section = ""
+    if event.attachments:
+        non_image_attachments = [
+            a for a in event.attachments
+            if not (a.content_type and a.content_type.startswith("image/"))
+        ]
+        image_attachments = [
+            a for a in event.attachments
+            if a.content_type and a.content_type.startswith("image/")
+        ]
+
+        if non_image_attachments:
+            attachments_section += "\n**Attached files:**\n"
+            for a in non_image_attachments:
+                size_str = f" ({a.size // 1024}KB)" if a.size else ""
+                attachments_section += f"- {a.filename}{size_str}: {a.url}\n"
+
+        if image_attachments:
+            attachments_section += f"\n**Images attached:** {len(image_attachments)} image(s) included below\n"
+
     # Build conversation history section
     history_section = ""
     if event.conversation_history:
@@ -204,7 +225,7 @@ Channel: {"DM" if event.is_dm else f"#{event.channel_id}"}
 {context_str}
 
 Message:
-{event.content}
+{event.content or "(no text, see attachments)"}{attachments_section}
 
 {AVAILABLE_FACULTIES}
 
