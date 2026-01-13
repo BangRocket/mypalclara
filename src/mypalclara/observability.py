@@ -83,10 +83,14 @@ def init_observability() -> bool:
         return False
 
     try:
-        # Build headers for Axiom
-        headers = {
+        # Build headers for Axiom (metrics need different header)
+        base_headers = {
             "Authorization": f"Bearer {axiom_token}",
             "X-Axiom-Dataset": axiom_dataset,
+        }
+        metrics_headers = {
+            "Authorization": f"Bearer {axiom_token}",
+            "X-Axiom-Metrics-Dataset": axiom_dataset,
         }
 
         # Create resource
@@ -99,14 +103,14 @@ def init_observability() -> bool:
         })
 
         # Traces
-        trace_exporter = OTLPSpanExporter(endpoint=AXIOM_OTLP_TRACES, headers=headers)
+        trace_exporter = OTLPSpanExporter(endpoint=AXIOM_OTLP_TRACES, headers=base_headers)
         trace_provider = TracerProvider(resource=resource)
         trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
         trace.set_tracer_provider(trace_provider)
         print("[observability] Trace exporter configured", flush=True)
 
-        # Metrics
-        metric_exporter = OTLPMetricExporter(endpoint=AXIOM_OTLP_METRICS, headers=headers)
+        # Metrics (uses different header)
+        metric_exporter = OTLPMetricExporter(endpoint=AXIOM_OTLP_METRICS, headers=metrics_headers)
         metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=60000)
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
@@ -119,7 +123,7 @@ def init_observability() -> bool:
             from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
-            log_exporter = OTLPLogExporter(endpoint=AXIOM_OTLP_LOGS, headers=headers)
+            log_exporter = OTLPLogExporter(endpoint=AXIOM_OTLP_LOGS, headers=base_headers)
             logger_provider = LoggerProvider(resource=resource)
             logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
             set_logger_provider(logger_provider)
