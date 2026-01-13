@@ -37,6 +37,7 @@ import os
 logger = logging.getLogger(__name__)
 
 _initialized = False
+_noop_initialized = False  # Track if we're in noop mode (can be upgraded to real)
 _tracer = None
 _meter = None
 
@@ -53,9 +54,13 @@ def init_observability() -> bool:
     # Use print for guaranteed output (logging might not be set up yet)
     print("[observability] init_observability() called", flush=True)
 
-    if _initialized:
-        print("[observability] Already initialized, returning True", flush=True)
+    if _initialized and not _noop_initialized:
+        # Already properly initialized (not just noop)
+        print("[observability] Already initialized with real exporters, returning True", flush=True)
         return True
+
+    if _noop_initialized:
+        print("[observability] Was noop initialized, upgrading to real exporters...", flush=True)
 
     # Check if enabled
     if os.environ.get("OTEL_ENABLED", "true").lower() not in ("true", "1", "yes"):
@@ -91,7 +96,7 @@ def init_observability() -> bool:
 
 def _init_with_collector(endpoint: str) -> bool:
     """Initialize with a local OTLP collector (Alloy)."""
-    global _initialized, _tracer, _meter
+    global _initialized, _noop_initialized, _tracer, _meter
 
     print(f"[observability] _init_with_collector({endpoint})", flush=True)
 
@@ -171,19 +176,22 @@ def _init_with_collector(endpoint: str) -> bool:
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
+        _noop_initialized = False  # We have real exporters now
 
-        logger.info(f"[observability] ✓ Initialized via collector: {endpoint} (service={service_name})")
+        print(f"[observability] ✓ Initialized via collector: {endpoint} (service={service_name})", flush=True)
         return True
 
     except Exception as e:
-        logger.error(f"[observability] Failed to initialize: {e}", exc_info=True)
+        print(f"[observability] ERROR: Failed to initialize: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         _init_noop()
         return False
 
 
 def _init_direct_grafana(endpoint: str, instance_id: str, api_key: str) -> bool:
     """Initialize with direct export to Grafana Cloud."""
-    global _initialized, _tracer, _meter
+    global _initialized, _noop_initialized, _tracer, _meter
 
     try:
         from opentelemetry import metrics, trace
@@ -232,6 +240,7 @@ def _init_direct_grafana(endpoint: str, instance_id: str, api_key: str) -> bool:
         _tracer = trace.get_tracer(__name__)
         _meter = metrics.get_meter(__name__)
         _initialized = True
+        _noop_initialized = False  # We have real exporters now
 
         service_name = os.environ.get("OTEL_SERVICE_NAME", "clara-discord")
         logger.info(f"Observability initialized direct to Grafana: {endpoint} (service={service_name})")
@@ -260,12 +269,13 @@ def _create_resource():
 
 
 def _init_noop():
-    """Initialize no-op tracer/meter for when observability is disabled."""
-    global _tracer, _meter, _initialized
+    """Initialize no-op tracer/meter for when observability is disabled or not yet configured."""
+    global _tracer, _meter, _initialized, _noop_initialized
     from opentelemetry import metrics, trace
     _tracer = trace.get_tracer(__name__)
     _meter = metrics.get_meter(__name__)
     _initialized = True
+    _noop_initialized = True  # Mark as noop so it can be upgraded later
 
 
 def get_tracer(name: str = __name__):
