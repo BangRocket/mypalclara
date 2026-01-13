@@ -98,6 +98,15 @@ def _init_with_collector(endpoint: str) -> bool:
     """Initialize with a local OTLP collector (Alloy)."""
     global _initialized, _noop_initialized, _tracer, _meter
 
+    # Normalize endpoint - ensure http:// prefix for insecure gRPC
+    # Some OTLP exporter versions use scheme to determine TLS vs insecure
+    if not endpoint.startswith(("http://", "https://")):
+        endpoint = f"http://{endpoint}"
+
+    # Strip https:// and replace with http:// to force insecure
+    if endpoint.startswith("https://"):
+        endpoint = endpoint.replace("https://", "http://", 1)
+
     print(f"[observability] _init_with_collector({endpoint})", flush=True)
 
     try:
