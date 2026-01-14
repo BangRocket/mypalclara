@@ -5,15 +5,22 @@ Provides the MemoryManager singleton that handles:
 - mem0 integration for semantic memory
 - Session summaries
 - Prompt building with context
+- Temporal-aware memory retrieval with type classification
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
+
+from clara_core.memory_types import (
+    MemoryRecord,
+    MemoryType,
+    classify_memory,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session as OrmSession
@@ -110,9 +117,7 @@ def load_initial_profile(user_id: str) -> None:
 
     print("[mem0] Creating flag file to prevent duplicate loads...")
     try:
-        PROFILE_LOADED_FLAG.write_text(
-            f"loading started at {datetime.now().isoformat()}"
-        )
+        PROFILE_LOADED_FLAG.write_text(f"loading started at {datetime.now().isoformat()}")
     except Exception as e:
         print(f"[mem0] ERROR: Could not create flag file: {e}")
 
@@ -157,9 +162,7 @@ class MemoryManager:
             RuntimeError: If not initialized
         """
         if cls._instance is None:
-            raise RuntimeError(
-                "MemoryManager not initialized. Call MemoryManager.initialize() first."
-            )
+            raise RuntimeError("MemoryManager not initialized. Call MemoryManager.initialize() first.")
         return cls._instance
 
     @classmethod
@@ -276,19 +279,12 @@ class MemoryManager:
         """Generate/update summary for a thread."""
         from db.models import Message
 
-        all_msgs = (
-            db.query(Message)
-            .filter_by(session_id=thread.id)
-            .order_by(Message.created_at.asc())
-            .all()
-        )
+        all_msgs = db.query(Message).filter_by(session_id=thread.id).order_by(Message.created_at.asc()).all()
 
         if not all_msgs:
             return ""
 
-        conversation = "\n".join(
-            f"{m.role.upper()}: {m.content[:500]}" for m in all_msgs[-30:]
-        )
+        conversation = "\n".join(f"{m.role.upper()}: {m.content[:500]}" for m in all_msgs[-30:])
 
         summary_prompt = [
             {
@@ -307,6 +303,61 @@ class MemoryManager:
 
     # ---------- mem0 integration ----------
 
+    def _parse_mem0_timestamp(self, ts: str | None) -> datetime | None:
+        """Parse mem0 timestamp string to datetime."""
+        if not ts:
+            return None
+        try:
+            # mem0 uses ISO format, may or may not have timezone
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError):
+            return None
+
+    def _result_to_record(
+        self,
+        result: dict[str, Any],
+        prefix: str | None = None,
+    ) -> MemoryRecord:
+        """Convert a mem0 search result to a MemoryRecord.
+
+        Args:
+            result: Raw result dict from mem0 search
+            prefix: Optional prefix to add to memory content (e.g., "[About Josh]")
+
+        Returns:
+            MemoryRecord with classification and timestamps
+        """
+        content = result.get("memory", "")
+        if prefix:
+            content = f"{prefix}: {content}"
+
+        # Get timestamps
+        created_at = self._parse_mem0_timestamp(result.get("created_at"))
+        updated_at = self._parse_mem0_timestamp(result.get("updated_at"))
+
+        # Check for pre-classified type in metadata, otherwise classify now
+        metadata = result.get("metadata", {})
+        type_str = metadata.get("memory_type")
+        if type_str and type_str in [t.value for t in MemoryType]:
+            memory_type = MemoryType(type_str)
+        else:
+            memory_type = classify_memory(content)
+
+        return MemoryRecord(
+            id=result.get("id", ""),
+            content=content,
+            memory_type=memory_type,
+            created_at=created_at,
+            updated_at=updated_at,
+            score=result.get("score", 0.0),
+            metadata=metadata,
+        )
+
     def fetch_mem0_context(
         self,
         user_id: str,
@@ -314,12 +365,17 @@ class MemoryManager:
         user_message: str,
         participants: list[dict] | None = None,
         is_dm: bool = False,
-    ) -> tuple[list[str], list[str]]:
-        """Fetch relevant memories from mem0.
+    ) -> tuple[list[MemoryRecord], list[MemoryRecord]]:
+        """Fetch relevant memories from mem0 with temporal awareness.
 
         Memory bucket logic:
         - DMs: Prioritize personal memories, include project memories secondarily
         - Servers: Prioritize project memories, include personal with lower weight
+
+        Returns MemoryRecord objects with:
+        - Classification (stable/active/ephemeral)
+        - Timestamps for recency weighting
+        - Semantic similarity scores
 
         Args:
             user_id: The user making the request
@@ -329,7 +385,8 @@ class MemoryManager:
             is_dm: Whether this is a DM conversation (changes retrieval priority)
 
         Returns:
-            Tuple of (user_memories, project_memories)
+            Tuple of (user_memories, project_memories) as MemoryRecord lists,
+            sorted by weighted score (semantic similarity * recency)
         """
         from config.mem0 import MEM0
 
@@ -347,6 +404,7 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR searching user memories: {e}")
             import traceback
+
             traceback.print_exc()
             user_res = {"results": []}
 
@@ -359,11 +417,28 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR searching project memories: {e}")
             import traceback
+
             traceback.print_exc()
             proj_res = {"results": []}
 
-        user_mems = [r["memory"] for r in user_res.get("results", [])]
-        proj_mems = [r["memory"] for r in proj_res.get("results", [])]
+        # Convert to MemoryRecords
+        user_mems: list[MemoryRecord] = []
+        seen_contents: set[str] = set()
+
+        for r in user_res.get("results", []):
+            record = self._result_to_record(r)
+            if record.content not in seen_contents:
+                user_mems.append(record)
+                seen_contents.add(record.content)
+
+        proj_mems: list[MemoryRecord] = []
+        proj_seen: set[str] = set()
+
+        for r in proj_res.get("results", []):
+            record = self._result_to_record(r)
+            if record.content not in proj_seen:
+                proj_mems.append(record)
+                proj_seen.add(record.content)
 
         # Also search for memories about each participant
         if participants:
@@ -379,11 +454,10 @@ class MemoryManager:
                         user_id=user_id,
                     )
                     for r in p_search.get("results", []):
-                        mem = r["memory"]
-                        if mem not in user_mems:
-                            labeled_mem = f"[About {p_name}]: {mem}"
-                            if labeled_mem not in user_mems:
-                                user_mems.append(labeled_mem)
+                        record = self._result_to_record(r, prefix=f"[About {p_name}]")
+                        if record.content not in seen_contents:
+                            user_mems.append(record)
+                            seen_contents.add(record.content)
                 except Exception as e:
                     print(f"[mem0] Error searching participant {p_id}: {e}")
 
@@ -391,14 +465,17 @@ class MemoryManager:
         for r in user_res.get("results", []):
             metadata = r.get("metadata", {})
             if metadata.get("contact_id"):
-                contact_name = metadata.get(
-                    "contact_name", metadata.get("contact_id")
-                )
-                mem_text = f"[About {contact_name}]: {r['memory']}"
-                if mem_text not in user_mems:
-                    user_mems.append(mem_text)
+                contact_name = metadata.get("contact_name", metadata.get("contact_id"))
+                record = self._result_to_record(r, prefix=f"[About {contact_name}]")
+                if record.content not in seen_contents:
+                    user_mems.append(record)
+                    seen_contents.add(record.content)
 
-        # Limit memories to reduce token usage (keep most relevant)
+        # Sort by weighted score (semantic similarity * recency weight)
+        user_mems.sort(key=lambda m: m.weighted_score, reverse=True)
+        proj_mems.sort(key=lambda m: m.weighted_score, reverse=True)
+
+        # Limit memories to reduce token usage (keep most relevant after weighting)
         if len(user_mems) > MAX_MEMORIES_PER_TYPE:
             user_mems = user_mems[:MAX_MEMORIES_PER_TYPE]
         if len(proj_mems) > MAX_MEMORIES_PER_TYPE:
@@ -407,7 +484,7 @@ class MemoryManager:
         if user_mems or proj_mems:
             print(
                 f"[mem0] Found {len(user_mems)} user memories, "
-                f"{len(proj_mems)} project memories"
+                f"{len(proj_mems)} project memories (weighted by recency)"
             )
         return user_mems, proj_mems
 
@@ -443,9 +520,7 @@ class MemoryManager:
             names = [p.get("name", p.get("id", "Unknown")) for p in participants]
             context_prefix = f"[Participants: {', '.join(names)}]\n"
 
-        history_slice = [
-            {"role": m.role, "content": m.content} for m in recent_msgs[-4:]
-        ] + [
+        history_slice = [{"role": m.role, "content": m.content} for m in recent_msgs[-4:]] + [
             {"role": "user", "content": context_prefix + user_message},
             {"role": "assistant", "content": assistant_reply},
         ]
@@ -458,12 +533,8 @@ class MemoryManager:
             "source_type": source_type,
         }
         if participants:
-            metadata["participant_ids"] = [
-                p.get("id") for p in participants if p.get("id")
-            ]
-            metadata["participant_names"] = [
-                p.get("name") for p in participants if p.get("name")
-            ]
+            metadata["participant_ids"] = [p.get("id") for p in participants if p.get("id")]
+            metadata["participant_names"] = [p.get("name") for p in participants if p.get("name")]
 
         try:
             result = MEM0.add(
@@ -484,23 +555,31 @@ class MemoryManager:
         except Exception as e:
             print(f"[mem0] ERROR adding memories: {e}")
             import traceback
+
             traceback.print_exc()
 
     # ---------- prompt building ----------
 
     def build_prompt(
         self,
-        user_mems: list[str],
-        proj_mems: list[str],
+        user_mems: list[MemoryRecord] | list[str],
+        proj_mems: list[MemoryRecord] | list[str],
         thread_summary: str | None,
         recent_msgs: list["Message"],
         user_message: str,
     ) -> list[dict[str, str]]:
         """Build the full prompt for the LLM.
 
+        Memories are formatted with temporal context:
+        [age | type] content
+
+        Example:
+        - [2 days ago | active] User is working on Clara's memory system
+        - [3 weeks ago | stable] User's wife is named Sarah
+
         Args:
-            user_mems: List of user memories
-            proj_mems: List of project memories
+            user_mems: List of user memories (MemoryRecord or legacy str)
+            proj_mems: List of project memories (MemoryRecord or legacy str)
             thread_summary: Optional thread summary
             recent_msgs: Recent messages in the conversation
             user_message: Current user message
@@ -516,11 +595,18 @@ class MemoryManager:
         context_parts = []
 
         if user_mems:
-            user_block = "\n".join(f"- {m}" for m in user_mems)
+            # Format memories with rich context if MemoryRecord, else use as-is
+            if user_mems and isinstance(user_mems[0], MemoryRecord):
+                user_block = "\n".join(f"- {m.format_for_context()}" for m in user_mems)
+            else:
+                user_block = "\n".join(f"- {m}" for m in user_mems)
             context_parts.append(f"USER MEMORIES:\n{user_block}")
 
         if proj_mems:
-            proj_block = "\n".join(f"- {m}" for m in proj_mems)
+            if proj_mems and isinstance(proj_mems[0], MemoryRecord):
+                proj_block = "\n".join(f"- {m.format_for_context()}" for m in proj_mems)
+            else:
+                proj_block = "\n".join(f"- {m}" for m in proj_mems)
             context_parts.append(f"PROJECT MEMORIES:\n{proj_block}")
 
         if thread_summary:

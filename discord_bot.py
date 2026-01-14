@@ -53,6 +53,7 @@ from clara_core import (
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
 )
+from clara_core.memory_types import MemoryRecord
 from config.logging import (
     get_discord_handler,
     get_logger,
@@ -947,8 +948,8 @@ class ClaraDiscordBot(discord.Client):
     def _build_discord_context(
         self,
         message: DiscordMessage,
-        user_mems: list[str],
-        proj_mems: list[str],
+        user_mems: list[MemoryRecord] | list[str],
+        proj_mems: list[MemoryRecord] | list[str],
         is_dm: bool = False,
         recent_msgs: list | None = None,
     ) -> str:
@@ -958,8 +959,8 @@ class ClaraDiscordBot(discord.Client):
 
         Args:
             message: Current Discord message
-            user_mems: User memories from mem0
-            proj_mems: Project memories from mem0
+            user_mems: User memories from mem0 (MemoryRecord or legacy str)
+            proj_mems: Project memories from mem0 (MemoryRecord or legacy str)
             is_dm: Whether this is a DM conversation
             recent_msgs: Recent messages from the session (for time gap tracking)
         """

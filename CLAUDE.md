@@ -28,6 +28,16 @@ docker-compose --profile discord --profile postgres up # Discord bot + databases
 poetry run python -m src.bootstrap_memory          # Dry run (generates JSON)
 poetry run python -m src.bootstrap_memory --apply  # Apply to mem0
 
+# Backfill memory types for temporal-aware retrieval (local)
+poetry run python -m scripts.backfill_memory_types         # Dry run (preview)
+poetry run python -m scripts.backfill_memory_types --apply # Apply changes
+poetry run python -m scripts.backfill_memory_types --stats # Show type distribution
+
+# Backfill on Railway production (shinkansen)
+railway run -s shinkansen python -m scripts.backfill_memory_types --all         # Preview
+railway run -s shinkansen python -m scripts.backfill_memory_types --all --apply # Apply
+railway run -s shinkansen python -m scripts.backfill_memory_types --all --apply --yes # No prompt
+
 # Clear all memory data
 poetry run python clear_dbs.py             # With confirmation prompt
 poetry run python clear_dbs.py --yes       # Skip confirmation
@@ -55,12 +65,37 @@ poetry run python clear_dbs.py --user <id> # Clear specific user
 - `storage/local_files.py` - Local file storage system for persistent user files
 
 ### Memory System
-- **User memories**: Persistent facts/preferences per user (stored in mem0, searched via `_fetch_mem0_context`)
+- **User memories**: Persistent facts/preferences per user (stored in mem0, searched via `fetch_mem0_context`)
 - **Project memories**: Topic-specific context per project (filtered by project_id in mem0)
 - **Graph memories**: Optional relationship tracking via Neo4j or Kuzu (disabled by default, enable with `ENABLE_GRAPH_MEMORY=true`)
-- **Session context**: Recent 20 messages + snapshot of last 10 messages from previous session
+- **Session context**: Recent 15 messages + snapshot of last 10 messages from previous session
 - **Session summary**: LLM-generated summary stored when session times out
 - Sessions auto-timeout after 30 minutes of inactivity (`SESSION_IDLE_MINUTES`)
+
+#### Temporal-Aware Memory Retrieval
+Memories are classified and weighted by recency for better relevance:
+
+**Memory Types** (with decay half-lives):
+- `stable` (60 days): Core identity, preferences, relationships - slow decay
+- `active` (14 days): Current projects, ongoing work - medium decay
+- `ephemeral` (7 days): Temporary states, events - fast decay
+
+**How it works**:
+1. Memories are classified at retrieval time using keyword heuristics
+2. Recency weight = exponential decay based on memory age and type half-life
+3. Final score = semantic similarity × recency weight
+4. Floor of 0.1 prevents old important memories from disappearing
+
+**Context format** shown to Clara:
+```
+[2 days ago | active] User is working on Clara's memory system
+[3 weeks ago | stable] User's wife is named Sarah
+[6 months ago | temp] User felt overwhelmed about the move
+```
+
+**Key files**:
+- `clara_core/memory_types.py` - Classification, decay config, MemoryRecord dataclass
+- `clara_core/memory.py` - Retrieval with temporal weighting, rich context formatting
 
 ## Environment Variables
 
