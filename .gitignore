@@ -67,3 +67,5 @@ frontend/.vercel/
 clara_files/
 
 .env.remote
+
+cortex
