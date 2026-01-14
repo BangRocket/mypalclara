@@ -17,7 +17,7 @@ from mypalclara.models.events import Attachment, ChannelMode, Event, EventType, 
 logger = logging.getLogger(__name__)
 
 # How many messages to fetch for context
-HISTORY_LIMIT = 20
+HISTORY_LIMIT = 30
 
 
 class ClaraBot(commands.Bot):
@@ -116,8 +116,77 @@ class ClaraBot(commands.Bot):
 
                 logger.info(f"[discord] Response sent ({len(response_text)} chars)")
 
+            # Process continuation if Clara said she'd do something
+            continuation_event = result.get("continuation_event")
+            if continuation_event:
+                logger.info(f"[discord] Processing continuation: {continuation_event.continuation_context}")
+                await self._process_continuation(message.channel, continuation_event)
+
         except Exception as e:
             logger.exception(f"[discord] Error processing event: {e}")
+
+    async def _process_continuation(self, channel, continuation_event):
+        """
+        Process a continuation event (Clara following up on what she said).
+
+        This event has can_spawn=False so it cannot create further continuations.
+        """
+        status_message = None
+        last_status = None
+
+        async def on_status(node_name: str, state: dict):
+            """Handle status updates from the graph."""
+            nonlocal status_message, last_status
+
+            if node_name == "command":
+                rumination = state.get("rumination")
+                if rumination and rumination.faculty:
+                    faculty = rumination.faculty
+                    intent = rumination.intent or ""
+                    intent_preview = intent[:100] + "..." if len(intent) > 100 else intent
+
+                    status_text = f"*Using {faculty}:* {intent_preview}"
+
+                    if status_text != last_status:
+                        last_status = status_text
+                        if status_message:
+                            try:
+                                await status_message.edit(content=status_text)
+                            except discord.errors.NotFound:
+                                status_message = await channel.send(status_text)
+                        else:
+                            status_message = await channel.send(status_text)
+
+        try:
+            async with channel.typing():
+                result = await process_event(continuation_event, on_status=on_status)
+
+            # Delete status message
+            if status_message and result.get("response"):
+                try:
+                    await status_message.delete()
+                except discord.errors.NotFound:
+                    pass
+
+            # Send continuation response
+            if result.get("response"):
+                response_text = result["response"]
+
+                if len(response_text) > 2000:
+                    chunks = [response_text[i : i + 2000] for i in range(0, len(response_text), 2000)]
+                    for chunk in chunks:
+                        await channel.send(chunk)
+                else:
+                    await channel.send(response_text)
+
+                logger.info(f"[discord] Continuation response sent ({len(response_text)} chars)")
+
+            # Note: We don't process further continuations here (can_spawn=False)
+            if result.get("continuation_event"):
+                logger.warning("[discord] Continuation tried to spawn another - blocked (can_spawn=False)")
+
+        except Exception as e:
+            logger.exception(f"[discord] Error processing continuation: {e}")
 
     async def _fetch_history(
         self, channel: discord.TextChannel, before: discord.Message
@@ -143,7 +212,7 @@ class ClaraBot(commands.Bot):
 
             # Reverse to get chronological order (oldest first)
             history.reverse()
-            logger.debug(f"[discord] Fetched {len(history)} messages of history")
+            logger.info(f"[discord] Fetched {len(history)} messages of conversation history")
 
         except discord.errors.Forbidden:
             logger.warning("[discord] No permission to fetch message history")

@@ -80,5 +80,10 @@ class Event(BaseModel):
     # Conversation history (recent messages for context)
     conversation_history: list[HistoricalMessage] = Field(default_factory=list)
 
+    # Continuation control
+    can_spawn: bool = True  # If False, this event cannot trigger a continuation
+    is_continuation: bool = False  # True if this is a spawned continuation event
+    continuation_context: Optional[str] = None  # What Clara said she'd do
+
     # Raw data for debugging
     metadata: dict = Field(default_factory=dict)

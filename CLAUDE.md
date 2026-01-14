@@ -645,3 +645,39 @@ gunzip clara_YYYYMMDD_HHMMSS.sql.gz
 # 3. Restore
 psql $DATABASE_URL < clara_YYYYMMDD_HHMMSS.sql
 ```
+
+### Observability (Metrics & Tracing)
+
+OpenTelemetry-based observability via Grafana Alloy sidecar.
+
+**Location:** `alloy/`
+
+**Architecture:**
+```
+Discord Bot → OTLP (gRPC) → Alloy → OTLP (HTTP) → Grafana Cloud
+```
+
+**Alloy Service Environment Variables:**
+- `GRAFANA_OTLP_ENDPOINT` - e.g., `https://otlp-gateway-prod-us-east-2.grafana.net/otlp`
+- `GRAFANA_INSTANCE_ID` - Grafana Cloud instance ID
+- `GRAFANA_API_KEY` - API key with MetricsPublisher + TracesPublisher scopes
+
+**Discord Bot Environment Variables:**
+- `OTEL_EXPORTER_ENDPOINT` - Alloy endpoint: `http://alloy.railway.internal:4317`
+- `OTEL_SERVICE_NAME` - Service name (default: clara-discord)
+- `OTEL_SERVICE_NAMESPACE` - Namespace (default: mypalclara)
+- `OTEL_DEPLOYMENT_ENV` - Environment (default: production)
+
+**Railway Setup:**
+1. Create new service from `alloy/` directory, set root to `alloy`
+2. Set Grafana Cloud credentials on Alloy service
+3. On Discord bot, set `OTEL_EXPORTER_ENDPOINT=http://alloy.railway.internal:4317`
+
+**Alternative: Direct Export (no Alloy):**
+Set these on Discord bot instead of OTEL_EXPORTER_ENDPOINT:
+- `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_INSTANCE_ID`, `GRAFANA_API_KEY`
+
+**Grafana Cloud Test Query:**
+```
+{resource.service.name="clara-discord" && resource.service.namespace="mypalclara" && resource.deployment.environment="production"}
+```

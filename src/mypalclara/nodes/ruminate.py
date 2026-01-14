@@ -10,9 +10,11 @@ Decisions:
 - wait: Nothing to do right now
 """
 
+import base64
 import logging
 import re
 
+import httpx
 from anthropic import AsyncAnthropic
 
 from mypalclara.config.settings import settings
@@ -24,12 +26,75 @@ from mypalclara.prompts.clara import (
     build_continuation_prompt,
     build_rumination_prompt,
 )
+from mypalclara.observability import get_tracer
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer(__name__)
 
 # Max command iterations to prevent infinite loops
 # Should be high enough for multi-step tasks (get repo, get file, search, etc.)
 MAX_COMMAND_ITERATIONS = 8
+
+# Supported image types for Claude
+IMAGE_MEDIA_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/png": "image/png",
+    "image/gif": "image/gif",
+    "image/webp": "image/webp",
+}
+
+
+async def _fetch_image_as_base64(url: str, content_type: str) -> dict | None:
+    """Fetch an image and return it as a Claude image content block."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            # Get media type (normalize to what Claude expects)
+            media_type = IMAGE_MEDIA_TYPES.get(content_type, "image/jpeg")
+
+            # Encode to base64
+            image_data = base64.standard_b64encode(response.content).decode("utf-8")
+
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": image_data,
+                },
+            }
+    except Exception as e:
+        logger.warning(f"[ruminate] Failed to fetch image {url}: {e}")
+        return None
+
+
+async def _build_message_content(prompt: str, event) -> list:
+    """Build message content array, including images if present."""
+    content = []
+
+    # Check for image attachments
+    if event.attachments:
+        image_attachments = [
+            a for a in event.attachments
+            if a.content_type and a.content_type.startswith("image/")
+        ]
+
+        # Fetch and add images
+        for attachment in image_attachments:
+            logger.info(f"[ruminate] Fetching image: {attachment.filename}")
+            image_block = await _fetch_image_as_base64(
+                attachment.url, attachment.content_type
+            )
+            if image_block:
+                content.append(image_block)
+                logger.info(f"[ruminate] Added image: {attachment.filename}")
+
+    # Add the text prompt
+    content.append({"type": "text", "text": prompt})
+
+    return content
 
 
 def _get_client() -> AsyncAnthropic:
@@ -46,8 +111,19 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
     - Draws on her memory (Cortex)
     - Decides: speak directly, use a faculty, or wait
     """
+    with tracer.start_as_current_span("ruminate") as span:
+        return await _ruminate_impl(state, span)
+
+
+async def _ruminate_impl(state: ClaraState, span) -> ClaraState:
+    """Implementation of rumination with tracing."""
     event = state["event"]
     quick_context = state.get("quick_context")
+
+    # Add event context to span
+    span.set_attribute("user.id", event.user_id)
+    span.set_attribute("event.type", event.type)
+    span.set_attribute("event.channel", event.channel_id or "unknown")
 
     # Check if we're continuing after a faculty execution
     faculty_result = state.get("faculty_result")
@@ -73,11 +149,13 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         if not memory_context:
             # Fallback if somehow missing
             logger.info("[ruminate] Memory context missing, fetching fresh...")
-            memory_context = await memory.get_full_context(
-                user_id=event.user_id,
-                query=event.content or "",
-                project_id=event.metadata.get("project_id"),
-            )
+            with tracer.start_as_current_span("fetch_memory_context") as mem_span:
+                mem_span.set_attribute("memory.fallback", True)
+                memory_context = await memory.get_full_context(
+                    user_id=event.user_id,
+                    query=event.content or "",
+                    project_id=event.metadata.get("project_id"),
+                )
         prompt = build_continuation_prompt(
             event=event,
             memory=memory_context,
@@ -88,11 +166,16 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
         # Fresh rumination - get full memory context
         logger.info(f"[ruminate] === STARTING RUMINATION for user={event.user_id} ===")
         logger.info(f"[ruminate] Input: {(event.content or '')[:100]}...")
-        memory_context = await memory.get_full_context(
-            user_id=event.user_id,
-            query=event.content or "",
-            project_id=event.metadata.get("project_id"),
-        )
+        with tracer.start_as_current_span("fetch_memory_context") as mem_span:
+            mem_span.set_attribute("memory.fallback", False)
+            memory_context = await memory.get_full_context(
+                user_id=event.user_id,
+                query=event.content or "",
+                project_id=event.metadata.get("project_id"),
+            )
+            mem_span.set_attribute("memory.identity_facts", len(memory_context.identity_facts))
+            mem_span.set_attribute("memory.working_memories", len(memory_context.working_memories))
+            mem_span.set_attribute("memory.semantic_memories", len(memory_context.retrieved_memories))
 
         # Log what's being injected into the prompt
         logger.info("[ruminate] Memory context injected into prompt:")
@@ -115,6 +198,13 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
                 content = mem.get('content', '')[:60]
                 logger.debug(f"[ruminate]     • sim={sim:.3f} | {content}...")
 
+        # Log conversation history
+        history_count = len(event.conversation_history) if event.conversation_history else 0
+        logger.info(f"[ruminate]   - Conversation history: {history_count} messages")
+        if event.conversation_history and history_count > 0:
+            logger.debug(f"[ruminate]   First msg: {event.conversation_history[0].author}: {event.conversation_history[0].content[:50]}...")
+            logger.debug(f"[ruminate]   Last msg: {event.conversation_history[-1].author}: {event.conversation_history[-1].content[:50]}...")
+
         prompt = build_rumination_prompt(
             event=event,
             memory=memory_context,
@@ -124,16 +214,35 @@ async def ruminate_node(state: ClaraState) -> ClaraState:
 
     # Clara thinks
     client = _get_client()
-    response = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=2048,
-        system=CLARA_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+
+    # Build message content (may include images)
+    message_content = await _build_message_content(prompt, event)
+    has_images = any(c.get("type") == "image" for c in message_content)
+
+    with tracer.start_as_current_span("llm_call") as llm_span:
+        llm_span.set_attribute("llm.model", settings.anthropic_model)
+        llm_span.set_attribute("llm.max_tokens", 2048)
+        llm_span.set_attribute("llm.provider", "anthropic")
+        llm_span.set_attribute("llm.has_images", has_images)
+
+        response = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=2048,
+            system=CLARA_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": message_content}],
+        )
+
+        # Record token usage
+        if hasattr(response, "usage"):
+            llm_span.set_attribute("llm.input_tokens", response.usage.input_tokens)
+            llm_span.set_attribute("llm.output_tokens", response.usage.output_tokens)
 
     # Parse structured response
     response_text = response.content[0].text
     result = parse_rumination_response(response_text)
+
+    # Add decision to parent span
+    span.set_attribute("ruminate.decision", result.decision)
 
     logger.info(f"[ruminate] Decision: {result.decision}")
     if result.reasoning:

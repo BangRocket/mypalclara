@@ -69,10 +69,15 @@ You can use these capabilities when needed:
   - Manage workflows and actions
 
 - **browser**: Web search and browser automation
-  - Web search via Tavily (search, QnA, context for RAG)
-  - Extract content from multiple URLs
-  - Browse pages, take screenshots with Playwright
-  - Persistent browser sessions with login state
+  - **Web search** via Tavily: search, QnA, context for RAG, extract URLs
+  - **Browser automation** via agent-browser with element refs:
+    1. `snapshot <url>` - Get interactive elements with refs (@e1, @e2, etc.)
+    2. `click @e3` - Click element by ref
+    3. `type @e5 "text"` - Type into element by ref
+    4. `scroll down/up` - Scroll the page
+    5. `screenshot` / `pdf` - Capture page
+  - **Workflow**: Always get a `snapshot` first to see available refs, then interact using those refs
+  - Refs are deterministic identifiers from the accessibility tree (e.g., @e1 = first interactive element)
 
 - **code**: Code execution and autonomous coding
   - Execute Python in Docker sandbox
@@ -129,10 +134,17 @@ def build_rumination_prompt(
 ) -> str:
     """Build the prompt for Clara's rumination."""
     from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    # Current date/time for temporal context
-    now = datetime.now()
-    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
+    from mypalclara.config.settings import settings
+
+    # Current date/time for temporal context (in configured timezone)
+    try:
+        tz = ZoneInfo(settings.timezone)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p %Z")
 
     # Format memory context
     memory_section = ""
@@ -165,14 +177,49 @@ def build_rumination_prompt(
         context_indicators.append("They mentioned me directly")
     if event.reply_to_clara:
         context_indicators.append("This is a reply to something I said")
+    if event.is_continuation:
+        context_indicators.append("AUTO-CONTINUE: Following up on what I said I'd do")
 
     context_str = f"({', '.join(context_indicators)})" if context_indicators else ""
+
+    # Continuation prompt addition
+    continuation_section = ""
+    if event.is_continuation and event.continuation_context:
+        continuation_section = f"""
+## AUTO-CONTINUE MODE
+
+You just told the user you would: **{event.continuation_context}**
+
+Now actually do it. Use a faculty/capability to accomplish this task, then report back.
+Don't say "let me do X" again - just do it now.
+"""
+
+    # Build attachments section (non-image files listed here; images passed separately)
+    attachments_section = ""
+    if event.attachments:
+        non_image_attachments = [
+            a for a in event.attachments
+            if not (a.content_type and a.content_type.startswith("image/"))
+        ]
+        image_attachments = [
+            a for a in event.attachments
+            if a.content_type and a.content_type.startswith("image/")
+        ]
+
+        if non_image_attachments:
+            attachments_section += "\n**Attached files:**\n"
+            for a in non_image_attachments:
+                size_str = f" ({a.size // 1024}KB)" if a.size else ""
+                attachments_section += f"- {a.filename}{size_str}: {a.url}\n"
+
+        if image_attachments:
+            attachments_section += f"\n**Images attached:** {len(image_attachments)} image(s) included below\n"
 
     # Build conversation history section
     history_section = ""
     if event.conversation_history:
         history_section = "## Recent Conversation\n\n"
-        for msg in event.conversation_history[-15:]:  # Last 15 messages
+        for msg in event.conversation_history[-25:]:  # Last 25 messages
             prefix = "**Clara:**" if msg.is_clara else f"**{msg.author}:**"
             # Truncate long messages
             content = msg.content[:500] + "..." if len(msg.content) > 500 else msg.content
@@ -192,13 +239,13 @@ Channel: {"DM" if event.is_dm else f"#{event.channel_id}"}
 {context_str}
 
 Message:
-{event.content}
-
+{event.content or "(no text, see attachments)"}{attachments_section}
+{continuation_section}
 {AVAILABLE_FACULTIES}
 
 ## Your Turn
 
-Think about what {event.user_name} needs. Then decide: respond directly, use a capability, or wait.
+{"Execute the task you said you'd do." if event.is_continuation else f"Think about what {event.user_name} needs. Then decide: respond directly, use a capability, or wait."}
 """
 
     return prompt

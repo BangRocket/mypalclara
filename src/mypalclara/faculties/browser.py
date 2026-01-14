@@ -1,20 +1,20 @@
 """
 Browser Faculty - Web search and browser automation.
 
-Combines Tavily web search (via official SDK) with Playwright browser
-automation for comprehensive web interaction capabilities.
+Combines Tavily web search (via official SDK) with agent-browser
+for AI-optimized browser automation using accessibility tree refs.
 
 https://github.com/tavily-ai/tavily-python
-https://github.com/microsoft/playwright-python
+https://github.com/vercel-labs/agent-browser
 """
 
 import asyncio
+import json
 import logging
 import os
-import time
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from pathlib import Path
 from typing import Optional
 
 from mypalclara.faculties.base import Faculty
@@ -24,18 +24,21 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
-BROWSER_SESSIONS_DIR = Path(os.getenv("BROWSER_SESSIONS_DIR", "./data/browser_sessions"))
-SESSION_IDLE_TIMEOUT = int(os.getenv("BROWSER_SESSION_IDLE_MINUTES", "30")) * 60
 
 # Thread pool for sync SDK calls
 _executor = ThreadPoolExecutor(max_workers=2)
+
+
+def _agent_browser_available() -> bool:
+    """Check if agent-browser CLI is installed."""
+    return shutil.which("agent-browser") is not None
 
 
 class BrowserFaculty(Faculty):
     """Web search and browser automation faculty."""
 
     name = "browser"
-    description = "Web search via Tavily and browser automation via Playwright"
+    description = "Web search via Tavily and browser automation via agent-browser"
 
     available_actions = [
         # Web Search (Tavily)
@@ -43,28 +46,17 @@ class BrowserFaculty(Faculty):
         "search_context",
         "qna_search",
         "extract_urls",
-        # Stateless Browser (Playwright)
-        "browse_page",
-        "screenshot_page",
-        "extract_page_data",
-        # Session-based Browser
-        "create_session",
-        "navigate",
+        # Browser (agent-browser)
+        "browse",
+        "snapshot",
         "click",
-        "type_text",
-        "screenshot_session",
-        "extract_session",
+        "type",
         "scroll",
-        "wait_for",
-        "get_page_info",
-        "close_session",
-        "list_sessions",
+        "screenshot",
+        "pdf",
     ]
 
     def __init__(self):
-        self._browser = None
-        self._sessions: dict[str, dict] = {}  # session_id -> {context, page, last_used}
-        self._playwright = None
         self._tavily = None
 
     def _get_tavily(self):
@@ -80,6 +72,38 @@ class BrowserFaculty(Faculty):
         """Run a synchronous function in the thread pool."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, partial(func, *args, **kwargs))
+
+    async def _run_agent_browser(self, *args, timeout: int = 30) -> dict:
+        """Run agent-browser CLI command and return JSON output."""
+        if not _agent_browser_available():
+            raise RuntimeError(
+                "agent-browser not installed. Run: npm install -g agent-browser && agent-browser install"
+            )
+
+        cmd = ["agent-browser", "--json", *args]
+        logger.info(f"[browser] Running: {' '.join(cmd)}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise RuntimeError(f"agent-browser timed out after {timeout}s")
+
+        if proc.returncode != 0:
+            error = stderr.decode().strip() if stderr else "Unknown error"
+            raise RuntimeError(f"agent-browser failed: {error}")
+
+        try:
+            return json.loads(stdout.decode())
+        except json.JSONDecodeError:
+            # Return raw output if not JSON
+            return {"raw": stdout.decode().strip()}
 
     async def execute(
         self,
@@ -105,36 +129,21 @@ class BrowserFaculty(Faculty):
                 result = await self._qna_search(params)
             elif action == "extract_urls":
                 result = await self._extract_urls(params)
-            # Stateless Browser (Playwright)
-            elif action == "browse_page":
-                result = await self._browse_page(params)
-            elif action == "screenshot_page":
-                result = await self._screenshot_page(params)
-            elif action == "extract_page_data":
-                result = await self._extract_page_data(params)
-            # Session-based Browser
-            elif action == "create_session":
-                result = await self._create_session(params)
-            elif action == "navigate":
-                result = await self._session_navigate(params)
+            # Browser (agent-browser)
+            elif action == "browse":
+                result = await self._browse(params)
+            elif action == "snapshot":
+                result = await self._snapshot(params)
             elif action == "click":
-                result = await self._session_click(params)
-            elif action == "type_text":
-                result = await self._session_type(params)
-            elif action == "screenshot_session":
-                result = await self._session_screenshot(params)
-            elif action == "extract_session":
-                result = await self._session_extract(params)
+                result = await self._click(params)
+            elif action == "type":
+                result = await self._type(params)
             elif action == "scroll":
-                result = await self._session_scroll(params)
-            elif action == "wait_for":
-                result = await self._session_wait_for(params)
-            elif action == "get_page_info":
-                result = await self._session_page_info(params)
-            elif action == "close_session":
-                result = await self._close_session(params)
-            elif action == "list_sessions":
-                result = self._list_sessions()
+                result = await self._scroll(params)
+            elif action == "screenshot":
+                result = await self._screenshot(params)
+            elif action == "pdf":
+                result = await self._pdf(params)
             else:
                 return FacultyResult(
                     success=False,
@@ -184,64 +193,47 @@ class BrowserFaculty(Faculty):
                     break
             return "web_search", {"query": query}
 
-        # Browse/visit page
-        if any(word in intent_lower for word in ["browse", "visit", "go to", "open", "navigate to"]):
+        # Snapshot (get interactive elements)
+        if "snapshot" in intent_lower or "elements" in intent_lower or "interactive" in intent_lower:
             url = self._extract_url(intent)
-            if url:
-                return "browse_page", {"url": url}
+            return "snapshot", {"url": url, "intent": intent}
 
         # Screenshot
         if "screenshot" in intent_lower:
             url = self._extract_url(intent)
-            session = self._extract_session_name(intent)
-            if session:
-                return "screenshot_session", {"session": session}
-            elif url:
-                return "screenshot_page", {"url": url}
+            return "screenshot", {"url": url, "intent": intent}
 
-        # Session management
-        if any(phrase in intent_lower for phrase in ["create session", "start session", "new session"]):
-            session = self._extract_session_name(intent) or "default"
+        # PDF
+        if "pdf" in intent_lower:
             url = self._extract_url(intent)
-            return "create_session", {"session": session, "url": url}
+            return "pdf", {"url": url, "intent": intent}
 
-        if any(phrase in intent_lower for phrase in ["close session", "end session"]):
-            session = self._extract_session_name(intent) or "default"
-            return "close_session", {"session": session}
-
-        if "list sessions" in intent_lower:
-            return "list_sessions", {}
-
-        # Session actions
+        # Click (using ref like @e1)
         if "click" in intent_lower:
-            selector = self._extract_selector(intent)
-            session = self._extract_session_name(intent) or "default"
-            return "click", {"session": session, "selector": selector}
+            ref = self._extract_ref(intent)
+            selector = self._extract_selector(intent) if not ref else None
+            return "click", {"ref": ref, "selector": selector}
 
-        if any(word in intent_lower for word in ["type", "enter", "input"]):
+        # Type
+        if any(word in intent_lower for word in ["type", "enter", "input", "fill"]):
+            ref = self._extract_ref(intent)
+            selector = self._extract_selector(intent) if not ref else None
             text = self._extract_text_to_type(intent)
-            selector = self._extract_selector(intent)
-            session = self._extract_session_name(intent) or "default"
-            return "type_text", {"session": session, "selector": selector, "text": text}
+            return "type", {"ref": ref, "selector": selector, "text": text}
 
+        # Scroll
         if "scroll" in intent_lower:
-            session = self._extract_session_name(intent) or "default"
             direction = "down" if "down" in intent_lower else "up" if "up" in intent_lower else "down"
-            return "scroll", {"session": session, "direction": direction}
+            return "scroll", {"direction": direction}
 
-        if "wait" in intent_lower:
-            selector = self._extract_selector(intent)
-            session = self._extract_session_name(intent) or "default"
-            return "wait_for", {"session": session, "selector": selector}
+        # Browse/visit page (default for URLs or site references)
+        url = self._extract_url(intent)
+        if url:
+            return "browse", {"url": url, "intent": intent}
 
-        if "extract" in intent_lower:
-            selector = self._extract_selector(intent)
-            session = self._extract_session_name(intent) or "default"
-            url = self._extract_url(intent)
-            if session in self._sessions:
-                return "extract_session", {"session": session, "selector": selector}
-            elif url:
-                return "extract_page_data", {"url": url, "selector": selector}
+        # Check if intent mentions visiting/browsing a site (even without explicit URL)
+        if any(word in intent_lower for word in ["visit", "go to", "open", "browse", "navigate", "homepage"]):
+            return "browse", {"url": None, "intent": intent}
 
         # Default to web search
         return "web_search", {"query": intent}
@@ -257,15 +249,50 @@ class BrowserFaculty(Faculty):
     def _extract_url(self, text: str) -> Optional[str]:
         """Extract URL from text."""
         import re
+
+        # Direct URL pattern
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
         match = re.search(url_pattern, text)
         if match:
             return match.group(0)
 
+        # Domain pattern (e.g., example.com)
         domain_pattern = r'\b([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z]{2,}\b'
         match = re.search(domain_pattern, text)
         if match:
             return f"https://{match.group(0)}"
+
+        return None
+
+    async def _resolve_url_from_intent(self, text: str) -> Optional[str]:
+        """Use Tavily to find a URL based on natural language intent."""
+        # First try direct extraction
+        url = self._extract_url(text)
+        if url:
+            return url
+
+        # No direct URL found, try Tavily search
+        if not TAVILY_API_KEY:
+            return None
+
+        try:
+            def _search():
+                client = self._get_tavily()
+                # Search for the site/page mentioned in the intent
+                return client.search(
+                    query=f"site homepage URL {text}",
+                    search_depth="basic",
+                    max_results=1,
+                )
+
+            result = await self._run_sync(_search)
+            results = result.get("results", [])
+            if results:
+                url = results[0].get("url")
+                logger.info(f"[browser] Resolved URL via Tavily: {url}")
+                return url
+        except Exception as e:
+            logger.warning(f"[browser] Failed to resolve URL via Tavily: {e}")
 
         return None
 
@@ -275,12 +302,12 @@ class BrowserFaculty(Faculty):
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
         return re.findall(url_pattern, text)
 
-    def _extract_session_name(self, text: str) -> Optional[str]:
-        """Extract session name from text."""
+    def _extract_ref(self, text: str) -> Optional[str]:
+        """Extract agent-browser ref (e.g., @e1, @e2) from text."""
         import re
-        match = re.search(r"session\s+['\"]?(\w+)['\"]?", text.lower())
+        match = re.search(r'@e\d+', text)
         if match:
-            return match.group(1)
+            return match.group(0)
         return None
 
     def _extract_selector(self, text: str) -> Optional[str]:
@@ -297,7 +324,7 @@ class BrowserFaculty(Faculty):
     def _extract_text_to_type(self, text: str) -> str:
         """Extract text to type from intent."""
         import re
-        match = re.search(r'(?:type|enter|input)\s+["\'](.+?)["\']', text)
+        match = re.search(r'(?:type|enter|input|fill)\s+["\'](.+?)["\']', text)
         if match:
             return match.group(1)
         return ""
@@ -449,397 +476,227 @@ class BrowserFaculty(Faculty):
         )
 
     # ==========================================================================
-    # Stateless Browser Operations (Playwright)
+    # Browser Operations (agent-browser CLI)
     # ==========================================================================
 
-    async def _get_browser(self):
-        """Get or create the Playwright browser instance."""
-        if self._browser is None:
-            try:
-                from playwright.async_api import async_playwright
-                self._playwright = await async_playwright().start()
-                self._browser = await self._playwright.chromium.launch(headless=True)
-                logger.info("[browser] Playwright browser launched")
-            except ImportError:
-                raise RuntimeError("Playwright not installed. Run: pip install playwright && playwright install chromium")
-        return self._browser
-
-    async def _browse_page(self, params: dict) -> FacultyResult:
-        """Navigate to a URL and extract text content."""
+    async def _browse(self, params: dict) -> FacultyResult:
+        """Navigate to a URL and get page content."""
         url = params.get("url", "")
-        if not url:
-            return FacultyResult(success=False, summary="No URL provided", error="Missing url")
+        intent = params.get("intent", "")
 
-        browser = await self._get_browser()
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        try:
-            await page.goto(url, timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=10000)
-
-            title = await page.title()
-            content = await page.inner_text("body")
-            content = content[:5000]  # Limit content size
-
-            return FacultyResult(
-                success=True,
-                summary=f"Loaded '{title}' from {url}\n\nContent preview:\n{content[:500]}...",
-                data={"url": url, "title": title, "content": content},
-            )
-        finally:
-            await context.close()
-
-    async def _screenshot_page(self, params: dict) -> FacultyResult:
-        """Take a screenshot of a webpage."""
-        url = params.get("url", "")
-        if not url:
-            return FacultyResult(success=False, summary="No URL provided", error="Missing url")
-
-        browser = await self._get_browser()
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        try:
-            await page.goto(url, timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=10000)
-
-            # Save screenshot
-            BROWSER_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-            timestamp = int(time.time())
-            filename = f"screenshot_{timestamp}.png"
-            filepath = BROWSER_SESSIONS_DIR / filename
-
-            await page.screenshot(path=str(filepath), full_page=False)
-
-            return FacultyResult(
-                success=True,
-                summary=f"Screenshot saved to {filepath}",
-                data={"path": str(filepath), "url": url},
-            )
-        finally:
-            await context.close()
-
-    async def _extract_page_data(self, params: dict) -> FacultyResult:
-        """Extract data from a page using CSS selectors."""
-        url = params.get("url", "")
-        selector = params.get("selector", "body")
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
 
         if not url:
-            return FacultyResult(success=False, summary="No URL provided", error="Missing url")
-
-        browser = await self._get_browser()
-        context = await browser.new_context()
-        page = await context.new_page()
+            return FacultyResult(success=False, summary="No URL provided or could not resolve from intent", error="Missing url")
 
         try:
-            await page.goto(url, timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            # Navigate and get snapshot with interactive elements
+            result = await self._run_agent_browser("navigate", url, timeout=60)
 
-            elements = await page.query_selector_all(selector)
-            extracted = []
-            for el in elements[:20]:  # Limit to 20 elements
-                text = await el.inner_text()
-                extracted.append(text.strip()[:500])
+            # Get text content
+            text_result = await self._run_agent_browser("text", timeout=30)
+            content = text_result.get("text", text_result.get("raw", ""))[:5000]
 
             return FacultyResult(
                 success=True,
-                summary=f"Extracted {len(extracted)} elements matching '{selector}'",
-                data={"selector": selector, "elements": extracted},
+                summary=f"Loaded page: {url}\n\nContent preview:\n{content[:1000]}...",
+                data={"url": url, "content": content},
             )
-        finally:
-            await context.close()
-
-    # ==========================================================================
-    # Session-based Browser Operations (Playwright)
-    # ==========================================================================
-
-    async def _create_session(self, params: dict) -> FacultyResult:
-        """Create or restore a named browser session."""
-        session_name = params.get("session", "default")
-        url = params.get("url")
-
-        browser = await self._get_browser()
-
-        # Check for existing session
-        if session_name in self._sessions:
-            session = self._sessions[session_name]
-            session["last_used"] = time.time()
-            return FacultyResult(
-                success=True,
-                summary=f"Session '{session_name}' already exists and is active",
-                data={"session": session_name, "restored": True},
-            )
-
-        # Create new context and page
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        self._sessions[session_name] = {
-            "context": context,
-            "page": page,
-            "last_used": time.time(),
-        }
-
-        if url:
-            await page.goto(url, timeout=30000)
-            title = await page.title()
-            return FacultyResult(
-                success=True,
-                summary=f"Session '{session_name}' created and navigated to {title}",
-                data={"session": session_name, "url": url, "title": title},
-            )
-
-        return FacultyResult(
-            success=True,
-            summary=f"Session '{session_name}' created",
-            data={"session": session_name},
-        )
-
-    async def _session_navigate(self, params: dict) -> FacultyResult:
-        """Navigate to URL in session."""
-        session_name = params.get("session", "default")
-        url = params.get("url", "")
-
-        if session_name not in self._sessions:
+        except Exception as e:
             return FacultyResult(
                 success=False,
-                summary=f"Session '{session_name}' not found",
-                error="Session not found",
+                summary=f"Failed to browse {url}: {e}",
+                error=str(e),
             )
 
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
+    async def _snapshot(self, params: dict) -> FacultyResult:
+        """Get interactive elements snapshot with refs for clicking/typing."""
+        url = params.get("url")
+        intent = params.get("intent", "")
 
-        await page.goto(url, timeout=30000)
-        title = await page.title()
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
 
-        return FacultyResult(
-            success=True,
-            summary=f"Navigated to '{title}'",
-            data={"url": url, "title": title},
-        )
+        try:
+            if url:
+                await self._run_agent_browser("navigate", url, timeout=60)
 
-    async def _session_click(self, params: dict) -> FacultyResult:
-        """Click an element in session."""
-        session_name = params.get("session", "default")
-        selector = params.get("selector", "")
+            # Get accessibility tree snapshot with refs
+            result = await self._run_agent_browser("snapshot", timeout=30)
 
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
+            # Format for Clara
+            elements = result.get("elements", [])
+            if not elements and "raw" in result:
+                # Parse raw output if not JSON
+                return FacultyResult(
+                    success=True,
+                    summary=f"Page snapshot:\n{result['raw'][:3000]}",
+                    data=result,
+                )
 
-        if not selector:
-            return FacultyResult(success=False, summary="No selector provided", error="Missing selector")
+            # Format elements nicely
+            formatted = []
+            for el in elements[:50]:  # Limit to 50 elements
+                ref = el.get("ref", "")
+                role = el.get("role", "")
+                name = el.get("name", "")
+                formatted.append(f"{ref}: [{role}] {name}")
 
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
+            summary = f"Found {len(elements)} interactive elements:\n" + "\n".join(formatted[:20])
+            if len(elements) > 20:
+                summary += f"\n... and {len(elements) - 20} more"
 
-        await page.click(selector, timeout=10000)
+            return FacultyResult(
+                success=True,
+                summary=summary,
+                data={"elements": elements, "url": url},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to get snapshot: {e}",
+                error=str(e),
+            )
 
-        return FacultyResult(
-            success=True,
-            summary=f"Clicked '{selector}'",
-            data={"selector": selector},
-        )
+    async def _click(self, params: dict) -> FacultyResult:
+        """Click an element using ref or selector."""
+        ref = params.get("ref")
+        selector = params.get("selector")
 
-    async def _session_type(self, params: dict) -> FacultyResult:
-        """Type text into an element in session."""
-        session_name = params.get("session", "default")
-        selector = params.get("selector", "")
+        if not ref and not selector:
+            return FacultyResult(
+                success=False,
+                summary="No element specified. Use ref (e.g., @e1) or selector.",
+                error="Missing ref or selector",
+            )
+
+        try:
+            target = ref if ref else selector
+            await self._run_agent_browser("click", target, timeout=30)
+
+            return FacultyResult(
+                success=True,
+                summary=f"Clicked {target}",
+                data={"target": target},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to click: {e}",
+                error=str(e),
+            )
+
+    async def _type(self, params: dict) -> FacultyResult:
+        """Type text into an element."""
+        ref = params.get("ref")
+        selector = params.get("selector")
         text = params.get("text", "")
 
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
+        if not text:
+            return FacultyResult(success=False, summary="No text to type", error="Missing text")
 
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
+        try:
+            if ref or selector:
+                target = ref if ref else selector
+                await self._run_agent_browser("fill", target, text, timeout=30)
+            else:
+                await self._run_agent_browser("type", text, timeout=30)
 
-        if selector:
-            await page.fill(selector, text, timeout=10000)
-        else:
-            await page.keyboard.type(text)
-
-        return FacultyResult(
-            success=True,
-            summary=f"Typed text into {'element' if selector else 'page'}",
-            data={"selector": selector, "text_length": len(text)},
-        )
-
-    async def _session_screenshot(self, params: dict) -> FacultyResult:
-        """Take screenshot in session."""
-        session_name = params.get("session", "default")
-
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
-
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
-
-        BROWSER_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = int(time.time())
-        filename = f"{session_name}_{timestamp}.png"
-        filepath = BROWSER_SESSIONS_DIR / filename
-
-        await page.screenshot(path=str(filepath))
-
-        return FacultyResult(
-            success=True,
-            summary=f"Screenshot saved to {filepath}",
-            data={"path": str(filepath)},
-        )
-
-    async def _session_extract(self, params: dict) -> FacultyResult:
-        """Extract content from session page."""
-        session_name = params.get("session", "default")
-        selector = params.get("selector", "body")
-
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
-
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
-
-        elements = await page.query_selector_all(selector)
-        extracted = []
-        for el in elements[:20]:
-            text = await el.inner_text()
-            extracted.append(text.strip()[:500])
-
-        return FacultyResult(
-            success=True,
-            summary=f"Extracted {len(extracted)} elements",
-            data={"selector": selector, "elements": extracted},
-        )
-
-    async def _session_scroll(self, params: dict) -> FacultyResult:
-        """Scroll in session."""
-        session_name = params.get("session", "default")
-        direction = params.get("direction", "down")
-        amount = params.get("amount", 500)
-
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
-
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
-
-        delta = amount if direction == "down" else -amount
-        await page.mouse.wheel(0, delta)
-
-        return FacultyResult(
-            success=True,
-            summary=f"Scrolled {direction} {amount}px",
-            data={"direction": direction, "amount": amount},
-        )
-
-    async def _session_wait_for(self, params: dict) -> FacultyResult:
-        """Wait for element in session."""
-        session_name = params.get("session", "default")
-        selector = params.get("selector", "")
-        timeout = params.get("timeout", 10000)
-
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
-
-        if not selector:
-            return FacultyResult(success=False, summary="No selector provided", error="Missing selector")
-
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
-
-        await page.wait_for_selector(selector, timeout=timeout)
-
-        return FacultyResult(
-            success=True,
-            summary=f"Element '{selector}' found",
-            data={"selector": selector},
-        )
-
-    async def _session_page_info(self, params: dict) -> FacultyResult:
-        """Get info about current page in session."""
-        session_name = params.get("session", "default")
-
-        if session_name not in self._sessions:
-            return FacultyResult(success=False, summary=f"Session '{session_name}' not found", error="Session not found")
-
-        session = self._sessions[session_name]
-        session["last_used"] = time.time()
-        page = session["page"]
-
-        title = await page.title()
-        url = page.url
-
-        return FacultyResult(
-            success=True,
-            summary=f"Page: '{title}' at {url}",
-            data={"title": title, "url": url},
-        )
-
-    async def _close_session(self, params: dict) -> FacultyResult:
-        """Close a browser session."""
-        session_name = params.get("session", "default")
-
-        if session_name not in self._sessions:
-            return FacultyResult(
-                success=False,
-                summary=f"Session '{session_name}' not found",
-                error="Session not found",
-            )
-
-        session = self._sessions.pop(session_name)
-        await session["context"].close()
-
-        return FacultyResult(
-            success=True,
-            summary=f"Session '{session_name}' closed",
-            data={"session": session_name},
-        )
-
-    def _list_sessions(self) -> FacultyResult:
-        """List active browser sessions."""
-        sessions = []
-        for name, session in self._sessions.items():
-            sessions.append({
-                "name": name,
-                "last_used": session["last_used"],
-                "idle_seconds": int(time.time() - session["last_used"]),
-            })
-
-        if not sessions:
             return FacultyResult(
                 success=True,
-                summary="No active browser sessions",
-                data={"sessions": []},
+                summary=f"Typed '{text[:50]}{'...' if len(text) > 50 else ''}'",
+                data={"text": text, "target": ref or selector},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to type: {e}",
+                error=str(e),
             )
 
-        return FacultyResult(
-            success=True,
-            summary=f"Active sessions: {', '.join(s['name'] for s in sessions)}",
-            data={"sessions": sessions},
-        )
+    async def _scroll(self, params: dict) -> FacultyResult:
+        """Scroll the page."""
+        direction = params.get("direction", "down")
+
+        try:
+            await self._run_agent_browser("scroll", direction, timeout=10)
+
+            return FacultyResult(
+                success=True,
+                summary=f"Scrolled {direction}",
+                data={"direction": direction},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to scroll: {e}",
+                error=str(e),
+            )
+
+    async def _screenshot(self, params: dict) -> FacultyResult:
+        """Take a screenshot of the current page."""
+        url = params.get("url")
+        intent = params.get("intent", "")
+        output = params.get("output", "screenshot.png")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
+
+        try:
+            if url:
+                await self._run_agent_browser("navigate", url, timeout=60)
+
+            await self._run_agent_browser("screenshot", output, timeout=30)
+
+            return FacultyResult(
+                success=True,
+                summary=f"Screenshot saved to {output}",
+                data={"path": output, "url": url},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to take screenshot: {e}",
+                error=str(e),
+            )
+
+    async def _pdf(self, params: dict) -> FacultyResult:
+        """Save page as PDF."""
+        url = params.get("url")
+        intent = params.get("intent", "")
+        output = params.get("output", "page.pdf")
+
+        # Try to resolve URL from intent if not directly provided
+        if not url and intent:
+            url = await self._resolve_url_from_intent(intent)
+
+        try:
+            if url:
+                await self._run_agent_browser("navigate", url, timeout=60)
+
+            await self._run_agent_browser("pdf", output, timeout=30)
+
+            return FacultyResult(
+                success=True,
+                summary=f"PDF saved to {output}",
+                data={"path": output, "url": url},
+            )
+        except Exception as e:
+            return FacultyResult(
+                success=False,
+                summary=f"Failed to save PDF: {e}",
+                error=str(e),
+            )
 
     async def cleanup(self):
         """Cleanup browser resources."""
-        for session in self._sessions.values():
-            try:
-                await session["context"].close()
-            except Exception:
-                pass
-        self._sessions.clear()
-
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
-
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None
-
+        try:
+            # Close any open browser sessions
+            await self._run_agent_browser("close", timeout=10)
+        except Exception:
+            pass
         logger.info("[browser] Resources cleaned up")

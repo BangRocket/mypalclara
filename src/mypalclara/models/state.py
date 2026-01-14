@@ -122,3 +122,6 @@ class ClaraState(TypedDict, total=False):
 
     # Completion
     complete: bool
+
+    # Auto-continuation (if Clara said she'd do something)
+    continuation_event: Optional[Event]

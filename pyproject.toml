@@ -52,8 +52,7 @@ pygithub = "^2.8.1"
 # Azure DevOps SDK
 azure-devops = "^7.1.0b4"
 
-# Browser automation & web search
-playwright = "^1.49.0"
+# Web search (browser automation via agent-browser CLI)
 tavily-python = "^0.7.0"
 
 # Google Workspace SDK
@@ -64,7 +63,14 @@ google-auth-httplib2 = "^0.2.0"
 
 # S3/Wasabi cloud storage
 boto3 = "^1.35.0"
-prometheus-client = "^0.23.1"
+
+# OpenTelemetry
+opentelemetry-api = "^1.29.0"
+opentelemetry-sdk = "^1.29.0"
+opentelemetry-exporter-otlp-proto-http = "^1.29.0"
+opentelemetry-exporter-otlp-proto-grpc = "^1.29.0"
+opentelemetry-instrumentation-httpx = "^0.50b0"
+opentelemetry-instrumentation-sqlalchemy = "^0.50b0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

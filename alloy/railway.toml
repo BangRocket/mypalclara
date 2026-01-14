@@ -1,0 +1,7 @@
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Disable HTTP health check - use TCP on the OTLP port instead
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

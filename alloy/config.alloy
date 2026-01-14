@@ -1,0 +1,57 @@
+// Grafana Alloy configuration for Clara
+// Receives OTLP from Discord bot, exports to Grafana Cloud
+
+// =============================================================================
+// OTLP Receiver - accepts traces, metrics, and logs from Discord bot
+// =============================================================================
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+    traces  = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
+  }
+}
+
+// =============================================================================
+// Batch processor - batches data before export
+// =============================================================================
+otelcol.processor.batch "default" {
+  output {
+    metrics = [otelcol.exporter.otlphttp.grafana.input]
+    traces  = [otelcol.exporter.otlphttp.grafana.input]
+    logs    = [otelcol.exporter.otlphttp.grafana.input]
+  }
+}
+
+// =============================================================================
+// Grafana Cloud OTLP exporter
+// =============================================================================
+otelcol.exporter.otlphttp "grafana" {
+  client {
+    endpoint = env("GRAFANA_OTLP_ENDPOINT")
+    auth     = otelcol.auth.basic.grafana.handler
+  }
+}
+
+// =============================================================================
+// Basic auth for Grafana Cloud
+// =============================================================================
+otelcol.auth.basic "grafana" {
+  username = env("GRAFANA_INSTANCE_ID")
+  password = env("GRAFANA_API_KEY")
+}
+
+// =============================================================================
+// Logging for debugging
+// =============================================================================
+logging {
+  level  = "info"
+  format = "logfmt"
+}

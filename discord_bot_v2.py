@@ -47,22 +47,24 @@ async def main():
     # Import after path setup
     from mypalclara.adapters.discord import run_bot
     from mypalclara import memory
-    from mypalclara.metrics_server import (
-        start_metrics_server,
-        get_metrics_port,
-        is_metrics_enabled,
-    )
+    from mypalclara.observability import init_observability, is_enabled as observability_enabled
+
+    # Initialize observability (traces + metrics + logs)
+    import os
+    logger.info(f"[startup] OTEL_EXPORTER_ENDPOINT = {os.environ.get('OTEL_EXPORTER_ENDPOINT', '(not set)')}")
+    logger.info(f"[startup] GRAFANA_OTLP_ENDPOINT = {os.environ.get('GRAFANA_OTLP_ENDPOINT', '(not set)')}")
+
+    if observability_enabled():
+        logger.info("[startup] Observability is enabled, initializing...")
+        result = init_observability()
+        logger.info(f"[startup] init_observability() returned: {result}")
+    else:
+        logger.info("[startup] Observability disabled (no OTEL_EXPORTER_ENDPOINT or GRAFANA_* vars)")
 
     # Initialize Cortex memory system
     logger.info("Initializing Cortex memory system...")
     await memory.initialize()
     logger.info("Cortex ready")
-
-    # Start metrics server (for Prometheus scraping)
-    if is_metrics_enabled():
-        port = get_metrics_port()
-        if start_metrics_server(port=port):
-            logger.info(f"Prometheus metrics available at http://localhost:{port}/metrics")
 
     # Start Discord bot
     logger.info("Starting Discord bot...")
