@@ -138,7 +138,8 @@ class DatabaseManager:
         try:
             from sqlalchemy import text
 
-            from db import DATABASE_URL, SessionLocal, engine
+            from db import SessionLocal
+            from db.connection import DATABASE_URL, engine
 
             # Test connection
             with engine.connect() as conn:
@@ -146,7 +147,7 @@ class DatabaseManager:
 
             self._session_local = SessionLocal
 
-            db_type = "PostgreSQL" if "postgres" in DATABASE_URL else "SQLite"
+            db_type = "PostgreSQL" if DATABASE_URL and "postgres" in DATABASE_URL else "SQLite"
             self.main_db_status = ConnectionStatus(connected=True, message=f"Connected to {db_type}", db_type="main")
         except Exception as e:
             self.main_db_status = ConnectionStatus(connected=False, message=f"Error: {str(e)[:50]}", db_type="main")
@@ -183,19 +184,48 @@ class DatabaseManager:
         return self._mem0
 
     def get_all_users(self) -> list[str]:
-        """Get all unique user IDs from the main database."""
-        session = self.get_session()
-        if not session:
-            return []
-        try:
-            from db.models import Session as DBSession
+        """Get all unique user IDs from both main database and mem0."""
+        users = set()
 
-            users = session.query(DBSession.user_id).distinct().all()
-            return sorted([u[0] for u in users if u[0]])
-        except Exception:
-            return []
-        finally:
-            session.close()
+        # Get users from main DB sessions
+        session = self.get_session()
+        if session:
+            try:
+                from db.models import Session as DBSession
+
+                db_users = session.query(DBSession.user_id).distinct().all()
+                users.update(u[0] for u in db_users if u[0])
+            except Exception:
+                pass
+            finally:
+                session.close()
+
+        # Get users from mem0/pgvector directly
+        if self._mem0:
+            try:
+                import os
+
+                import psycopg2
+
+                mem0_url = os.getenv("MEM0_DATABASE_URL")
+                if mem0_url:
+                    if mem0_url.startswith("postgres://"):
+                        mem0_url = mem0_url.replace("postgres://", "postgresql://", 1)
+
+                    conn = psycopg2.connect(mem0_url)
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT DISTINCT payload->>'user_id' as user_id
+                        FROM clara_memories
+                        WHERE payload->>'user_id' IS NOT NULL
+                    """)
+                    mem0_users = cur.fetchall()
+                    users.update(u[0] for u in mem0_users if u[0])
+                    conn.close()
+            except Exception:
+                pass
+
+        return sorted(users)
 
     def get_all_projects(self) -> list[tuple[str, str, str]]:
         """Get all projects from the main database.
