@@ -100,6 +100,11 @@ KUZU_DATA_DIR = BASE_DATA_DIR / "kuzu_data"
 if GRAPH_STORE_PROVIDER == "kuzu":
     KUZU_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Reranker configuration (optional - improves retrieval quality)
+# Uses sentence-transformers cross-encoder for semantic reranking
+ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
 
 def _get_graph_store_config() -> dict | None:
     """
@@ -117,9 +122,7 @@ def _get_graph_store_config() -> dict | None:
 
     if GRAPH_STORE_PROVIDER == "neo4j":
         if not NEO4J_URL or not NEO4J_PASSWORD:
-            print(
-                "[mem0] Graph store: Neo4j configured but NEO4J_URL or NEO4J_PASSWORD not set"
-            )
+            print("[mem0] Graph store: Neo4j configured but NEO4J_URL or NEO4J_PASSWORD not set")
             return None
 
         print(f"[mem0] Graph store: Neo4j at {NEO4J_URL}")
@@ -146,6 +149,32 @@ def _get_graph_store_config() -> dict | None:
         return None
 
 
+def _get_reranker_config() -> dict | None:
+    """
+    Build reranker config for improved retrieval quality.
+
+    Uses sentence-transformers cross-encoder to rerank search results
+    based on semantic similarity to the query. This improves precision
+    by re-scoring the initial vector search results.
+
+    Controlled by ENABLE_RERANKER env var (default: false).
+    Requires: pip install sentence-transformers
+    """
+    if not ENABLE_RERANKER:
+        return None
+
+    print(f"[mem0] Reranker: sentence_transformer ({RERANKER_MODEL})")
+    return {
+        "provider": "sentence_transformer",
+        "config": {
+            "model": RERANKER_MODEL,
+            "device": None,  # Auto-detect (CPU/CUDA)
+            "batch_size": 32,
+            "show_progress_bar": False,
+        },
+    }
+
+
 def _get_llm_config() -> dict | None:
     """
     Build mem0 LLM config based on MEM0_PROVIDER.
@@ -161,9 +190,7 @@ def _get_llm_config() -> dict | None:
     # Get API key: explicit MEM0_API_KEY > provider's default key
     api_key = MEM0_API_KEY or os.getenv(provider_config["api_key_env"])
     if not api_key:
-        print(
-            f"[mem0] No API key found for MEM0_PROVIDER={MEM0_PROVIDER} - mem0 LLM disabled"
-        )
+        print(f"[mem0] No API key found for MEM0_PROVIDER={MEM0_PROVIDER} - mem0 LLM disabled")
         return None
 
     # Get base URL: explicit MEM0_BASE_URL > provider's default URL
@@ -203,6 +230,9 @@ llm_config = _get_llm_config()
 
 # Get graph store config
 graph_store_config = _get_graph_store_config()
+
+# Get reranker config
+reranker_config = _get_reranker_config()
 
 # Custom fact extraction prompt
 CUSTOM_EXTRACTION_PROMPT = """You are a memory extraction system for a personal AI assistant.
@@ -360,12 +390,20 @@ if graph_store_config:
     if llm_config:
         config["graph_store"]["llm"] = llm_config.copy()
 
+# Add reranker config if configured
+if reranker_config:
+    config["reranker"] = reranker_config
+
 # Debug summary
 print("[mem0] Embeddings: OpenAI text-embedding-3-small")
 if graph_store_config:
     print(f"[mem0] Graph memory: ENABLED ({GRAPH_STORE_PROVIDER})")
 else:
     print("[mem0] Graph memory: DISABLED (set ENABLE_GRAPH_MEMORY=true to enable)")
+if reranker_config:
+    print(f"[mem0] Reranker: ENABLED ({RERANKER_MODEL})")
+else:
+    print("[mem0] Reranker: DISABLED (set ENABLE_RERANKER=true to enable)")
 
 # Initialize mem0 (synchronous version)
 MEM0: Memory | None = None
