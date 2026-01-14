@@ -33,6 +33,10 @@ SUMMARY_INTERVAL = 10
 MAX_SEARCH_QUERY_CHARS = 6000
 MAX_MEMORIES_PER_TYPE = 50  # Limit memories to reduce token usage
 
+# Memory filtering configuration
+EPHEMERAL_MAX_AGE_DAYS = 30  # Filter out ephemeral memories older than this
+ENABLE_MEMORY_TYPE_FILTER = True  # Use memory_type metadata in filtering
+
 # Paths for initial profile loading
 BASE_DIR = Path(__file__).parent.parent
 USER_PROFILE_PATH = BASE_DIR / "inputs" / "user_profile.txt"
@@ -358,6 +362,43 @@ class MemoryManager:
             metadata=metadata,
         )
 
+    def _filter_memories(
+        self,
+        memories: list[MemoryRecord],
+        exclude_old_ephemeral: bool = True,
+    ) -> list[MemoryRecord]:
+        """Filter memories based on type and age.
+
+        Applies intelligent filtering:
+        - Excludes ephemeral memories older than EPHEMERAL_MAX_AGE_DAYS
+        - Keeps all stable and active memories regardless of age
+
+        Args:
+            memories: List of MemoryRecord objects to filter
+            exclude_old_ephemeral: Whether to filter old ephemeral memories
+
+        Returns:
+            Filtered list of MemoryRecord objects
+        """
+        if not exclude_old_ephemeral:
+            return memories
+
+        filtered = []
+        now = datetime.now(timezone.utc)
+
+        for mem in memories:
+            # Always keep stable and active memories
+            if mem.memory_type != MemoryType.EPHEMERAL:
+                filtered.append(mem)
+                continue
+
+            # Filter ephemeral memories by age
+            if mem.age_days <= EPHEMERAL_MAX_AGE_DAYS:
+                filtered.append(mem)
+            # else: skip old ephemeral memory
+
+        return filtered
+
     def fetch_mem0_context(
         self,
         user_id: str,
@@ -470,6 +511,16 @@ class MemoryManager:
                 if record.content not in seen_contents:
                     user_mems.append(record)
                     seen_contents.add(record.content)
+
+        # Filter out old ephemeral memories
+        user_mems_before = len(user_mems)
+        proj_mems_before = len(proj_mems)
+        user_mems = self._filter_memories(user_mems, exclude_old_ephemeral=True)
+        proj_mems = self._filter_memories(proj_mems, exclude_old_ephemeral=True)
+
+        filtered_count = (user_mems_before - len(user_mems)) + (proj_mems_before - len(proj_mems))
+        if filtered_count > 0:
+            print(f"[mem0] Filtered out {filtered_count} old ephemeral memories")
 
         # Sort by weighted score (semantic similarity * recency weight)
         user_mems.sort(key=lambda m: m.weighted_score, reverse=True)
