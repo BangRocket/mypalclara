@@ -59,6 +59,9 @@ playwright = "^1.49.0"
 claude-agent-sdk = "^0.1.18"
 imap-tools = "^1.11.0"
 
+# TUI for memory administration
+textual = "^3.0.0"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 ruff = "^0.8"

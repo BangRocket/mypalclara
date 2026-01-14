@@ -42,7 +42,43 @@ railway run -s shinkansen python -m scripts.backfill_memory_types --all --apply 
 poetry run python clear_dbs.py             # With confirmation prompt
 poetry run python clear_dbs.py --yes       # Skip confirmation
 poetry run python clear_dbs.py --user <id> # Clear specific user
+
+# Memory Admin TUI (interactive terminal UI)
+poetry run python -m scripts.memory_admin_tui
 ```
+
+### Memory Admin TUI
+
+Interactive terminal UI for administering memories across both PostgreSQL databases:
+
+```bash
+poetry run python -m scripts.memory_admin_tui
+```
+
+**Features:**
+- Browse and search memories with filtering by user, type, project
+- Full CRUD operations (Create, Read, Update, Delete memories)
+- View memory details including metadata and payload
+- Browse users, projects, and sessions from main database
+- Real-time database connection status (Main DB + pgvector)
+- Memory statistics dashboard
+
+**Keyboard Shortcuts:**
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `r` | Refresh data |
+| `n` | Create new memory |
+| `e` | Edit selected memory |
+| `d` | Delete selected memory |
+| `s` or `/` | Focus search |
+| `F1` | Show help |
+
+**Tabs:**
+- **Memories**: Browse, filter, search, and manage memories
+- **Statistics**: View memory counts by type and user
+- **Sessions**: Browse user sessions from main DB
+- **Projects**: View all projects
 
 ## Architecture
 
