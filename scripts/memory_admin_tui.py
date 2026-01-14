@@ -6,7 +6,8 @@ A comprehensive terminal user interface for managing memories in the MyPalClara 
 Supports full CRUD operations on both PostgreSQL (main app DB) and pgvector (mem0) databases.
 
 Usage:
-    poetry run python -m scripts.memory_admin_tui
+    poetry run python -m scripts.memory_admin_tui              # Uses .env.railway (or .env)
+    poetry run python -m scripts.memory_admin_tui --env .env   # Use specific env file
 
 Features:
     - Browse and search memories with filtering by user, type, project
@@ -17,7 +18,11 @@ Features:
     - Browse users, projects, and sessions from main DB
     - Real-time database connection status
 
-Environment Variables:
+Environment Files (checked in order):
+    1. .env.railway  - Production database credentials (preferred)
+    2. .env          - Local development credentials (fallback)
+
+Required Environment Variables:
     DATABASE_URL      - PostgreSQL connection for main app DB
     MEM0_DATABASE_URL - PostgreSQL+pgvector connection for memories
     OPENAI_API_KEY    - Required for mem0 embeddings
@@ -25,22 +30,52 @@ Environment Variables:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Load environment
+# Parse command line args early to determine which env file to load
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--env", type=str, help="Environment file to load (default: .env.railway, fallback: .env)")
+_args, _ = _parser.parse_known_args()
+
+# Load environment - prioritize .env.railway for production DB access
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    env_file = None
+    if _args.env:
+        # User specified an env file
+        env_file = PROJECT_ROOT / _args.env
+        if not env_file.exists():
+            print(f"Warning: Specified env file not found: {env_file}")
+            env_file = None
+
+    if not env_file:
+        # Try .env.railway first (production), then .env (local)
+        railway_env = PROJECT_ROOT / ".env.railway"
+        default_env = PROJECT_ROOT / ".env"
+
+        if railway_env.exists():
+            env_file = railway_env
+        elif default_env.exists():
+            env_file = default_env
+
+    if env_file:
+        load_dotenv(env_file, override=True)
+        print(f"[env] Loaded: {env_file.name}")
+    else:
+        print("[env] No .env file found, using system environment")
 except ImportError:
-    pass
+    print("[env] python-dotenv not installed, using system environment")
 
 from textual import on
 from textual.app import App, ComposeResult
