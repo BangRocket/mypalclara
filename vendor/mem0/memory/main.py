@@ -175,6 +175,7 @@ class Memory(MemoryBase):
 
         self.custom_fact_extraction_prompt = self.config.custom_fact_extraction_prompt
         self.custom_update_memory_prompt = self.config.custom_update_memory_prompt
+        self.retrieval_criteria = self.config.retrieval_criteria
         self.embedding_model = EmbedderFactory.create(
             self.config.embedder.provider,
             self.config.embedder.config,
@@ -289,6 +290,7 @@ class Memory(MemoryBase):
         infer: bool = True,
         memory_type: Optional[str] = None,
         prompt: Optional[str] = None,
+        timestamp: Optional[int] = None,
     ):
         """
         Create a new memory.
@@ -367,7 +369,7 @@ class Memory(MemoryBase):
             messages = parse_vision_messages(messages)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future1 = executor.submit(self._add_to_vector_store, messages, processed_metadata, effective_filters, infer)
+            future1 = executor.submit(self._add_to_vector_store, messages, processed_metadata, effective_filters, infer, timestamp)
             future2 = executor.submit(self._add_to_graph, messages, effective_filters)
 
             concurrent.futures.wait([future1, future2])
@@ -383,7 +385,7 @@ class Memory(MemoryBase):
 
         return {"results": vector_store_result}
 
-    def _add_to_vector_store(self, messages, metadata, filters, infer):
+    def _add_to_vector_store(self, messages, metadata, filters, infer, timestamp=None):
         if not infer:
             returned_memories = []
             for message_dict in messages:
@@ -407,7 +409,7 @@ class Memory(MemoryBase):
 
                 msg_content = message_dict["content"]
                 msg_embeddings = self.embedding_model.embed(msg_content, "add")
-                mem_id = self._create_memory(msg_content, msg_embeddings, per_msg_meta)
+                mem_id = self._create_memory(msg_content, msg_embeddings, per_msg_meta, timestamp=timestamp)
 
                 returned_memories.append(
                     {
@@ -470,16 +472,32 @@ class Memory(MemoryBase):
         if filters.get("run_id"):
             search_filters["run_id"] = filters["run_id"]
         for new_mem in new_retrieved_facts:
-            messages_embeddings = self.embedding_model.embed(new_mem, "add")
-            new_message_embeddings[new_mem] = messages_embeddings
+            # Handle both string facts (legacy) and dict facts with is_key (new format)
+            if isinstance(new_mem, dict):
+                mem_text = new_mem.get("text", "")
+                mem_is_key = new_mem.get("is_key", False)
+            else:
+                mem_text = new_mem
+                mem_is_key = False
+
+            if not mem_text:
+                continue
+
+            messages_embeddings = self.embedding_model.embed(mem_text, "add")
+            new_message_embeddings[mem_text] = messages_embeddings
             existing_memories = self.vector_store.search(
-                query=new_mem,
+                query=mem_text,
                 vectors=messages_embeddings,
                 limit=5,
                 filters=search_filters,
             )
             for mem in existing_memories:
-                retrieved_old_memory.append({"id": mem.id, "text": mem.payload.get("data", "")})
+                existing_is_key = mem.payload.get("is_key", "false")
+                retrieved_old_memory.append({
+                    "id": mem.id,
+                    "text": mem.payload.get("data", ""),
+                    "is_key": existing_is_key
+                })
 
         unique_data = {}
         for item in retrieved_old_memory:
@@ -531,56 +549,88 @@ class Memory(MemoryBase):
                         continue
 
                     event_type = resp.get("event")
+                    # Extract is_key flag from response, convert to string for JSON storage
+                    is_key_value = resp.get("is_key", False)
+                    is_key_str = "true" if is_key_value else "false"
+
                     if event_type == "ADD":
+                        add_metadata = deepcopy(metadata)
+                        add_metadata["is_key"] = is_key_str
                         memory_id = self._create_memory(
                             data=action_text,
                             existing_embeddings=new_message_embeddings,
-                            metadata=deepcopy(metadata),
+                            metadata=add_metadata,
+                            timestamp=timestamp,
                         )
-                        returned_memories.append({"id": memory_id, "memory": action_text, "event": event_type})
+                        returned_memories.append({"id": memory_id, "memory": action_text, "event": event_type, "is_key": is_key_str})
                     elif event_type == "UPDATE":
-                        self._update_memory(
-                            memory_id=temp_uuid_mapping[resp.get("id")],
-                            data=action_text,
-                            existing_embeddings=new_message_embeddings,
-                            metadata=deepcopy(metadata),
-                        )
-                        returned_memories.append(
-                            {
-                                "id": temp_uuid_mapping[resp.get("id")],
-                                "memory": action_text,
-                                "event": event_type,
-                                "previous_memory": resp.get("old_memory"),
-                            }
-                        )
+                        target_id = temp_uuid_mapping.get(resp.get("id"))
+                        if target_id:
+                            # Existing memory found, update it with is_key
+                            update_metadata = deepcopy(metadata)
+                            update_metadata["is_key"] = is_key_str
+                            self._update_memory(
+                                memory_id=target_id,
+                                data=action_text,
+                                existing_embeddings=new_message_embeddings,
+                                metadata=update_metadata,
+                            )
+                            returned_memories.append(
+                                {
+                                    "id": target_id,
+                                    "memory": action_text,
+                                    "event": event_type,
+                                    "previous_memory": resp.get("old_memory"),
+                                    "is_key": is_key_str,
+                                }
+                            )
+                        else:
+                            # No existing memory, treat as ADD instead
+                            logger.info(f"UPDATE target not found, converting to ADD: {action_text[:50]}...")
+                            add_metadata = deepcopy(metadata)
+                            add_metadata["is_key"] = is_key_str
+                            memory_id = self._create_memory(
+                                data=action_text,
+                                existing_embeddings=new_message_embeddings,
+                                metadata=add_metadata,
+                                timestamp=timestamp,
+                            )
+                            returned_memories.append({"id": memory_id, "memory": action_text, "event": "ADD", "is_key": is_key_str})
                     elif event_type == "DELETE":
-                        self._delete_memory(memory_id=temp_uuid_mapping[resp.get("id")])
-                        returned_memories.append(
-                            {
-                                "id": temp_uuid_mapping[resp.get("id")],
-                                "memory": action_text,
-                                "event": event_type,
-                            }
-                        )
+                        target_id = temp_uuid_mapping.get(resp.get("id"))
+                        if target_id:
+                            self._delete_memory(memory_id=target_id)
+                            returned_memories.append(
+                                {
+                                    "id": target_id,
+                                    "memory": action_text,
+                                    "event": event_type,
+                                }
+                            )
+                        else:
+                            logger.info(f"DELETE target not found, skipping: {action_text[:50]}...")
                     elif event_type == "NONE":
                         # Even if content doesn't need updating, update session IDs if provided
                         memory_id = temp_uuid_mapping.get(resp.get("id"))
                         if memory_id and (metadata.get("agent_id") or metadata.get("run_id")):
                             # Update only the session identifiers, keep content the same
                             existing_memory = self.vector_store.get(vector_id=memory_id)
-                            updated_metadata = deepcopy(existing_memory.payload)
-                            if metadata.get("agent_id"):
-                                updated_metadata["agent_id"] = metadata["agent_id"]
-                            if metadata.get("run_id"):
-                                updated_metadata["run_id"] = metadata["run_id"]
-                            updated_metadata["updated_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
+                            if existing_memory and existing_memory.payload:
+                                updated_metadata = deepcopy(existing_memory.payload)
+                                if metadata.get("agent_id"):
+                                    updated_metadata["agent_id"] = metadata["agent_id"]
+                                if metadata.get("run_id"):
+                                    updated_metadata["run_id"] = metadata["run_id"]
+                                updated_metadata["updated_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
 
-                            self.vector_store.update(
-                                vector_id=memory_id,
-                                vector=None,  # Keep same embeddings
-                                payload=updated_metadata,
-                            )
-                            logger.info(f"Updated session IDs for memory {memory_id}")
+                                self.vector_store.update(
+                                    vector_id=memory_id,
+                                    vector=None,  # Keep same embeddings
+                                    payload=updated_metadata,
+                                )
+                                logger.info(f"Updated session IDs for memory {memory_id}")
+                            else:
+                                logger.info(f"NONE target memory not found: {memory_id}")
                         else:
                             logger.info("NOOP for Memory.")
                 except Exception as e:
@@ -766,6 +816,7 @@ class Memory(MemoryBase):
         filters: Optional[Dict[str, Any]] = None,
         threshold: Optional[float] = None,
         rerank: bool = True,
+        use_criteria: bool = True,
     ):
         """
         Searches for memories based on a query
@@ -777,6 +828,10 @@ class Memory(MemoryBase):
             limit (int, optional): Limit the number of results. Defaults to 100.
             filters (dict, optional): Legacy filters to apply to the search. Defaults to None.
             threshold (float, optional): Minimum score for a memory to be included in the results. Defaults to None.
+            rerank (bool, optional): Whether to apply reranking. Defaults to True.
+            use_criteria (bool, optional): Whether to apply criteria-based scoring. Defaults to True.
+                When enabled and retrieval_criteria is configured, memories are scored by an LLM
+                against each criterion, weighted, and re-ranked accordingly.
             filters (dict, optional): Enhanced metadata filtering with operators:
                 - {"key": "value"} - exact match
                 - {"key": {"eq": "value"}} - equals
@@ -849,6 +904,10 @@ class Memory(MemoryBase):
                 original_memories = reranked_memories
             except Exception as e:
                 logger.warning(f"Reranking failed, using original results: {e}")
+
+        # Apply criteria-based scoring and re-ranking if enabled
+        if use_criteria and self.retrieval_criteria and original_memories:
+            original_memories = self._score_with_criteria(query, original_memories)
 
         if self.enable_graph:
             return {"results": original_memories, "relations": graph_entities}
@@ -989,6 +1048,90 @@ class Memory(MemoryBase):
 
         return original_memories
 
+    def _score_with_criteria(self, query: str, memories: list) -> list:
+        """
+        Score memories using LLM-based criteria evaluation and re-rank.
+
+        Args:
+            query: The search query
+            memories: List of memory dicts with 'memory' and 'score' fields
+
+        Returns:
+            List of memories re-ranked by weighted criteria scores
+        """
+        if not self.retrieval_criteria or not memories:
+            return memories
+
+        # Build criteria descriptions for the prompt
+        criteria_list = []
+        for c in self.retrieval_criteria:
+            criteria_list.append(f"- {c.name}: {c.description}")
+        criteria_text = "\n".join(criteria_list)
+
+        # Build memories list for scoring
+        memories_for_scoring = []
+        for i, mem in enumerate(memories):
+            memories_for_scoring.append(f"{i}: {mem['memory']}")
+        memories_text = "\n".join(memories_for_scoring)
+
+        prompt = f"""You are a memory scoring system. Score each memory against the given criteria.
+
+Query: {query}
+
+Criteria to evaluate (score each 0.0 to 1.0):
+{criteria_text}
+
+Memories to score:
+{memories_text}
+
+Return a JSON object with scores for each memory index and criterion.
+Example format:
+{{
+  "scores": {{
+    "0": {{"criterion_name": 0.8, "another_criterion": 0.5}},
+    "1": {{"criterion_name": 0.3, "another_criterion": 0.9}}
+  }}
+}}
+
+Return ONLY the JSON object, no other text."""
+
+        try:
+            response = self.llm.generate_response(
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+
+            response = remove_code_blocks(response)
+            scores_data = json.loads(response)
+
+            # Calculate weighted scores for each memory
+            for i, mem in enumerate(memories):
+                idx = str(i)
+                if idx in scores_data.get("scores", {}):
+                    criteria_scores = scores_data["scores"][idx]
+                    weighted_sum = 0.0
+                    total_weight = 0.0
+
+                    for c in self.retrieval_criteria:
+                        if c.name in criteria_scores:
+                            weighted_sum += criteria_scores[c.name] * c.weight
+                            total_weight += c.weight
+
+                    if total_weight > 0:
+                        criteria_score = weighted_sum / total_weight
+                        # Combine with original semantic score (50/50 blend)
+                        original_score = mem.get("score", 0.5)
+                        mem["score"] = (original_score + criteria_score) / 2
+                        mem["criteria_scores"] = criteria_scores
+
+            # Re-rank by new combined score
+            memories.sort(key=lambda m: m.get("score", 0), reverse=True)
+
+        except Exception as e:
+            logger.warning(f"Criteria scoring failed, using original ranking: {e}")
+
+        return memories
+
     def update(self, memory_id, data):
         """
         Update a memory by ID.
@@ -1072,7 +1215,7 @@ class Memory(MemoryBase):
         capture_event("mem0.history", self, {"memory_id": memory_id, "sync_type": "sync"})
         return self.db.get_history(memory_id)
 
-    def _create_memory(self, data, existing_embeddings, metadata=None):
+    def _create_memory(self, data, existing_embeddings, metadata=None, timestamp=None):
         logger.debug(f"Creating memory with {data=}")
         if data in existing_embeddings:
             embeddings = existing_embeddings[data]
@@ -1082,7 +1225,11 @@ class Memory(MemoryBase):
         metadata = metadata or {}
         metadata["data"] = data
         metadata["hash"] = hashlib.md5(data.encode()).hexdigest()
-        metadata["created_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
+        # Use provided timestamp (Unix seconds) or current time
+        if timestamp is not None:
+            metadata["created_at"] = datetime.fromtimestamp(timestamp, pytz.timezone("US/Pacific")).isoformat()
+        else:
+            metadata["created_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
 
         self.vector_store.insert(
             vectors=[embeddings],
@@ -1196,6 +1343,9 @@ class Memory(MemoryBase):
     def _delete_memory(self, memory_id):
         logger.info(f"Deleting memory with {memory_id=}")
         existing_memory = self.vector_store.get(vector_id=memory_id)
+        if not existing_memory or not existing_memory.payload:
+            logger.warning(f"Memory {memory_id} not found, skipping delete")
+            return None
         prev_value = existing_memory.payload.get("data", "")
         self.vector_store.delete(vector_id=memory_id)
         self.db.add_history(

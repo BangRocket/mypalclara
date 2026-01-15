@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +8,13 @@ from vendor.mem0.graphs.configs import GraphStoreConfig
 from vendor.mem0.llms.configs import LlmConfig
 from vendor.mem0.vector_stores.configs import VectorStoreConfig
 from vendor.mem0.configs.rerankers.config import RerankerConfig
+
+
+class CriterionConfig(BaseModel):
+    """Configuration for a single retrieval criterion."""
+    name: str = Field(..., description="Identifier for the criterion (e.g., 'importance', 'joy')")
+    description: str = Field(..., description="LLM-interpreted description of what to measure")
+    weight: float = Field(default=1.0, description="Weight multiplier for this criterion's score")
 
 # Set up the directory path
 home_dir = os.path.expanduser("~")
@@ -62,6 +69,10 @@ class MemoryConfig(BaseModel):
     )
     custom_update_memory_prompt: Optional[str] = Field(
         description="Custom prompt for the update memory",
+        default=None,
+    )
+    retrieval_criteria: Optional[List[CriterionConfig]] = Field(
+        description="Criteria for weighted memory retrieval. Each criterion has name, description, and weight.",
         default=None,
     )
 

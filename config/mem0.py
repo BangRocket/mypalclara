@@ -305,6 +305,26 @@ OUTPUT FORMAT (JSON only):
 # Collection name - explicit env var to prevent accidental changes
 MEM0_COLLECTION_NAME = os.getenv("MEM0_COLLECTION_NAME", "clara_memories")
 
+# Retrieval criteria for weighted memory scoring
+# These criteria are evaluated by the LLM for each memory during search
+RETRIEVAL_CRITERIA = [
+    {
+        "name": "importance",
+        "description": "How fundamental and persistent this fact is. High for core identity (name, relationships, profession), low for temporary plans or opinions.",
+        "weight": 3.0,
+    },
+    {
+        "name": "relevance",
+        "description": "How directly relevant this memory is to the current query context.",
+        "weight": 2.0,
+    },
+    {
+        "name": "recency_value",
+        "description": "How valuable recent information is for this memory. High for time-sensitive facts, low for evergreen personal traits.",
+        "weight": 1.0,
+    },
+]
+
 # Build vector store config - pgvector for production, Qdrant for local dev
 if MEM0_DATABASE_URL:
     # PostgreSQL with pgvector
@@ -347,6 +367,7 @@ config = {
             "api_key": OPENAI_API_KEY,
         },
     },
+    "retrieval_criteria": RETRIEVAL_CRITERIA,
 }
 
 # Only add LLM config if we have one
