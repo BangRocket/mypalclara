@@ -1426,6 +1426,8 @@ async def extract_conversation_info(
 
 def update_interaction_from_extraction(user_id: str, extraction: dict):
     """Update UserInteractionPattern with extracted conversation info."""
+    from clara_core.emotional_context import finalize_conversation_emotional_context
+
     with SessionLocal() as session:
         pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
@@ -1455,6 +1457,21 @@ def update_interaction_from_extraction(user_id: str, extraction: dict):
 
         session.commit()
         logger.info(f"Updated interaction pattern for {user_id} from extraction")
+
+        # Also finalize emotional context to mem0 (when ORS is enabled)
+        if extraction.get("summary") and extraction.get("energy"):
+            channel_id = pattern.last_interaction_channel or "unknown"
+            is_dm = channel_id.startswith("discord-dm-") if channel_id else False
+            channel_name = "DM" if is_dm else channel_id.replace("discord-channel-", "#")
+
+            finalize_conversation_emotional_context(
+                user_id=user_id,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                is_dm=is_dm,
+                energy=extraction["energy"],
+                summary=extraction["summary"],
+            )
 
 
 async def check_idle_conversations(llm_call: Callable, get_recent_messages: Callable | None = None):
