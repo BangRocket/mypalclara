@@ -239,6 +239,22 @@ def _get_current_time() -> str:
         return now.strftime("%A, %B %d, %Y at %H:%M UTC")
 
 
+def _format_discord_timestamp(dt: datetime) -> str:
+    """Format a Discord message timestamp in the user's timezone.
+
+    Returns format like "10:43 PM EST".
+    """
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(DEFAULT_TIMEZONE)
+        # Discord timestamps are always UTC-aware
+        local_dt = dt.astimezone(tz)
+        return local_dt.strftime("%-I:%M %p %Z")
+    except Exception:
+        return dt.strftime("%H:%M UTC")
+
+
 async def init_modular_tools() -> None:
     """Initialize the modular tools system (all tools including Docker, local files, GitHub, ADO, etc.)."""
     global _modular_tools_initialized
@@ -880,7 +896,7 @@ class ClaraDiscordBot(discord.Client):
     def _format_time_gap(self, last_time: datetime | None) -> str | None:
         """Format time gap since last message in human-readable form.
 
-        Returns None if gap is < 5 minutes (not worth mentioning).
+        Returns None if gap is < 1 minute (not worth mentioning).
         """
         if last_time is None:
             return None
@@ -893,11 +909,11 @@ class ClaraDiscordBot(discord.Client):
         delta = now - last_time
         total_seconds = delta.total_seconds()
 
-        if total_seconds < 300:  # < 5 min, not worth mentioning
+        if total_seconds < 60:  # < 1 min, not worth mentioning
             return None
         elif total_seconds < 3600:  # < 1 hour
             minutes = int(total_seconds // 60)
-            return f"{minutes} minutes ago"
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
         elif total_seconds < 86400:  # < 1 day
             hours = int(total_seconds // 3600)
             return f"{hours} hour{'s' if hours != 1 else ''} ago"
@@ -992,31 +1008,42 @@ You have persistent memory via mem0. Use memories naturally without announcing "
         guild_name = message.guild.name if message.guild else "Direct Message"
         current_time = _get_current_time()
 
-        # Calculate time gap and departure context from recent messages
-        time_gap_line = ""
-        departure_line = ""
+        # Format when this message was sent
+        msg_sent_time = _format_discord_timestamp(message.created_at)
+
+        # Calculate time context from recent messages
+        time_context_lines = []
         if recent_msgs:
-            # Find last user message (not from assistant)
+            # Find last assistant message (Clara's last response)
+            assistant_msgs = [m for m in recent_msgs if m.role == "assistant"]
+            if assistant_msgs:
+                last_clara_msg = assistant_msgs[-1]
+                clara_time_gap = self._format_time_gap(last_clara_msg.created_at)
+                if clara_time_gap:
+                    time_context_lines.append(f"Your last response: {clara_time_gap}")
+
+            # Find last user message for departure context
             user_msgs = [m for m in recent_msgs if m.role == "user"]
             if user_msgs:
                 last_user_msg = user_msgs[-1]
-                time_gap = self._format_time_gap(last_user_msg.created_at)
-                if time_gap:
-                    time_gap_line = f"\nLast interaction: {time_gap}"
-                    # Check if user mentioned what they were doing
-                    departure_ctx = self._extract_departure_context(last_user_msg.content)
-                    if departure_ctx:
-                        departure_line = f"\nUser was: {departure_ctx}"
+                # Check if user mentioned what they were doing
+                departure_ctx = self._extract_departure_context(last_user_msg.content)
+                if departure_ctx:
+                    time_context_lines.append(f"User was: {departure_ctx}")
+
+        time_context = "\n" + "\n".join(time_context_lines) if time_context_lines else ""
 
         if is_dm:
             dynamic_context = f"""## Current Context
-Time: {current_time}{time_gap_line}{departure_line}
+Time: {current_time}
+Message sent: {msg_sent_time}{time_context}
 Environment: Private DM with {display_name} (one-on-one)
 User: {display_name} (@{username}, discord-{user_id})
 Memories: {len(user_mems)} user, {len(proj_mems)} project"""
         else:
             dynamic_context = f"""## Current Context
-Time: {current_time}{time_gap_line}{departure_line}
+Time: {current_time}
+Message sent: {msg_sent_time}{time_context}
 Environment: {guild_name} server, #{channel_name} (shared channel)
 Speaker: {display_name} (@{username}, discord-{user_id})
 Memories: {len(user_mems)} user, {len(proj_mems)} project
