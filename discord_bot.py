@@ -1448,15 +1448,20 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     logger.debug(f" Participants: {', '.join(names)}")
 
                 # Fetch memories (DMs prioritize personal, servers prioritize project)
-                db = SessionLocal()
-                try:
-                    user_mems, proj_mems = self.mm.fetch_mem0_context(
+                # Run in executor to avoid blocking the event loop (mem0 makes sync HTTP calls)
+                loop = asyncio.get_event_loop()
+                user_mems, proj_mems = await loop.run_in_executor(
+                    None,
+                    lambda: self.mm.fetch_mem0_context(
                         user_id,
                         project_id,
                         user_content,
                         participants=participants,
                         is_dm=is_dm,
-                    )
+                    ),
+                )
+                db = SessionLocal()
+                try:
                     recent_msgs = self.mm.get_recent_messages(db, thread.id)
                 finally:
                     db.close()
