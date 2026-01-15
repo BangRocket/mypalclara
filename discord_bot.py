@@ -168,6 +168,15 @@ DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "America/New_York")
 DOCKER_ENABLED = True  # Docker sandbox is always available if Docker is running
 MAX_TOOL_ITERATIONS = 75  # Max tool call rounds per response
 
+# Dedicated thread pool for blocking I/O operations (LLM calls, mem0, etc.)
+# Using more threads than default since these are I/O-bound, not CPU-bound
+from concurrent.futures import ThreadPoolExecutor
+
+BLOCKING_IO_EXECUTOR = ThreadPoolExecutor(
+    max_workers=int(os.getenv("DISCORD_IO_THREADS", "20")),
+    thread_name_prefix="clara-io-",
+)
+
 # Auto-continue configuration
 # When Clara ends with a permission-seeking question, auto-continue without waiting
 AUTO_CONTINUE_ENABLED = os.getenv("DISCORD_AUTO_CONTINUE", "true").lower() == "true"
@@ -440,9 +449,9 @@ async def classify_message_complexity(
             }
         ]
 
-        # Run sync LLM call in thread pool
+        # Run sync LLM call in dedicated thread pool
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, llm, messages)
+        response = await loop.run_in_executor(BLOCKING_IO_EXECUTOR, llm, messages)
 
         # Parse response - expect LOW, MID, or HIGH
         result = response.strip().upper()
@@ -1475,10 +1484,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     logger.debug(f" Participants: {', '.join(names)}")
 
                 # Fetch memories (DMs prioritize personal, servers prioritize project)
-                # Run in executor to avoid blocking the event loop (mem0 makes sync HTTP calls)
+                # Run in dedicated executor to avoid blocking the event loop
                 loop = asyncio.get_event_loop()
                 user_mems, proj_mems = await loop.run_in_executor(
-                    None,
+                    BLOCKING_IO_EXECUTOR,
                     lambda: self.mm.fetch_mem0_context(
                         user_id,
                         project_id,
@@ -1793,7 +1802,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         ]
 
         loop = asyncio.get_event_loop()
-        summary = await loop.run_in_executor(None, lambda: self._sync_llm(prompt))
+        summary = await loop.run_in_executor(BLOCKING_IO_EXECUTOR, lambda: self._sync_llm(prompt))
         return summary
 
     async def _ensure_project(self, user_id: str) -> str:
@@ -2155,7 +2164,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         else None,
                     }
 
-            response_message = await loop.run_in_executor(None, call_llm)
+            response_message = await loop.run_in_executor(BLOCKING_IO_EXECUTOR, call_llm)
 
             # Check if there are tool calls
             if not response_message.get("tool_calls"):
@@ -2171,7 +2180,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         llm = make_llm(tier=tier)
                         return llm(original_messages)
 
-                    result = await loop.run_in_executor(None, main_llm_call)
+                    result = await loop.run_in_executor(BLOCKING_IO_EXECUTOR, main_llm_call)
                     return result or "", files_to_send
                 else:
                     # Tools were used in previous iterations, return tool model's response
@@ -2358,7 +2367,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 return llm(converted)
             return llm(messages)
 
-        result = await loop.run_in_executor(None, final_call)
+        result = await loop.run_in_executor(BLOCKING_IO_EXECUTOR, final_call)
         return result, files_to_send
 
     async def _execute_tool(
