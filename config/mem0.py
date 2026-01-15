@@ -306,24 +306,26 @@ OUTPUT FORMAT (JSON only):
 MEM0_COLLECTION_NAME = os.getenv("MEM0_COLLECTION_NAME", "clara_memories")
 
 # Retrieval criteria for weighted memory scoring
-# These criteria are evaluated by the LLM for each memory during search
-RETRIEVAL_CRITERIA = [
-    {
-        "name": "importance",
-        "description": "How fundamental and persistent this fact is. High for core identity (name, relationships, profession), low for temporary plans or opinions.",
-        "weight": 3.0,
-    },
-    {
-        "name": "relevance",
-        "description": "How directly relevant this memory is to the current query context.",
-        "weight": 2.0,
-    },
-    {
-        "name": "recency_value",
-        "description": "How valuable recent information is for this memory. High for time-sensitive facts, low for evergreen personal traits.",
-        "weight": 1.0,
-    },
-]
+# DISABLED: This causes an LLM call for EVERY search to re-rank memories,
+# adding significant latency. Vector similarity scoring is sufficient.
+# To re-enable, uncomment and add "retrieval_criteria": RETRIEVAL_CRITERIA to config.
+# RETRIEVAL_CRITERIA = [
+#     {
+#         "name": "importance",
+#         "description": "How fundamental and persistent this fact is. High for core identity (name, relationships, profession), low for temporary plans or opinions.",
+#         "weight": 3.0,
+#     },
+#     {
+#         "name": "relevance",
+#         "description": "How directly relevant this memory is to the current query context.",
+#         "weight": 2.0,
+#     },
+#     {
+#         "name": "recency_value",
+#         "description": "How valuable recent information is for this memory. High for time-sensitive facts, low for evergreen personal traits.",
+#         "weight": 1.0,
+#     },
+# ]
 
 # Build vector store config - pgvector for production, Qdrant for local dev
 if MEM0_DATABASE_URL:
@@ -367,7 +369,7 @@ config = {
             "api_key": OPENAI_API_KEY,
         },
     },
-    "retrieval_criteria": RETRIEVAL_CRITERIA,
+    # "retrieval_criteria": RETRIEVAL_CRITERIA,  # Disabled - causes slow LLM scoring on every search
 }
 
 # Only add LLM config if we have one
