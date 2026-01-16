@@ -55,9 +55,11 @@ from clara_core import (
 )
 from clara_core.emotional_context import (
     finalize_conversation_emotional_context,
+    get_conversation_sentiments,
     has_pending_emotional_context,
     track_message_sentiment,
 )
+from clara_core.topic_recurrence import extract_and_store_topics
 from config.logging import (
     get_discord_handler,
     get_logger,
@@ -994,7 +996,11 @@ class ClaraDiscordBot(discord.Client):
                 else:
                     energy = "neutral"
 
-            # Finalize and store to mem0
+            # Get conversation sentiment before clearing
+            sentiments = get_conversation_sentiments(user_id, channel_id)
+            avg_sentiment = sum(sentiments) / len(sentiments) if sentiments else 0.0
+
+            # Finalize emotional context and store to mem0
             finalize_conversation_emotional_context(
                 user_id=user_id,
                 channel_id=channel_id,
@@ -1003,6 +1009,37 @@ class ClaraDiscordBot(discord.Client):
                 energy=energy,
                 summary=summary,
             )
+
+            # Extract and store topics from the conversation
+            # Build conversation text from recent messages
+            conversation_lines = []
+            for msg in recent_msgs[-20:]:  # Last 20 messages
+                role = "User" if msg.role == "user" else "Clara"
+                conversation_lines.append(f"{role}: {msg.content}")
+            conversation_text = "\n".join(conversation_lines)
+
+            if conversation_text and len(conversation_text) >= 50:
+                # Create async LLM wrapper
+                loop = asyncio.get_event_loop()
+
+                async def async_llm_call(messages: list[dict]) -> str:
+                    return await loop.run_in_executor(
+                        BLOCKING_IO_EXECUTOR,
+                        lambda: self.mm.llm(messages),
+                    )
+
+                try:
+                    await extract_and_store_topics(
+                        user_id=user_id,
+                        channel_id=channel_id,
+                        channel_name=channel_name,
+                        is_dm=is_dm,
+                        conversation_text=conversation_text,
+                        conversation_sentiment=avg_sentiment,
+                        llm_call=async_llm_call,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to extract topics: {e}")
 
     def _extract_departure_context(self, last_user_message: str | None) -> str | None:
         """Extract what user said they were going to do from their last message.
@@ -1592,6 +1629,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     lambda: self.mm.fetch_emotional_context(user_id, limit=3),
                 )
 
+                # Fetch recurring topic patterns (for awareness of what keeps coming up)
+                recurring_topics = await loop.run_in_executor(
+                    BLOCKING_IO_EXECUTOR,
+                    lambda: self.mm.fetch_topic_recurrence(user_id, lookback_days=14, min_mentions=2),
+                )
+
                 # Build prompt with Clara's persona
                 prompt_messages = self.mm.build_prompt(
                     user_mems,
@@ -1600,6 +1643,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     recent_msgs,
                     user_content,
                     emotional_context=emotional_context,
+                    recurring_topics=recurring_topics,
                 )
 
                 # Inject Discord-specific context after the base system prompt
