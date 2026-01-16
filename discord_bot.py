@@ -53,6 +53,11 @@ from clara_core import (
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
 )
+from clara_core.emotional_context import (
+    finalize_conversation_emotional_context,
+    has_pending_emotional_context,
+    track_message_sentiment,
+)
 from config.logging import (
     get_discord_handler,
     get_logger,
@@ -930,6 +935,75 @@ class ClaraDiscordBot(discord.Client):
             days = int(total_seconds // 86400)
             return f"{days} day{'s' if days != 1 else ''} ago"
 
+    async def _maybe_finalize_previous_conversation(
+        self,
+        user_id: str,
+        channel_id: str,
+        channel_name: str,
+        is_dm: bool,
+        recent_msgs: list,
+    ) -> None:
+        """
+        Check if there's a gap since last message and finalize emotional context.
+
+        If >30 min since last message and we have pending sentiment data,
+        retroactively finalize the previous conversation's emotional context.
+        This works regardless of whether ORS is enabled.
+        """
+        if not recent_msgs:
+            return
+
+        # Check if we have pending emotional context to finalize
+        if not has_pending_emotional_context(user_id, channel_id):
+            return
+
+        # Get last message time
+        last_msg = recent_msgs[-1] if recent_msgs else None
+        if not last_msg or not hasattr(last_msg, "created_at"):
+            return
+
+        last_time = last_msg.created_at
+        if last_time is None:
+            return
+
+        # Handle timezone
+        now = datetime.now(UTC)
+        if last_time.tzinfo is None:
+            last_time = last_time.replace(tzinfo=UTC)
+
+        gap = now - last_time
+        gap_minutes = gap.total_seconds() / 60
+
+        # If gap > 30 minutes, finalize previous conversation
+        if gap_minutes > 30:
+            logger.debug(f" Finalizing emotional context (gap: {gap_minutes:.0f} min)")
+
+            # Generate a simple summary from last few messages
+            summary = "general conversation"
+            energy = "neutral"
+
+            # Try to extract energy from last assistant message
+            assistant_msgs = [m for m in recent_msgs if m.role == "assistant"]
+            if assistant_msgs:
+                # Use a simple heuristic based on content length/tone
+                last_response = assistant_msgs[-1].content
+                if any(word in last_response.lower() for word in ["sorry", "unfortunately", "issue", "problem"]):
+                    energy = "concerned"
+                elif any(word in last_response.lower() for word in ["great", "awesome", "happy", "glad"]):
+                    energy = "positive"
+                else:
+                    energy = "neutral"
+
+            # Finalize and store to mem0
+            finalize_conversation_emotional_context(
+                user_id=user_id,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                is_dm=is_dm,
+                energy=energy,
+                summary=summary,
+            )
+
     def _extract_departure_context(self, last_user_message: str | None) -> str | None:
         """Extract what user said they were going to do from their last message.
 
@@ -1477,6 +1551,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 logger.debug(f" Content length: {len(user_content)} chars")
 
+                # Track sentiment for emotional continuity (fast, no API calls)
+                channel_id = f"discord-channel-{message.channel.id}" if not is_dm else f"discord-dm-{message.author.id}"
+                track_message_sentiment(user_id, channel_id, raw_content)
+
                 # Extract participants from conversation for cross-user memory
                 participants = self._extract_participants(recent_channel_msgs, message.author)
                 if len(participants) > 1:
@@ -1502,6 +1580,18 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 finally:
                     db.close()
 
+                # Check if we need to finalize previous conversation (gap-based trigger)
+                channel_name = getattr(message.channel, "name", "DM") if not is_dm else "DM"
+                await self._maybe_finalize_previous_conversation(
+                    user_id, channel_id, channel_name, is_dm, recent_msgs
+                )
+
+                # Fetch emotional context from recent sessions (for tone calibration)
+                emotional_context = await loop.run_in_executor(
+                    BLOCKING_IO_EXECUTOR,
+                    lambda: self.mm.fetch_emotional_context(user_id, limit=3),
+                )
+
                 # Build prompt with Clara's persona
                 prompt_messages = self.mm.build_prompt(
                     user_mems,
@@ -1509,6 +1599,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     thread.session_summary,
                     recent_msgs,
                     user_content,
+                    emotional_context=emotional_context,
                 )
 
                 # Inject Discord-specific context after the base system prompt
