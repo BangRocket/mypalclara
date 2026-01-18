@@ -191,12 +191,36 @@ class DiscordLogHandler(logging.Handler):
     """Async logging handler that mirrors logs to a Discord channel.
 
     Each log line becomes a Discord message. Handles rate limiting by batching
-    messages when needed.
+    messages when needed. Supports embeds for structured data.
     """
+
+    # Discord markdown level indicators
+    LEVEL_EMOJI = {
+        "DEBUG": "🔍",
+        "INFO": "ℹ️",
+        "WARNING": "⚠️",
+        "ERROR": "❌",
+        "CRITICAL": "🔴",
+    }
+
+    # Tag colors for embeds (Discord decimal color values)
+    TAG_EMBED_COLORS = {
+        "mem0": 0xAA55FF,  # Purple
+        "thread": 0x00FFFF,  # Cyan
+        "discord": 0xFFFF00,  # Yellow
+        "db": 0x00FF00,  # Green
+        "llm": 0xFF5555,  # Red
+        "email": 0xFFFFFF,  # White
+        "tools": 0x00FFFF,  # Cyan
+        "sandbox": 0xFF55FF,  # Magenta
+        "organic": 0xFFAA00,  # Orange
+        "emotional": 0xFF69B4,  # Pink
+        "topic": 0x9370DB,  # Medium Purple
+    }
 
     def __init__(self, level: int = logging.INFO):
         super().__init__(level)
-        self._queue: Queue[str] = Queue(maxsize=500)
+        self._queue: Queue[dict] = Queue(maxsize=500)
         self._bot = None
         self._channel_id: int | None = None
         self._shutdown = False
@@ -217,40 +241,44 @@ class DiscordLogHandler(logging.Handler):
         while not self._shutdown:
             try:
                 # Batch messages to respect rate limits (~5/5s per channel)
-                messages: list[str] = []
+                items: list[dict] = []
                 batch_size = 5
                 flush_interval = 1.0
 
                 # Wait for first message or timeout
                 await asyncio.sleep(flush_interval)
 
-                # Collect available messages (up to batch size)
-                while len(messages) < batch_size:
+                # Collect available items (up to batch size)
+                while len(items) < batch_size:
                     try:
-                        msg = self._queue.get_nowait()
-                        messages.append(msg)
+                        item = self._queue.get_nowait()
+                        items.append(item)
                     except Empty:
                         break
 
-                if messages and self._bot and self._channel_id:
-                    await self._send_messages(messages)
+                if items and self._bot and self._channel_id:
+                    await self._send_items(items)
 
             except Exception as e:
                 print(f"[logging] Discord handler error: {e}", file=sys.stderr)
 
-    async def _send_messages(self, messages: list[str]):
-        """Send messages to Discord channel."""
+    async def _send_items(self, items: list[dict]):
+        """Send items (messages or embeds) to Discord channel."""
         try:
             channel = self._bot.get_channel(self._channel_id)
             if not channel:
                 return
 
-            for msg in messages:
-                # Discord message limit is 2000 chars
-                if len(msg) > 1990:
-                    msg = msg[:1990] + "..."
+            for item in items:
                 try:
-                    await channel.send(f"`{msg}`")
+                    if item.get("embed"):
+                        await channel.send(embed=item["embed"])
+                    else:
+                        msg = item.get("message", "")
+                        # Discord message limit is 2000 chars
+                        if len(msg) > 1990:
+                            msg = msg[:1990] + "..."
+                        await channel.send(msg)
                 except Exception as e:
                     print(f"[logging] Failed to send to Discord: {e}", file=sys.stderr)
 
@@ -264,18 +292,34 @@ class DiscordLogHandler(logging.Handler):
         ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
         return ansi_escape.sub("", text)
 
+    def _format_discord_message(self, record: logging.LogRecord) -> str:
+        """Format a log record for Discord with markdown."""
+        emoji = self.LEVEL_EMOJI.get(record.levelname, "")
+        tag = record.name
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        message = record.getMessage()
+
+        # Use Discord code block for the message
+        if record.levelname in ("ERROR", "CRITICAL"):
+            # Errors get highlighted
+            return f"{emoji} `{timestamp}` **[{tag}]** ```diff\n- {message}```"
+        elif record.levelname == "WARNING":
+            return f"{emoji} `{timestamp}` **[{tag}]** ```fix\n{message}```"
+        else:
+            return f"`{timestamp}` **[{tag}]** {message}"
+
     def emit(self, record: logging.LogRecord):
         """Queue a log record for Discord."""
         if self._shutdown or self._bot is None:
             return
 
         try:
-            # Format the message (strip colors for Discord)
-            msg = self.format(record)
+            # Format the message for Discord
+            msg = self._format_discord_message(record)
             msg = self._strip_ansi(msg)
 
             try:
-                self._queue.put_nowait(msg)
+                self._queue.put_nowait({"message": msg})
             except Exception:
                 pass  # Drop log if queue is full
 
@@ -297,6 +341,82 @@ class DiscordLogHandler(logging.Handler):
                     await channel.send(f"**{message}**")
             except Exception as e:
                 print(f"[logging] Failed to send direct message: {e}", file=sys.stderr)
+
+    async def send_embed(
+        self,
+        title: str,
+        description: str | None = None,
+        color: int | None = None,
+        fields: list[dict] | None = None,
+        footer: str | None = None,
+        tag: str | None = None,
+    ):
+        """Send a rich embed to the log channel.
+
+        Args:
+            title: Embed title
+            description: Embed description (supports Discord markdown)
+            color: Embed color (decimal int). If None, uses tag color or default.
+            fields: List of {"name": str, "value": str, "inline": bool} dicts
+            footer: Footer text
+            tag: Tag name for auto-color (e.g., "mem0", "emotional")
+        """
+        if not self._bot or not self._channel_id:
+            return
+
+        try:
+            import discord
+
+            # Determine color
+            if color is None:
+                color = self.TAG_EMBED_COLORS.get(tag, 0x5865F2)  # Discord blurple default
+
+            embed = discord.Embed(
+                title=title,
+                description=description,
+                color=discord.Color(color),
+                timestamp=datetime.now(timezone.utc),
+            )
+
+            if fields:
+                for field in fields:
+                    embed.add_field(
+                        name=field.get("name", ""),
+                        value=field.get("value", ""),
+                        inline=field.get("inline", True),
+                    )
+
+            if footer:
+                embed.set_footer(text=footer)
+
+            # Queue the embed
+            try:
+                self._queue.put_nowait({"embed": embed})
+            except Exception:
+                pass  # Drop if queue full
+
+        except Exception as e:
+            print(f"[logging] Failed to create embed: {e}", file=sys.stderr)
+
+    def queue_embed(
+        self,
+        title: str,
+        description: str | None = None,
+        color: int | None = None,
+        fields: list[dict] | None = None,
+        footer: str | None = None,
+        tag: str | None = None,
+    ):
+        """Queue an embed for sending (non-async version for use in sync code).
+
+        Uses the event loop to schedule the embed send.
+        """
+        if self._loop and not self._shutdown:
+            self._loop.call_soon_threadsafe(
+                lambda: self._loop.create_task(
+                    self.send_embed(title, description, color, fields, footer, tag)
+                )
+            )
 
 
 # Global state
