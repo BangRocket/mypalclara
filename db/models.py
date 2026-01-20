@@ -326,3 +326,15 @@ class EmailAlert(Base):
     was_pinged = Column(String, default="false")
 
     sent_at = Column(DateTime, default=utcnow)
+
+
+# =============================================================================
+# MCP (Model Context Protocol) Models
+# =============================================================================
+
+# Import MCP models so they're included in metadata for table creation
+# The model is defined in clara_core/mcp/models.py but uses this Base
+try:
+    from clara_core.mcp.models import MCPServer  # noqa: F401
+except ImportError:
+    pass  # MCP module not yet installed
