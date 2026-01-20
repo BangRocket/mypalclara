@@ -300,7 +300,8 @@ async def init_mcp_plugins() -> None:
     """Initialize the MCP plugin system.
 
     Loads enabled MCP servers from the database and registers their tools
-    with the Clara tool registry.
+    with the Clara tool registry. Also sets up official MCP servers based
+    on configured environment variables.
     """
     global _mcp_initialized
     if _mcp_initialized:
@@ -309,6 +310,19 @@ async def init_mcp_plugins() -> None:
     try:
         registry = get_registry()
         manager, adapter = await init_mcp(registry)
+
+        # Setup official MCP servers based on environment
+        try:
+            from clara_core.core_tools import setup_official_mcp_servers
+
+            official_results = await setup_official_mcp_servers()
+            if official_results:
+                success_count = sum(1 for v in official_results.values() if v)
+                tools_logger.info(f"MCP: Official servers: {success_count}/{len(official_results)} installed")
+        except ImportError:
+            pass  # clara_core.tools not available
+        except Exception as e:
+            tools_logger.warning(f"MCP: Error setting up official servers: {e}")
 
         connected = len(manager)
         tool_count = adapter.get_tool_count() if adapter else 0
@@ -1653,9 +1667,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Check if we need to finalize previous conversation (gap-based trigger)
                 channel_name = getattr(message.channel, "name", "DM") if not is_dm else "DM"
-                await self._maybe_finalize_previous_conversation(
-                    user_id, channel_id, channel_name, is_dm, recent_msgs
-                )
+                await self._maybe_finalize_previous_conversation(user_id, channel_id, channel_name, is_dm, recent_msgs)
 
                 # Fetch emotional context from recent sessions (for tone calibration)
                 emotional_context = await loop.run_in_executor(
