@@ -59,6 +59,9 @@ from clara_core.emotional_context import (
     has_pending_emotional_context,
     track_message_sentiment,
 )
+
+# Import MCP plugin system
+from clara_core.mcp import get_mcp_manager, init_mcp, shutdown_mcp
 from clara_core.topic_recurrence import extract_and_store_topics
 from config.logging import (
     get_discord_handler,
@@ -221,6 +224,7 @@ AUTO_CONTINUE_PATTERNS = [
 
 # Track whether modular tools have been initialized
 _modular_tools_initialized = False
+_mcp_initialized = False
 
 
 def _should_auto_continue(response: str) -> bool:
@@ -290,6 +294,33 @@ async def init_modular_tools() -> None:
         _modular_tools_initialized = True
     except Exception as e:
         tools_logger.error(f"Failed to initialize modular tools: {e}")
+
+
+async def init_mcp_plugins() -> None:
+    """Initialize the MCP plugin system.
+
+    Loads enabled MCP servers from the database and registers their tools
+    with the Clara tool registry.
+    """
+    global _mcp_initialized
+    if _mcp_initialized:
+        return
+
+    try:
+        registry = get_registry()
+        manager, adapter = await init_mcp(registry)
+
+        connected = len(manager)
+        tool_count = adapter.get_tool_count() if adapter else 0
+
+        if connected > 0:
+            tools_logger.info(f"MCP: {connected} servers connected, {tool_count} tools registered")
+        else:
+            tools_logger.info("MCP: No servers configured (use mcp_install to add)")
+
+        _mcp_initialized = True
+    except Exception as e:
+        tools_logger.error(f"Failed to initialize MCP plugins: {e}")
 
 
 def get_all_tools(include_docker: bool = True) -> list[dict]:
@@ -1278,6 +1309,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Initialize modular tools system (GitHub, ADO, etc.)
         await init_modular_tools()
+
+        # Initialize MCP plugin system
+        await init_mcp_plugins()
 
         # Update monitor
         monitor.bot_user = str(self.user)
@@ -3420,6 +3454,14 @@ async def run_bot():
     try:
         await bot.start(BOT_TOKEN)
     finally:
+        # Shutdown MCP servers gracefully
+        if _mcp_initialized:
+            try:
+                await shutdown_mcp()
+                logger.info("MCP servers shut down")
+            except Exception as e:
+                logger.warning(f"Error shutting down MCP servers: {e}")
+
         # Send shutdown message before closing
         discord_handler = get_discord_handler()
         if discord_handler and not bot.is_closed():
