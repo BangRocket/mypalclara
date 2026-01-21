@@ -1193,10 +1193,14 @@ You have persistent memory via mem0. Use memories naturally without announcing "
         ]
 
         # Add tool prompts from native modules (static)
-        # Note: MCP tools are self-describing via the tools parameter, no system prompt needed
+        # Only include essential modules - everything else will become MCP servers
+        # MCP tools are self-describing via the tools parameter, no system prompt needed
         if _modular_tools_initialized:
             registry = get_registry()
-            tool_prompts = registry.get_system_prompts(platform="discord")
+            tool_prompts = registry.get_system_prompts(
+                platform="discord",
+                allowed_modules=["mcp_management", "ors_notes"],
+            )
             if tool_prompts:
                 static_parts.append(tool_prompts)
 
