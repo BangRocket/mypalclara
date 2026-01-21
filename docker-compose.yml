@@ -67,8 +67,16 @@ services:
       - ORGANIC_DAILY_LIMIT=${ORGANIC_DAILY_LIMIT:-50}
       # LLM Provider
       - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+      # Anthropic (native)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      - ANTHROPIC_MODEL_HIGH=${ANTHROPIC_MODEL_HIGH:-claude-opus-4-5}
+      - ANTHROPIC_MODEL_MID=${ANTHROPIC_MODEL_MID:-claude-sonnet-4-5}
+      - ANTHROPIC_MODEL_LOW=${ANTHROPIC_MODEL_LOW:-claude-haiku-4-5}
+      - MODEL_TIER=${MODEL_TIER:-mid}
       # OpenRouter
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4}
       # NanoGPT
       - NANOGPT_API_KEY=${NANOGPT_API_KEY:-}
