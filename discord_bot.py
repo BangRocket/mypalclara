@@ -33,6 +33,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 import discord
 import uvicorn
@@ -971,6 +972,11 @@ class ClaraDiscordBot(discord.Client):
         self.msg_cache: dict[int, CachedMessage] = {}
         self.cache_lock = asyncio.Lock()
 
+        # Deduplication: track processed message IDs to prevent double processing
+        # Maps message_id -> timestamp for TTL cleanup
+        self._processed_messages: dict[int, float] = {}
+        self._processed_messages_ttl = 300  # 5 minutes
+
         # Track startup state for log messages
         self._first_ready = True
 
@@ -1426,6 +1432,26 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if message.author == self.user:
             return
 
+        # Deduplication: prevent same message from being processed twice
+        # (can happen if Discord fires event multiple times due to reconnect)
+        import time
+
+        now = time.time()
+        msg_id = message.id
+
+        # Cleanup old entries (TTL)
+        stale_ids = [mid for mid, ts in self._processed_messages.items() if now - ts > self._processed_messages_ttl]
+        for mid in stale_ids:
+            del self._processed_messages[mid]
+
+        # Check if already processed
+        if msg_id in self._processed_messages:
+            logger.warning(f"Duplicate message detected (id={msg_id}), skipping")
+            return
+
+        # Mark as being processed
+        self._processed_messages[msg_id] = now
+
         # Check if this is a DM
         is_dm = message.guild is None
 
@@ -1519,6 +1545,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         if not acquired:
             # Channel is busy, notify user their request is queued
+            logger.info(f"[QUEUE] Message {message.id} queued at position {queue_position}")
             queue_msg = (
                 f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
             )
@@ -1529,6 +1556,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             return  # The task will be processed when dequeued
 
         # We have the channel, process the message
+        logger.info(f"[NEW] Processing message {message.id} from {message.author}: {message.content[:50]!r}")
+
         # Wrap in a task so it can be cancelled via stop phrase
         async def run_handler():
             await self._handle_message(message, is_dm)
@@ -1552,6 +1581,12 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             next_task = await task_queue.release(channel_id)
             if not next_task:
                 break
+
+            # Log queued task processing
+            logger.info(
+                f"[QUEUED] Processing queued message {next_task.message.id} "
+                f"from {next_task.message.author}: {next_task.message.content[:50]!r}"
+            )
 
             # Notify user their queued request is starting
             wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
@@ -2349,7 +2384,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         }
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            tools_logger.info(f"Iteration {iteration + 1}/{MAX_TOOL_ITERATIONS}")
+            tools_logger.info(f"[msg:{message.id}] Iteration {iteration + 1}/{MAX_TOOL_ITERATIONS}")
 
             # Call LLM with tools
             # Use native Anthropic SDK when LLM_PROVIDER=anthropic
@@ -2409,7 +2444,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             # Process tool calls
             tool_calls = response_message.get("tool_calls", [])
             tool_count = len(tool_calls)
-            tools_logger.info(f"Processing {tool_count} tool call(s)")
+            tools_logger.info(f"[msg:{message.id}] Processing {tool_count} tool call(s)")
 
             # Add assistant message with tool calls to conversation
             # response_message is already in the right format
@@ -2442,7 +2477,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     for warning in validation_warnings:
                         tools_logger.warning(f"[{tool_name}] {warning}")
 
-                tools_logger.info(f"Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}")
+                tools_logger.info(
+                    f"[msg:{message.id}] Executing: {tool_name} with {len(arguments)} args: {list(arguments.keys())}"
+                )
 
                 # Get friendly status for this tool
                 emoji, action = tool_status.get(tool_name, ("⚙️", "Working"))
@@ -2554,7 +2591,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 success = not tool_output.startswith("Error:")
                 status = "success" if success else "failed"
-                tools_logger.info(f"{tool_name} → {status}")
+                tools_logger.info(f"[msg:{message.id}] {tool_name} → {status}")
 
             # Show typing indicator while processing
             async with message.channel.typing():
