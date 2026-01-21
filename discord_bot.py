@@ -379,7 +379,24 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
         except Exception as e:
             tools_logger.warning(f"Failed to get MCP tools: {e}")
 
-    return native_tools + mcp_tools
+    # Combine tools with deduplication check
+    all_tools = native_tools + mcp_tools
+
+    # Check for duplicates and warn
+    seen_names = set()
+    unique_tools = []
+    for tool in all_tools:
+        name = tool.get("function", {}).get("name", "")
+        if name in seen_names:
+            tools_logger.warning(f"Duplicate tool detected: {name} (skipping duplicate)")
+            continue
+        seen_names.add(name)
+        unique_tools.append(tool)
+
+    if len(unique_tools) != len(all_tools):
+        tools_logger.warning(f"Tool deduplication: {len(all_tools)} total -> {len(unique_tools)} unique")
+
+    return unique_tools
 
 
 # Discord message limit
@@ -2587,6 +2604,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         Handles MCP tools, Docker sandbox tools, local file tools, and chat history tools.
         """
+        import time
+
+        exec_start = time.time()
+        tools_logger.debug(f"[EXEC] Starting execution of {tool_name}")
 
         # Get channel_id for file storage organization
         channel_id = str(channel.id) if channel else None
@@ -2596,7 +2617,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             try:
                 manager = get_mcp_manager()
                 if manager.is_mcp_tool(tool_name):
-                    return await manager.call_tool(tool_name, arguments)
+                    tools_logger.debug(f"[EXEC] Routing {tool_name} to MCP manager")
+                    result = await manager.call_tool(tool_name, arguments)
+                    tools_logger.debug(f"[EXEC] {tool_name} completed in {time.time() - exec_start:.2f}s")
+                    return result
             except Exception as e:
                 tools_logger.error(f"MCP tool {tool_name} failed: {e}")
                 return f"Error executing MCP tool {tool_name}: {e}"
@@ -2728,6 +2752,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             if _modular_tools_initialized:
                 registry = get_registry()
                 if tool_name in registry:
+                    tools_logger.debug(f"[EXEC] Routing {tool_name} to registry")
                     # Build tool context for modular tools
                     ctx = ToolContext(
                         user_id=user_id,
@@ -2740,11 +2765,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         },
                     )
                     try:
-                        return await registry.execute(tool_name, arguments, ctx)
+                        result = await registry.execute(tool_name, arguments, ctx)
+                        tools_logger.debug(f"[EXEC] {tool_name} completed in {time.time() - exec_start:.2f}s")
+                        return result
                     except Exception as e:
                         tools_logger.error(f"Modular tool {tool_name} failed: {e}")
                         return f"Error executing {tool_name}: {e}"
 
+            tools_logger.warning(f"[EXEC] Unknown tool: {tool_name}")
             return f"Unknown tool: {tool_name}"
 
     async def _search_chat_history(
