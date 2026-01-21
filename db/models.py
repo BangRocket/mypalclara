@@ -329,6 +329,36 @@ class EmailAlert(Base):
 
 
 # =============================================================================
+# Guild Configuration Models
+# =============================================================================
+
+
+class GuildConfig(Base):
+    """Per-guild (Discord server) configuration for Clara settings."""
+
+    __tablename__ = "guild_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(String, unique=True, nullable=False, index=True)
+
+    # Model settings
+    default_tier = Column(String, nullable=True)  # high/mid/low or None (use env default)
+    auto_tier_enabled = Column(String, default="false")  # "true" or "false"
+
+    # ORS (Organic Response System) settings
+    ors_enabled = Column(String, default="false")  # "true" or "false"
+    ors_channel_id = Column(String, nullable=True)  # Channel for proactive messages
+    ors_quiet_start = Column(String, nullable=True)  # HH:MM format
+    ors_quiet_end = Column(String, nullable=True)  # HH:MM format
+
+    # Sandbox settings
+    sandbox_mode = Column(String, default="auto")  # local, remote, auto
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 

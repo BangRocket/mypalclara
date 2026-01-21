@@ -69,6 +69,9 @@ from clara_core.emotional_context import (
 
 # Import MCP plugin system
 from clara_core.mcp import get_mcp_manager, init_mcp, shutdown_mcp
+
+# Import Discord slash commands
+from clara_core.discord import setup as setup_slash_commands
 from clara_core.topic_recurrence import extract_and_store_topics
 from config.logging import (
     get_discord_handler,
@@ -1372,6 +1375,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Initialize MCP plugin system
         await init_mcp_plugins()
+
+        # Sync slash commands with Discord
+        try:
+            await self.sync_commands()
+            cmd_count = len(self.pending_application_commands or [])
+            logger.info(f"Synced {cmd_count} slash commands")
+        except Exception as e:
+            logger.warning(f"Failed to sync slash commands: {e}")
 
         # Update monitor
         monitor.bot_user = str(self.user)
@@ -3561,6 +3572,14 @@ def dashboard():
 async def run_bot():
     """Run the Discord bot."""
     bot = ClaraDiscordBot()
+
+    # Register slash commands cog
+    try:
+        setup_slash_commands(bot)
+        logger.info("Slash commands cog registered")
+    except Exception as e:
+        logger.warning(f"Failed to register slash commands: {e}")
+
     try:
         await bot.start(BOT_TOKEN)
     finally:
