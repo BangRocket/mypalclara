@@ -5,7 +5,13 @@ Inspired by llmcord's clean design, but integrates directly with Clara's
 MemoryManager for full mem0 memory support.
 
 Usage:
-    poetry run python discord_bot.py
+    poetry run python discord_bot.py [options]
+
+Options:
+    -d, --daemon      Run as a background daemon (Unix only)
+    --pidfile FILE    Write PID to FILE (default: /tmp/clara-discord.pid)
+    --logfile FILE    Log output to FILE when daemonized (default: stdout)
+    --stop            Stop a running daemon (uses pidfile)
 
 Environment variables:
     DISCORD_BOT_TOKEN - Discord bot token (required)
@@ -3653,12 +3659,196 @@ async def async_main():
         await run_bot()
 
 
+def daemonize(pidfile: str, logfile: str | None = None):
+    """Fork the process into a background daemon (Unix only).
+
+    Args:
+        pidfile: Path to write the daemon's PID
+        logfile: Path to redirect stdout/stderr (None = /dev/null)
+    """
+    import sys
+
+    # First fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent exits
+            sys.exit(0)
+    except OSError as e:
+        sys.stderr.write(f"First fork failed: {e}\n")
+        sys.exit(1)
+
+    # Decouple from parent environment
+    os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # Second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent exits
+            sys.exit(0)
+    except OSError as e:
+        sys.stderr.write(f"Second fork failed: {e}\n")
+        sys.exit(1)
+
+    # Redirect standard file descriptors
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    if logfile:
+        # Redirect to log file
+        log_fd = open(logfile, "a+")
+        os.dup2(log_fd.fileno(), sys.stdout.fileno())
+        os.dup2(log_fd.fileno(), sys.stderr.fileno())
+    else:
+        # Redirect to /dev/null
+        devnull = open("/dev/null", "r+")
+        os.dup2(devnull.fileno(), sys.stdin.fileno())
+        os.dup2(devnull.fileno(), sys.stdout.fileno())
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
+
+    # Write PID file
+    with open(pidfile, "w") as f:
+        f.write(str(os.getpid()))
+
+
+def stop_daemon(pidfile: str) -> bool:
+    """Stop a running daemon using its PID file.
+
+    Args:
+        pidfile: Path to the PID file
+
+    Returns:
+        True if daemon was stopped, False otherwise
+    """
+    import signal
+
+    try:
+        with open(pidfile, "r") as f:
+            pid = int(f.read().strip())
+    except FileNotFoundError:
+        print(f"PID file not found: {pidfile}")
+        return False
+    except ValueError:
+        print(f"Invalid PID in {pidfile}")
+        return False
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"Sent SIGTERM to process {pid}")
+        # Wait a moment and check if it's still running
+        import time
+
+        time.sleep(1)
+        try:
+            os.kill(pid, 0)  # Check if process exists
+            print(f"Process {pid} still running, sending SIGKILL...")
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass  # Process already terminated
+        # Clean up PID file
+        if os.path.exists(pidfile):
+            os.remove(pidfile)
+        print("Daemon stopped")
+        return True
+    except OSError as e:
+        print(f"Failed to stop daemon: {e}")
+        if os.path.exists(pidfile):
+            os.remove(pidfile)
+        return False
+
+
 def main():
     """Run the Discord bot with optional monitoring."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Clara Discord Bot - AI assistant with memory",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "-d",
+        "--daemon",
+        action="store_true",
+        help="Run as a background daemon (Unix only)",
+    )
+    parser.add_argument(
+        "--pidfile",
+        default="/tmp/clara-discord.pid",
+        help="PID file path (default: /tmp/clara-discord.pid)",
+    )
+    parser.add_argument(
+        "--logfile",
+        default=None,
+        help="Log file path when daemonized (default: /dev/null)",
+    )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop a running daemon",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Check if daemon is running",
+    )
+
+    args = parser.parse_args()
+
+    # Handle --stop
+    if args.stop:
+        stop_daemon(args.pidfile)
+        return
+
+    # Handle --status
+    if args.status:
+        try:
+            with open(args.pidfile, "r") as f:
+                pid = int(f.read().strip())
+            try:
+                os.kill(pid, 0)
+                print(f"Daemon is running (PID: {pid})")
+            except OSError:
+                print("Daemon is not running (stale PID file)")
+        except FileNotFoundError:
+            print("Daemon is not running (no PID file)")
+        return
+
+    # Handle --daemon
+    if args.daemon:
+        # Check if already running
+        if os.path.exists(args.pidfile):
+            try:
+                with open(args.pidfile, "r") as f:
+                    pid = int(f.read().strip())
+                try:
+                    os.kill(pid, 0)
+                    print(f"Daemon already running (PID: {pid})")
+                    return
+                except OSError:
+                    # Stale PID file, remove it
+                    os.remove(args.pidfile)
+            except (ValueError, FileNotFoundError):
+                pass
+
+        print(f"Starting daemon (PID file: {args.pidfile})...")
+        if args.logfile:
+            print(f"Logging to: {args.logfile}")
+        daemonize(args.pidfile, args.logfile)
+
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+    finally:
+        # Clean up PID file if we're a daemon
+        if args.daemon and os.path.exists(args.pidfile):
+            try:
+                os.remove(args.pidfile)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

@@ -141,12 +141,15 @@ services:
       # Azure DevOps integration
       - AZURE_DEVOPS_ORG=${AZURE_DEVOPS_ORG:-}
       - AZURE_DEVOPS_PAT=${AZURE_DEVOPS_PAT:-}
+      # MCP Plugin System
+      - MCP_SERVERS_DIR=/app/mcp_servers
       # General
       - SKIP_PROFILE_LOAD=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - mypalclara-data:/data
       - mypalclara-files:/app/clara_files
+      - ${MCP_SERVERS_PATH:-./mcp_servers}:/app/mcp_servers  # MCP server files (cloned repos, etc.)
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock  # For Docker sandbox
       - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
       - ./${BOT_PERSONALITY_FILE:-personality.txt}:/app/${BOT_PERSONALITY_FILE:-personality.txt}:ro
