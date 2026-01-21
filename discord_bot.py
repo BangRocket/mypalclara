@@ -44,6 +44,7 @@ from functools import lru_cache
 import discord
 import uvicorn
 from discord import Message as DiscordMessage
+from discord.ext import commands as discord_commands
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -966,7 +967,7 @@ class BotMonitor:
 monitor = BotMonitor()
 
 
-class ClaraDiscordBot(discord.Client):
+class ClaraDiscordBot(discord_commands.Bot):
     """Discord bot that integrates Clara's memory-enhanced AI."""
 
     def __init__(self):
