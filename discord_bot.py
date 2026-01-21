@@ -3668,6 +3668,11 @@ def daemonize(pidfile: str, logfile: str | None = None):
     """
     import sys
 
+    # Convert relative paths to absolute before changing directory
+    pidfile = os.path.abspath(pidfile)
+    if logfile:
+        logfile = os.path.abspath(logfile)
+
     # First fork
     try:
         pid = os.fork()
