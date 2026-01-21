@@ -299,8 +299,9 @@ async def init_modular_tools() -> None:
 async def init_mcp_plugins() -> None:
     """Initialize the MCP plugin system.
 
-    Loads enabled MCP servers from the database and registers their tools
-    with the Clara tool registry. Also sets up official MCP servers based
+    Loads enabled MCP servers from the database. MCP tools are now served
+    directly through the manager's format conversion methods rather than
+    through the registry adapter. Also sets up official MCP servers based
     on configured environment variables.
     """
     global _mcp_initialized
@@ -308,8 +309,7 @@ async def init_mcp_plugins() -> None:
         return
 
     try:
-        registry = get_registry()
-        manager, adapter = await init_mcp(registry)
+        manager = await init_mcp()
 
         # Setup official MCP servers based on environment
         try:
@@ -325,10 +325,10 @@ async def init_mcp_plugins() -> None:
             tools_logger.warning(f"MCP: Error setting up official servers: {e}")
 
         connected = len(manager)
-        tool_count = adapter.get_tool_count() if adapter else 0
+        tool_count = len(manager.get_tools_openai_format())
 
         if connected > 0:
-            tools_logger.info(f"MCP: {connected} servers connected, {tool_count} tools registered")
+            tools_logger.info(f"MCP: {connected} servers connected, {tool_count} tools available")
         else:
             tools_logger.info("MCP: No servers configured (use mcp_install to add)")
 
@@ -338,7 +338,7 @@ async def init_mcp_plugins() -> None:
 
 
 def get_all_tools(include_docker: bool = True) -> list[dict]:
-    """Get all available tools from the modular registry.
+    """Get all available tools from the modular registry and MCP servers.
 
     Args:
         include_docker: Whether to include Docker sandbox tools (for capability filtering)
@@ -367,7 +367,19 @@ def get_all_tools(include_docker: bool = True) -> list[dict]:
     if os.getenv("CLARA_EMAIL_ADDRESS") and os.getenv("CLARA_EMAIL_PASSWORD"):
         capabilities["email"] = True
 
-    return registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
+    # Get native tools from registry
+    native_tools = registry.get_tools(platform="discord", capabilities=capabilities, format="openai")
+
+    # Get MCP tools directly from manager (bypassing registry adapter)
+    mcp_tools = []
+    if _mcp_initialized:
+        try:
+            manager = get_mcp_manager()
+            mcp_tools = manager.get_tools_openai_format()
+        except Exception as e:
+            tools_logger.warning(f"Failed to get MCP tools: {e}")
+
+    return native_tools + mcp_tools
 
 
 # Discord message limit
@@ -1163,6 +1175,16 @@ You have persistent memory via mem0. Use memories naturally without announcing "
             tool_prompts = registry.get_system_prompts(platform="discord")
             if tool_prompts:
                 static_parts.append(tool_prompts)
+
+        # Add MCP tool prompts (directly from manager, not registry)
+        if _mcp_initialized:
+            try:
+                manager = get_mcp_manager()
+                mcp_prompts = manager.get_mcp_system_prompt()
+                if mcp_prompts:
+                    static_parts.append(mcp_prompts)
+            except Exception as e:
+                tools_logger.warning(f"Failed to get MCP system prompts: {e}")
 
         # === DYNAMIC CONTENT ===
         author = message.author
@@ -2563,11 +2585,21 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
     ) -> str:
         """Execute a tool and return the output string.
 
-        Handles Docker sandbox tools, local file tools, and chat history tools.
+        Handles MCP tools, Docker sandbox tools, local file tools, and chat history tools.
         """
 
         # Get channel_id for file storage organization
         channel_id = str(channel.id) if channel else None
+
+        # Route MCP tools directly to manager (bypass registry)
+        if "__" in tool_name and _mcp_initialized:
+            try:
+                manager = get_mcp_manager()
+                if manager.is_mcp_tool(tool_name):
+                    return await manager.call_tool(tool_name, arguments)
+            except Exception as e:
+                tools_logger.error(f"MCP tool {tool_name} failed: {e}")
+                return f"Error executing MCP tool {tool_name}: {e}"
 
         # Docker sandbox tools (including web_search which uses Tavily)
         docker_tools = {
