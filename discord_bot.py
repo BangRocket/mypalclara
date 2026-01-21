@@ -1192,22 +1192,13 @@ You have persistent memory via mem0. Use memories naturally without announcing "
 """
         ]
 
-        # Add tool prompts (static)
+        # Add tool prompts from native modules (static)
+        # Note: MCP tools are self-describing via the tools parameter, no system prompt needed
         if _modular_tools_initialized:
             registry = get_registry()
             tool_prompts = registry.get_system_prompts(platform="discord")
             if tool_prompts:
                 static_parts.append(tool_prompts)
-
-        # Add MCP tool prompts (directly from manager, not registry)
-        if _mcp_initialized:
-            try:
-                manager = get_mcp_manager()
-                mcp_prompts = manager.get_mcp_system_prompt()
-                if mcp_prompts:
-                    static_parts.append(mcp_prompts)
-            except Exception as e:
-                tools_logger.warning(f"Failed to get MCP system prompts: {e}")
 
         # === DYNAMIC CONTENT ===
         author = message.author
