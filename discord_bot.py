@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
+import base64
 import io
 import json
 import re
@@ -179,6 +180,18 @@ TEXT_EXTENSIONS = {
     ".gitignore",
     ".dockerfile",
 }
+
+# Image extensions for vision support
+IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+}
+# Max image size for vision (10MB - most APIs accept up to 20MB)
+MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", "10485760"))
+
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
 ALLOWED_SERVERS = [s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()]
 ALLOWED_ROLES = [r.strip() for r in os.getenv("DISCORD_ALLOWED_ROLES", "").split(",") if r.strip()]
@@ -1269,9 +1282,15 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         return "\n\n".join(static_parts) + "\n\n" + dynamic_context
 
     async def _extract_attachments(self, message: DiscordMessage, user_id: str | None = None) -> list[dict]:
-        """Extract text content from message attachments.
+        """Extract content from message attachments (text and images).
 
         Also saves all attachments to local storage if user_id is provided.
+
+        Returns list of attachment dicts with:
+        - For text files: {"filename": str, "content": str}
+        - For images: {"filename": str, "type": "image", "media_type": str, "base64_data": str}
+        - For other files: {"filename": str, "saved_locally": True, "note": str}
+        - On errors: {"filename": str, "error": str}
         """
         attachments = []
         file_manager = get_file_manager() if user_id else None
@@ -1284,6 +1303,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             ext = "." + filename.split(".")[-1] if "." in filename else ""
 
             # Always try to save to local storage first (for later access)
+            content_bytes = None
             if file_manager and user_id:
                 try:
                     content_bytes = await attachment.read()
@@ -1292,6 +1312,58 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         logger.debug(f" Saved attachment to storage: {original_filename}")
                 except Exception as e:
                     logger.debug(f" Failed to save attachment locally: {e}")
+
+            # Handle images for vision support
+            if ext in IMAGE_EXTENSIONS:
+                if attachment.size > MAX_IMAGE_SIZE:
+                    logger.debug(f" Image too large for vision: {filename} ({attachment.size} bytes)")
+                    attachments.append(
+                        {
+                            "filename": original_filename,
+                            "saved_locally": True,
+                            "note": f"Image too large for vision ({attachment.size // 1024 // 1024}MB). Saved locally.",
+                        }
+                    )
+                    continue
+
+                try:
+                    # Download image if not already cached
+                    if content_bytes is None:
+                        content_bytes = await attachment.read()
+
+                    # Determine media type from extension
+                    media_type_map = {
+                        ".png": "image/png",
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".gif": "image/gif",
+                        ".webp": "image/webp",
+                    }
+                    media_type = media_type_map.get(ext, "image/png")
+
+                    # Encode as base64
+                    base64_data = base64.b64encode(content_bytes).decode("ascii")
+
+                    attachments.append(
+                        {
+                            "filename": original_filename,
+                            "type": "image",
+                            "media_type": media_type,
+                            "base64_data": base64_data,
+                        }
+                    )
+                    logger.debug(f" Processed image for vision: {filename} ({len(content_bytes)} bytes)")
+
+                except Exception as e:
+                    logger.debug(f" Error processing image {filename}: {e}")
+                    attachments.append(
+                        {
+                            "filename": original_filename,
+                            "saved_locally": True,
+                            "note": f"Failed to process image: {e}",
+                        }
+                    )
+                continue
 
             if ext not in TEXT_EXTENSIONS:
                 # Note: file was still saved locally above
@@ -1319,7 +1391,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             try:
                 # Download and decode the file (may already be cached from save above)
-                content_bytes = await attachment.read()
+                if content_bytes is None:
+                    content_bytes = await attachment.read()
                 try:
                     content = content_bytes.decode("utf-8")
                 except UnicodeDecodeError:
@@ -1699,10 +1772,15 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
                 # Extract and append file attachments (also saves to local storage)
                 attachments = await self._extract_attachments(message, user_id)
+                image_attachments = []  # Images for vision support
                 if attachments:
                     attachment_text = []
                     for att in attachments:
-                        if "content" in att:
+                        if att.get("type") == "image":
+                            # Store image for multimodal message
+                            image_attachments.append(att)
+                            attachment_text.append(f"\n\n[Image: {att['filename']}]")
+                        elif "content" in att:
                             attachment_text.append(f"\n\n--- File: {att['filename']} ---\n{att['content']}")
                         elif "note" in att:
                             # File saved locally but not shown inline
@@ -1713,6 +1791,8 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             attachment_text.append(f"\n\n[File {fname}: {err}]")
                     raw_content += "".join(attachment_text)
                     logger.debug(f" Added {len(attachments)} file(s) to message")
+                    if image_attachments:
+                        logger.debug(f" Including {len(image_attachments)} image(s) for vision")
 
                 # For channels, prefix with username so Clara knows who's speaking
                 if not is_dm:
@@ -1810,8 +1890,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 docker_available = DOCKER_ENABLED and get_sandbox_manager().is_available()
                 logger.debug(f" Docker sandbox: enabled={DOCKER_ENABLED}, available={docker_available}")
 
-                # Generate streaming response (with optional tier override)
-                response = await self._generate_response(message, prompt_messages, tier_override)
+                # Generate streaming response (with optional tier override and images for vision)
+                response = await self._generate_response(
+                    message, prompt_messages, tier_override, images=image_attachments
+                )
 
                 # Store in Clara's memory system
                 # Use thread_owner for message storage, user_id for memories
@@ -2140,6 +2222,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         message: DiscordMessage,
         prompt_messages: list[dict],
         tier: ModelTier | None = None,
+        images: list[dict] | None = None,
     ) -> str:
         """Generate response and send to Discord, handling tool calls.
 
@@ -2147,6 +2230,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             message: The Discord message to respond to
             prompt_messages: The conversation history and context
             tier: Optional model tier override (high/mid/low)
+            images: Optional list of image attachments for vision support
         """
         # Auto tier selection - classify message complexity if no explicit tier
         auto_selected = False
@@ -2202,7 +2286,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             # Generate with tools
             full_response, files_to_send = await self._generate_with_tools(
-                message, prompt_messages, user_id, loop, active_tools, tier
+                message, prompt_messages, user_id, loop, active_tools, tier, images
             )
 
             logger.info(f"Got response: {len(full_response)} chars")
@@ -2290,6 +2374,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         loop: asyncio.AbstractEventLoop,
         active_tools: list[dict],
         tier: ModelTier | None = None,
+        images: list[dict] | None = None,
     ) -> tuple[str, list]:
         """Generate response with tool calling support.
 
@@ -2300,6 +2385,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             loop: The event loop for running blocking calls
             active_tools: List of tool definitions to use
             tier: Optional model tier override (high/mid/low)
+            images: Optional list of image attachments for vision support
 
         Returns:
             tuple: (response_text, list of file paths to send)
@@ -2309,6 +2395,31 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         sandbox_manager = get_sandbox_manager()
         file_manager = get_file_manager()
         messages = list(prompt_messages)  # Copy to avoid mutation
+
+        # Convert the last user message to multimodal format if images are present
+        if images:
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i].get("role") == "user":
+                    text_content = messages[i]["content"]
+                    # Build multimodal content array
+                    content_parts = []
+                    # Add text first
+                    if isinstance(text_content, str) and text_content.strip():
+                        content_parts.append({"type": "text", "text": text_content})
+                    # Add images
+                    for img in images:
+                        # OpenAI/OpenRouter format: image_url with data URL
+                        content_parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{img['media_type']};base64,{img['base64_data']}",
+                                },
+                            }
+                        )
+                    messages[i]["content"] = content_parts
+                    logger.debug(f" Converted user message to multimodal with {len(images)} image(s)")
+                    break
 
         # Track files to send to Discord
         files_to_send: list[Path] = []
