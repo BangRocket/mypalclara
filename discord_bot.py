@@ -189,8 +189,9 @@ IMAGE_EXTENSIONS = {
     ".gif",
     ".webp",
 }
-# Max image size for vision (10MB - most APIs accept up to 20MB)
-MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", "10485760"))
+# Max image size for vision (4MB default - base64 encoding adds ~33% overhead)
+# Most API providers have request body limits of 5-20MB, so 4MB raw is safe
+MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", "4194304"))
 
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
 ALLOWED_SERVERS = [s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()]
