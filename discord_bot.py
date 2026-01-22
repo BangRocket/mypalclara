@@ -1103,7 +1103,16 @@ class ClaraDiscordBot(discord_commands.Bot):
         intents.messages = True
         intents.guilds = True
         intents.members = True
-        super().__init__(intents=intents)
+
+        # Connection stability settings
+        # - heartbeat_timeout: Time to wait for heartbeat ACK before reconnecting (default: 60)
+        #   Increase if bot does heavy processing that might delay heartbeats
+        # - assume_unsync_clock: Helps with clock drift issues between client and Discord
+        super().__init__(
+            intents=intents,
+            heartbeat_timeout=120.0,  # 2 minutes - more tolerant of processing delays
+            assume_unsync_clock=True,  # Handle clock drift gracefully
+        )
 
         # Message cache: discord_msg_id -> CachedMessage
         self.msg_cache: dict[int, CachedMessage] = {}
@@ -1551,9 +1560,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
     async def on_ready(self):
         """Called when bot is ready."""
         logger.info(f"Logged in as {self.user}")
+        logger.info(f"WebSocket latency: {self.latency * 1000:.0f}ms")
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
             logger.info(f"Invite URL: {invite}")
+
+        # Start connection health monitor (only once)
+        if self._first_ready:
+            self.loop.create_task(self._connection_health_monitor())
 
         # Initialize Discord log channel mirroring (if configured)
         if LOG_CHANNEL_ID:
@@ -1622,19 +1636,65 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
     async def on_disconnect(self):
         """Called when bot disconnects from Discord."""
-        logger.warning("Bot disconnected from Discord")
+        logger.warning(f"Bot disconnected from Discord (was_ready={self._first_ready is False})")
         monitor.log("system", "Bot", "Disconnected from Discord")
         discord_handler = get_discord_handler()
         if discord_handler:
             await discord_handler.send_direct("🟡 Bot disconnected from Discord")
 
+    async def on_error(self, event_method: str, *args, **kwargs):
+        """Handle errors in event handlers."""
+        import traceback
+
+        error_msg = traceback.format_exc()
+        logger.error(f"Error in {event_method}: {error_msg}")
+        monitor.log("error", "Bot", f"Error in {event_method}")
+
     async def on_resumed(self):
         """Called when bot resumes after a disconnect."""
         logger.info("Bot resumed connection to Discord")
+        logger.info(f"WebSocket latency after resume: {self.latency * 1000:.0f}ms")
         monitor.log("system", "Bot", "Resumed connection")
         discord_handler = get_discord_handler()
         if discord_handler:
             await discord_handler.send_direct("🔄 Bot resumed connection")
+
+    async def _connection_health_monitor(self):
+        """Background task to monitor connection health and log warnings."""
+        await self.wait_until_ready()
+        logger.info("Connection health monitor started")
+
+        consecutive_high_latency = 0
+        while not self.is_closed():
+            try:
+                latency_ms = self.latency * 1000
+
+                # Log latency periodically (every 5 minutes at debug level)
+                logger.debug(f"WebSocket latency: {latency_ms:.0f}ms")
+
+                # Warn if latency is high
+                if latency_ms > 500:  # 500ms threshold
+                    consecutive_high_latency += 1
+                    if consecutive_high_latency >= 3:
+                        logger.warning(
+                            f"High WebSocket latency detected: {latency_ms:.0f}ms "
+                            f"(consecutive: {consecutive_high_latency})"
+                        )
+                        monitor.log("system", "Bot", f"High latency: {latency_ms:.0f}ms")
+                else:
+                    if consecutive_high_latency >= 3:
+                        logger.info(f"Latency recovered: {latency_ms:.0f}ms")
+                    consecutive_high_latency = 0
+
+                # Check if we're actually connected
+                if not self.is_ready():
+                    logger.warning("Bot reports not ready - may be reconnecting")
+
+            except Exception as e:
+                logger.debug(f"Health monitor error (non-fatal): {e}")
+
+            # Check every 60 seconds
+            await asyncio.sleep(60)
 
     async def on_message(self, message: DiscordMessage):
         """Handle incoming messages."""
