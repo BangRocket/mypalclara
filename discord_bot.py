@@ -197,6 +197,9 @@ MAX_IMAGE_DIMENSION = int(os.getenv("DISCORD_MAX_IMAGE_DIMENSION", "1568"))
 # Max image file size in bytes (5MB limit per image for Claude API)
 # We use a slightly lower default to account for base64 overhead
 MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", "4194304"))
+# Max images per LLM request - prevents payload size errors with multiple images
+# When exceeded, images are processed in batches with sequential LLM calls
+MAX_IMAGES_PER_REQUEST = int(os.getenv("DISCORD_MAX_IMAGES_PER_REQUEST", "1"))
 
 
 def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> tuple[bytes, str]:
@@ -2556,10 +2559,64 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 tools_logger.info("Using tool-calling mode (local files + modular only)")
                 active_tools = get_all_tools(include_docker=False)
 
-            # Generate with tools
-            full_response, files_to_send = await self._generate_with_tools(
-                message, prompt_messages, user_id, loop, active_tools, tier, images
-            )
+            # Handle multiple images by batching to avoid payload size limits
+            files_to_send = []
+            if images and len(images) > MAX_IMAGES_PER_REQUEST:
+                # Batch process images to avoid 413 payload errors
+                logger.info(f"Batching {len(images)} images into groups of {MAX_IMAGES_PER_REQUEST}")
+                all_responses = []
+                current_messages = list(prompt_messages)
+
+                for batch_idx in range(0, len(images), MAX_IMAGES_PER_REQUEST):
+                    batch_images = images[batch_idx : batch_idx + MAX_IMAGES_PER_REQUEST]
+                    batch_num = batch_idx // MAX_IMAGES_PER_REQUEST + 1
+                    total_batches = (len(images) + MAX_IMAGES_PER_REQUEST - 1) // MAX_IMAGES_PER_REQUEST
+
+                    # Add context about which images we're looking at
+                    image_names = [img["filename"] for img in batch_images]
+                    if batch_idx > 0:
+                        # For subsequent batches, add previous response as context
+                        current_messages = list(prompt_messages)
+                        # Add assistant's previous analysis
+                        current_messages.append(
+                            {
+                                "role": "assistant",
+                                "content": "\n\n".join(all_responses),
+                            }
+                        )
+                        # Add user prompt for next batch
+                        current_messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"Now please analyze image(s) {batch_num} of {total_batches}: "
+                                    f"{', '.join(image_names)}. Continue your analysis."
+                                ),
+                            }
+                        )
+
+                    logger.debug(f"Processing image batch {batch_num}/{total_batches}: {image_names}")
+
+                    # Send status update for multi-image processing
+                    if batch_idx == 0:
+                        await message.channel.send(
+                            f"-# 🖼️ Processing {len(images)} images in {total_batches} batch(es)...",
+                            silent=True,
+                        )
+
+                    batch_response, batch_files = await self._generate_with_tools(
+                        message, current_messages, user_id, loop, active_tools, tier, batch_images
+                    )
+                    all_responses.append(batch_response)
+                    files_to_send.extend(batch_files)
+
+                # Combine all responses
+                full_response = "\n\n".join(all_responses)
+            else:
+                # Single image or no images - process normally
+                full_response, files_to_send = await self._generate_with_tools(
+                    message, prompt_messages, user_id, loop, active_tools, tier, images
+                )
 
             logger.info(f"Got response: {len(full_response)} chars")
 
@@ -2711,7 +2768,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 "call the execute_python or other tools to do it. "
                 "For any math beyond basic arithmetic, USE execute_python. "
                 "For GitHub tasks (repos, issues, PRs, workflows), use the github_* tools. "
-                "For Azure DevOps tasks (work items, PRs, pipelines, repos), use the ado_* tools. "
                 "Summarize results conversationally and attach full output as a file."
             ),
         }
@@ -2763,20 +2819,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             "github_search_code": ("🔎", "Searching GitHub code"),
             "github_list_workflow_runs": ("⚙️", "Listing workflow runs"),
             "github_run_workflow": ("▶️", "Triggering workflow"),
-            # Azure DevOps tools
-            "ado_list_projects": ("🏢", "Listing ADO projects"),
-            "ado_list_repos": ("📂", "Listing ADO repos"),
-            "ado_list_pull_requests": ("🔀", "Listing ADO pull requests"),
-            "ado_get_pull_request": ("📑", "Getting ADO PR details"),
-            "ado_create_pull_request": ("🔀", "Creating ADO pull request"),
-            "ado_list_work_items": ("📋", "Listing work items"),
-            "ado_get_work_item": ("🔖", "Getting work item details"),
-            "ado_create_work_item": ("➕", "Creating work item"),
-            "ado_search_work_items": ("🔎", "Searching work items"),
-            "ado_my_work_items": ("📋", "Getting my work items"),
-            "ado_list_pipelines": ("⚙️", "Listing pipelines"),
-            "ado_list_builds": ("🔨", "Listing builds"),
-            "ado_run_pipeline": ("▶️", "Running pipeline"),
         }
 
         for iteration in range(MAX_TOOL_ITERATIONS):
