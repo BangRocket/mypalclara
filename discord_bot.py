@@ -39,6 +39,8 @@ import json
 import re
 from collections import deque
 from dataclasses import dataclass, field
+
+from PIL import Image
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
@@ -189,9 +191,67 @@ IMAGE_EXTENSIONS = {
     ".gif",
     ".webp",
 }
-# Max image size for vision (4MB default - base64 encoding adds ~33% overhead)
-# Most API providers have request body limits of 5-20MB, so 4MB raw is safe
+# Max image dimension for vision (Claude recommends max 1568 pixels on longest edge)
+# This keeps images around 1.15 megapixels for optimal token usage
+MAX_IMAGE_DIMENSION = int(os.getenv("DISCORD_MAX_IMAGE_DIMENSION", "1568"))
+# Max image file size in bytes (5MB limit per image for Claude API)
+# We use a slightly lower default to account for base64 overhead
 MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", "4194304"))
+
+
+def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> tuple[bytes, str]:
+    """Resize an image to fit within max_dimension while preserving aspect ratio.
+
+    Args:
+        image_bytes: Raw image bytes
+        max_dimension: Maximum pixels on longest edge (default: 1568)
+
+    Returns:
+        Tuple of (resized image bytes in JPEG format, media_type)
+    """
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        # Get original dimensions
+        orig_width, orig_height = img.size
+
+        # Check if resize is needed
+        if orig_width <= max_dimension and orig_height <= max_dimension:
+            # Image is already small enough, but still convert to JPEG for consistency
+            # (unless it's already a small PNG/GIF that should stay as-is)
+            if len(image_bytes) < 500_000:  # < 500KB, keep original format
+                # Determine format from image
+                img_format = img.format or "PNG"
+                media_type = f"image/{img_format.lower()}"
+                if media_type == "image/jpeg":
+                    media_type = "image/jpeg"
+                return image_bytes, media_type
+
+        # Calculate new dimensions maintaining aspect ratio
+        if orig_width > orig_height:
+            new_width = max_dimension
+            new_height = int(orig_height * (max_dimension / orig_width))
+        else:
+            new_height = max_dimension
+            new_width = int(orig_width * (max_dimension / orig_height))
+
+        # Convert to RGB if necessary (for JPEG output)
+        if img.mode in ("RGBA", "P", "LA"):
+            # Create white background for transparency
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Resize with high-quality resampling
+        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Save to bytes as JPEG with good quality
+        output = io.BytesIO()
+        resized.save(output, format="JPEG", quality=85, optimize=True)
+        return output.getvalue(), "image/jpeg"
+
 
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
 ALLOWED_SERVERS = [s.strip() for s in os.getenv("DISCORD_ALLOWED_SERVERS", "").split(",") if s.strip()]
@@ -793,9 +853,7 @@ class TaskQueue:
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
 
-    async def try_acquire(
-        self, message: DiscordMessage, is_dm: bool, is_mention: bool = False
-    ) -> tuple[bool, int]:
+    async def try_acquire(self, message: DiscordMessage, is_dm: bool, is_mention: bool = False) -> tuple[bool, int]:
         """Try to acquire the channel for processing.
 
         Args:
@@ -874,10 +932,7 @@ class TaskQueue:
             if batch:
                 # Mark the last message in the batch as active
                 self._active[channel_id] = batch[-1].message
-                logger.info(
-                    f"Batch dequeued {len(batch)} task(s) for channel {channel_id}, "
-                    f"{len(queue)} remaining"
-                )
+                logger.info(f"Batch dequeued {len(batch)} task(s) for channel {channel_id}, " f"{len(queue)} remaining")
 
             return batch
 
@@ -1371,13 +1426,14 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
             # Handle images for vision support
             if ext in IMAGE_EXTENSIONS:
-                if attachment.size > MAX_IMAGE_SIZE:
-                    logger.debug(f" Image too large for vision: {filename} ({attachment.size} bytes)")
+                # Skip extremely large images (>20MB) - they'll timeout during download
+                if attachment.size > 20_000_000:
+                    logger.debug(f" Image too large to process: {filename} ({attachment.size} bytes)")
                     attachments.append(
                         {
                             "filename": original_filename,
                             "saved_locally": True,
-                            "note": f"Image too large for vision ({attachment.size // 1024 // 1024}MB). Saved locally.",
+                            "note": f"Image too large ({attachment.size // 1024 // 1024}MB). Saved locally.",
                         }
                     )
                     continue
@@ -1387,18 +1443,27 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     if content_bytes is None:
                         content_bytes = await attachment.read()
 
-                    # Determine media type from extension
-                    media_type_map = {
-                        ".png": "image/png",
-                        ".jpg": "image/jpeg",
-                        ".jpeg": "image/jpeg",
-                        ".gif": "image/gif",
-                        ".webp": "image/webp",
-                    }
-                    media_type = media_type_map.get(ext, "image/png")
+                    # Resize image for optimal vision processing
+                    # Claude recommends max 1568px on longest edge (~1.15 megapixels)
+                    resized_bytes, media_type = resize_image_for_vision(content_bytes)
+                    original_size = len(content_bytes)
+                    resized_size = len(resized_bytes)
+
+                    # Final size check after resize
+                    if resized_size > MAX_IMAGE_SIZE:
+                        logger.debug(f" Image still too large after resize: {filename} ({resized_size} bytes)")
+                        size_kb = resized_size // 1024
+                        attachments.append(
+                            {
+                                "filename": original_filename,
+                                "saved_locally": True,
+                                "note": f"Image too large after resize ({size_kb}KB). Saved locally.",
+                            }
+                        )
+                        continue
 
                     # Encode as base64
-                    base64_data = base64.b64encode(content_bytes).decode("ascii")
+                    base64_data = base64.b64encode(resized_bytes).decode("ascii")
 
                     attachments.append(
                         {
@@ -1408,7 +1473,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                             "base64_data": base64_data,
                         }
                     )
-                    logger.debug(f" Processed image for vision: {filename} ({len(content_bytes)} bytes)")
+                    logger.debug(
+                        f" Processed image for vision: {filename} "
+                        f"({original_size} -> {resized_size} bytes, {media_type})"
+                    )
 
                 except Exception as e:
                     logger.debug(f" Error processing image {filename}: {e}")
@@ -1809,9 +1877,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if not batch:
             return
 
-        logger.info(
-            f"[BATCH] Processing {len(batch)} queued messages together for channel {channel_id}"
-        )
+        logger.info(f"[BATCH] Processing {len(batch)} queued messages together for channel {channel_id}")
 
         # Remove the hourglass reactions we added
         for task in batch:
@@ -1829,10 +1895,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         # Log all messages being batched
         for task in batch:
-            logger.info(
-                f"  [BATCH] Including: {task.message.author.display_name}: "
-                f"{task.message.content[:50]!r}"
-            )
+            logger.info(f"  [BATCH] Including: {task.message.author.display_name}: " f"{task.message.content[:50]!r}")
 
         # Send a brief indicator that we're responding to multiple messages
         if len(batch) > 1:
