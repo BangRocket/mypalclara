@@ -767,8 +767,17 @@ class QueuedTask:
 
     message: DiscordMessage
     is_dm: bool
+    is_mention: bool = False  # Was Clara explicitly mentioned?
     queued_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     position: int = 0  # Position in queue when added
+
+    @property
+    def is_batchable(self) -> bool:
+        """Check if this task can be batched with others in active mode.
+
+        Batchable tasks are: non-DM, non-mention (active mode) messages.
+        """
+        return not self.is_dm and not self.is_mention
 
 
 class TaskQueue:
@@ -783,8 +792,15 @@ class TaskQueue:
         self._queues: dict[int, list[QueuedTask]] = {}
         self._lock = asyncio.Lock()
 
-    async def try_acquire(self, message: DiscordMessage, is_dm: bool) -> tuple[bool, int]:
+    async def try_acquire(
+        self, message: DiscordMessage, is_dm: bool, is_mention: bool = False
+    ) -> tuple[bool, int]:
         """Try to acquire the channel for processing.
+
+        Args:
+            message: The Discord message
+            is_dm: Whether this is a DM
+            is_mention: Whether Clara was explicitly mentioned
 
         Returns:
             (acquired, queue_position): If acquired is True, proceed with task.
@@ -804,7 +820,7 @@ class TaskQueue:
 
             queue = self._queues[channel_id]
             position = len(queue) + 1  # 1-indexed position
-            task = QueuedTask(message=message, is_dm=is_dm, position=position)
+            task = QueuedTask(message=message, is_dm=is_dm, is_mention=is_mention, position=position)
             queue.append(task)
 
             logger.info(f"Queued task for channel {channel_id}, position {position}")
@@ -824,6 +840,45 @@ class TaskQueue:
                 return next_task
 
             return None
+
+    async def release_batch(self, channel_id: int) -> list[QueuedTask]:
+        """Release the channel and return all consecutive batchable tasks.
+
+        For active mode, this allows responding to multiple queued messages at once.
+        Returns tasks up until a non-batchable task (DM or mention) is encountered.
+
+        Returns:
+            List of batchable tasks (may be empty if next task is not batchable).
+            If first task is not batchable, returns empty list (use release() instead).
+        """
+        async with self._lock:
+            if channel_id in self._active:
+                del self._active[channel_id]
+
+            # Check for queued tasks
+            if channel_id not in self._queues or not self._queues[channel_id]:
+                return []
+
+            queue = self._queues[channel_id]
+
+            # Check if the first task is batchable
+            if not queue[0].is_batchable:
+                return []  # Use regular release() for non-batchable tasks
+
+            # Collect consecutive batchable tasks
+            batch = []
+            while queue and queue[0].is_batchable:
+                batch.append(queue.pop(0))
+
+            if batch:
+                # Mark the last message in the batch as active
+                self._active[channel_id] = batch[-1].message
+                logger.info(
+                    f"Batch dequeued {len(batch)} task(s) for channel {channel_id}, "
+                    f"{len(queue)} remaining"
+                )
+
+            return batch
 
     async def get_queue_length(self, channel_id: int) -> int:
         """Get the number of queued tasks for a channel."""
@@ -1619,26 +1674,51 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 )
             return
 
-        # Try to acquire channel for processing (queue if busy)
-        await self._process_with_queue(message, is_dm)
+        # Determine if this was a direct mention/reply (vs active mode catching all messages)
+        is_mention = False
+        if not is_dm:
+            is_mention = self.user.mentioned_in(message) or (
+                message.reference and message.reference.resolved and message.reference.resolved.author == self.user
+            )
 
-    async def _process_with_queue(self, message: DiscordMessage, is_dm: bool):
-        """Process message with queue management."""
+        # Try to acquire channel for processing (queue if busy)
+        await self._process_with_queue(message, is_dm, is_mention)
+
+    async def _process_with_queue(self, message: DiscordMessage, is_dm: bool, is_mention: bool = False):
+        """Process message with queue management.
+
+        Args:
+            message: The Discord message
+            is_dm: Whether this is a DM
+            is_mention: Whether Clara was explicitly mentioned (vs active mode)
+        """
         channel_id = message.channel.id
 
         # Try to acquire the channel
-        acquired, queue_position = await task_queue.try_acquire(message, is_dm)
+        acquired, queue_position = await task_queue.try_acquire(message, is_dm, is_mention)
 
         if not acquired:
-            # Channel is busy, notify user their request is queued
+            # Channel is busy, message is queued
             logger.info(f"[QUEUE] Message {message.id} queued at position {queue_position}")
-            queue_msg = (
-                f"-# ⏳ I'm working on something else right now. Your request is queued (position {queue_position})."
-            )
-            try:
-                await message.reply(queue_msg, mention_author=False)
-            except Exception as e:
-                logger.warning(f"Failed to send queue notification: {e}")
+
+            # Only send queue notification for DMs and mentions (not active mode)
+            # In active mode, messages will be batched and processed together
+            if is_dm or is_mention:
+                queue_msg = (
+                    f"-# ⏳ I'm working on something else right now. "
+                    f"Your request is queued (position {queue_position})."
+                )
+                try:
+                    await message.reply(queue_msg, mention_author=False)
+                except Exception as e:
+                    logger.warning(f"Failed to send queue notification: {e}")
+            else:
+                # Active mode: add a reaction to acknowledge the message is queued
+                try:
+                    await message.add_reaction("⏳")
+                except Exception as e:
+                    logger.debug(f"Failed to add queue reaction: {e}")
+
             return  # The task will be processed when dequeued
 
         # We have the channel, process the message
@@ -1662,48 +1742,129 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             await self._process_queued_tasks(channel_id)
 
     async def _process_queued_tasks(self, channel_id: int):
-        """Process any queued tasks for the channel after releasing."""
+        """Process any queued tasks for the channel after releasing.
+
+        For active mode (non-DM, non-mention), batches multiple messages together
+        for a single combined response. DMs and mentions are processed individually.
+        """
         while True:
+            # First, try to get a batch of batchable tasks (active mode messages)
+            batch = await task_queue.release_batch(channel_id)
+
+            if batch:
+                # Process batch of active mode messages together
+                await self._process_batched_tasks(channel_id, batch)
+                continue
+
+            # No batch available - check for individual task (DM or mention)
             next_task = await task_queue.release(channel_id)
             if not next_task:
                 break
 
-            # Log queued task processing
+            # Process individual task (DM or mention)
+            await self._process_single_queued_task(channel_id, next_task)
+
+    async def _process_single_queued_task(self, channel_id: int, task: QueuedTask):
+        """Process a single queued task (for DMs and mentions)."""
+        logger.info(
+            f"[QUEUED] Processing queued message {task.message.id} "
+            f"from {task.message.author}: {task.message.content[:50]!r}"
+        )
+
+        # Notify user their queued request is starting
+        wait_time = (datetime.now(UTC) - task.queued_at).total_seconds()
+        start_msg = f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+        try:
+            await task.message.reply(start_msg, mention_author=False)
+        except Exception as e:
+            logger.warning(f"Failed to send start notification: {e}")
+
+        # Process the queued task (wrapped for cancellation support)
+        async def run_queued_handler():
+            await self._handle_message(task.message, task.is_dm)
+
+        async_task = asyncio.create_task(run_queued_handler())
+        task_queue.register_task(channel_id, async_task)
+
+        try:
+            await async_task
+        except asyncio.CancelledError:
+            logger.info(f"Queued task cancelled for channel {channel_id}")
+        except Exception as e:
+            logger.exception(f"Error processing queued task: {e}")
+            try:
+                err_msg = f"Sorry, I encountered an error processing your queued request: {str(e)[:100]}"
+                await task.message.reply(err_msg, mention_author=False)
+            except Exception:
+                pass
+        finally:
+            task_queue.unregister_task(channel_id)
+
+    async def _process_batched_tasks(self, channel_id: int, batch: list[QueuedTask]):
+        """Process a batch of active mode messages together.
+
+        Combines multiple messages into a single context and generates one response.
+        """
+        if not batch:
+            return
+
+        logger.info(
+            f"[BATCH] Processing {len(batch)} queued messages together for channel {channel_id}"
+        )
+
+        # Remove the hourglass reactions we added
+        for task in batch:
+            try:
+                await task.message.remove_reaction("⏳", self.user)
+            except Exception:
+                pass  # Reaction may have been removed or message deleted
+
+        # Calculate total wait time (from first message in batch)
+        first_queued = min(t.queued_at for t in batch)
+        wait_time = (datetime.now(UTC) - first_queued).total_seconds()
+
+        # Use the last message as the "anchor" for the response
+        anchor_message = batch[-1].message
+
+        # Log all messages being batched
+        for task in batch:
             logger.info(
-                f"[QUEUED] Processing queued message {next_task.message.id} "
-                f"from {next_task.message.author}: {next_task.message.content[:50]!r}"
+                f"  [BATCH] Including: {task.message.author.display_name}: "
+                f"{task.message.content[:50]!r}"
             )
 
-            # Notify user their queued request is starting
-            wait_time = (datetime.now(UTC) - next_task.queued_at).total_seconds()
-            start_msg = f"-# ▶️ Starting your queued request (waited {wait_time:.0f}s)..."
+        # Send a brief indicator that we're responding to multiple messages
+        if len(batch) > 1:
             try:
-                await next_task.message.reply(start_msg, mention_author=False)
+                indicator = f"-# 📨 Catching up on {len(batch)} messages (waited {wait_time:.0f}s)..."
+                await anchor_message.channel.send(indicator, silent=True)
             except Exception as e:
-                logger.warning(f"Failed to send start notification: {e}")
+                logger.warning(f"Failed to send batch indicator: {e}")
 
-            # Process the queued task (wrapped for cancellation support)
-            async def run_queued_handler():
-                await self._handle_message(next_task.message, next_task.is_dm)
+        # Process the batch (wrapped for cancellation support)
+        async def run_batch_handler():
+            await self._handle_message(
+                anchor_message,
+                is_dm=False,
+                batched_messages=[t.message for t in batch],
+            )
 
-            task = asyncio.create_task(run_queued_handler())
-            task_queue.register_task(channel_id, task)
+        async_task = asyncio.create_task(run_batch_handler())
+        task_queue.register_task(channel_id, async_task)
 
+        try:
+            await async_task
+        except asyncio.CancelledError:
+            logger.info(f"Batched task cancelled for channel {channel_id}")
+        except Exception as e:
+            logger.exception(f"Error processing batched tasks: {e}")
             try:
-                await task
-            except asyncio.CancelledError:
-                logger.info(f"Queued task cancelled for channel {channel_id}")
-                # Exit the loop - queue was cleared by stop phrase
-                break
-            except Exception as e:
-                logger.exception(f"Error processing queued task: {e}")
-                try:
-                    err_msg = f"Sorry, I encountered an error processing your queued request: {str(e)[:100]}"
-                    await next_task.message.reply(err_msg, mention_author=False)
-                except Exception:
-                    pass
-            finally:
-                task_queue.unregister_task(channel_id)
+                err_msg = f"Sorry, I encountered an error: {str(e)[:100]}"
+                await anchor_message.reply(err_msg, mention_author=False)
+            except Exception:
+                pass
+        finally:
+            task_queue.unregister_task(channel_id)
 
     async def _handle_message(
         self,
@@ -1711,16 +1872,21 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         is_dm: bool = False,
         auto_continue_count: int = 0,
         auto_continue_content: str | None = None,
+        batched_messages: list[DiscordMessage] | None = None,
     ):
         """Process a message and generate a response.
 
         Args:
-            message: The Discord message to respond to
+            message: The Discord message to respond to (or anchor for batch)
             is_dm: Whether this is a DM (vs channel message)
             auto_continue_count: How many auto-continues have happened (to prevent loops)
             auto_continue_content: If set, use this as the user message instead of message.content
+            batched_messages: If set, process these messages together as a batch (active mode)
         """
-        content_preview = (auto_continue_content or message.content)[:50]
+        if batched_messages and len(batched_messages) > 1:
+            content_preview = f"[BATCH of {len(batched_messages)} messages]"
+        else:
+            content_preview = (auto_continue_content or message.content)[:50]
         logger.info(f"Handling message from {message.author}: {content_preview!r}")
 
         async with message.channel.typing():
@@ -1761,45 +1927,87 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     message_preview=message.content[:100] if message.content else None,
                 )
 
-                # Get the user's message content (or use auto-continue content)
-                if auto_continue_content:
+                # Get the user's message content (or use auto-continue content, or batched)
+                tier_override = None
+                image_attachments = []  # Images for vision support
+
+                if batched_messages and len(batched_messages) > 1:
+                    # Batched mode: combine multiple messages into one context
+                    logger.info(f" Processing batch of {len(batched_messages)} messages")
+                    batch_parts = []
+                    for batch_msg in batched_messages:
+                        # Get content and extract attachments for each message
+                        msg_content = self._clean_content(batch_msg.content)
+                        msg_user_id = f"discord-{batch_msg.author.id}"
+
+                        # Extract attachments from each batched message
+                        msg_attachments = await self._extract_attachments(batch_msg, msg_user_id)
+                        attachment_text = []
+                        for att in msg_attachments:
+                            if att.get("type") == "image":
+                                image_attachments.append(att)
+                                attachment_text.append(f" [Image: {att['filename']}]")
+                            elif "content" in att:
+                                attachment_text.append(f"\n--- File: {att['filename']} ---\n{att['content']}")
+                            elif "note" in att:
+                                attachment_text.append(f" [Attachment: {att['filename']}]")
+
+                        msg_content += "".join(attachment_text)
+
+                        # Include username for each message in the batch
+                        display_name = batch_msg.author.display_name
+                        batch_parts.append(f"[{display_name}]: {msg_content}")
+
+                    # Join all batched messages with line breaks
+                    raw_content = "\n".join(batch_parts)
+                    user_content = f"[Multiple messages to address]\n{raw_content}"
+                    logger.debug(f" Batched content: {len(user_content)} chars from {len(batched_messages)} messages")
+
+                elif auto_continue_content:
                     raw_content = auto_continue_content
-                    tier_override = None  # Don't change tier on auto-continue
+                    # Don't change tier on auto-continue
+
+                    # For channels, prefix with username so Clara knows who's speaking
+                    if not is_dm:
+                        display_name = message.author.display_name
+                        user_content = f"[{display_name}]: {raw_content}"
+                    else:
+                        user_content = raw_content
                 else:
                     raw_content = self._clean_content(message.content)
                     # Detect tier override from message prefix (!high, !mid, !low, etc.)
                     tier_override, raw_content = detect_tier_from_message(raw_content)
 
-                # Extract and append file attachments (also saves to local storage)
-                attachments = await self._extract_attachments(message, user_id)
-                image_attachments = []  # Images for vision support
-                if attachments:
-                    attachment_text = []
-                    for att in attachments:
-                        if att.get("type") == "image":
-                            # Store image for multimodal message
-                            image_attachments.append(att)
-                            attachment_text.append(f"\n\n[Image: {att['filename']}]")
-                        elif "content" in att:
-                            attachment_text.append(f"\n\n--- File: {att['filename']} ---\n{att['content']}")
-                        elif "note" in att:
-                            # File saved locally but not shown inline
-                            fname, note = att["filename"], att["note"]
-                            attachment_text.append(f"\n\n[Attachment: {fname}] {note}")
-                        elif "error" in att:
-                            fname, err = att["filename"], att["error"]
-                            attachment_text.append(f"\n\n[File {fname}: {err}]")
-                    raw_content += "".join(attachment_text)
-                    logger.debug(f" Added {len(attachments)} file(s) to message")
-                    if image_attachments:
-                        logger.debug(f" Including {len(image_attachments)} image(s) for vision")
+                    # Extract and append file attachments (also saves to local storage)
+                    attachments = await self._extract_attachments(message, user_id)
+                    if attachments:
+                        attachment_text = []
+                        for att in attachments:
+                            if att.get("type") == "image":
+                                # Store image for multimodal message
+                                image_attachments.append(att)
+                                attachment_text.append(f"\n\n[Image: {att['filename']}]")
+                            elif "content" in att:
+                                attachment_text.append(f"\n\n--- File: {att['filename']} ---\n{att['content']}")
+                            elif "note" in att:
+                                # File saved locally but not shown inline
+                                fname, note = att["filename"], att["note"]
+                                attachment_text.append(f"\n\n[Attachment: {fname}] {note}")
+                            elif "error" in att:
+                                fname, err = att["filename"], att["error"]
+                                attachment_text.append(f"\n\n[File {fname}: {err}]")
+                        raw_content += "".join(attachment_text)
+                        logger.debug(f" Added {len(attachments)} file(s) to message")
 
-                # For channels, prefix with username so Clara knows who's speaking
-                if not is_dm:
-                    display_name = message.author.display_name
-                    user_content = f"[{display_name}]: {raw_content}"
-                else:
-                    user_content = raw_content
+                    # For channels, prefix with username so Clara knows who's speaking
+                    if not is_dm:
+                        display_name = message.author.display_name
+                        user_content = f"[{display_name}]: {raw_content}"
+                    else:
+                        user_content = raw_content
+
+                if image_attachments:
+                    logger.debug(f" Including {len(image_attachments)} image(s) for vision")
 
                 logger.debug(f" Content length: {len(user_content)} chars")
 
