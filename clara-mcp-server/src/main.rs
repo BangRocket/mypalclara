@@ -22,7 +22,6 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::tools::{
-    backup::BackupTools,
     claude_code::ClaudeCodeTools,
     sandbox::SandboxTools,
     ors_notes::OrsNotesTools,
@@ -104,58 +103,11 @@ pub struct NoteIdParams {
     pub note_id: String,
 }
 
-// ========== Backup Parameter Types ==========
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BackupNowParams {
-    /// Destination name (optional, uses default if not specified)
-    pub destination: Option<String>,
-    /// Databases to backup (optional, backs up all if not specified)
-    pub databases: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BackupListParams {
-    /// Filter by destination name
-    pub destination: Option<String>,
-    /// Filter by database name (e.g., "clara", "mem0")
-    pub database: Option<String>,
-    /// Maximum number of backups to list
-    pub limit: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BackupScheduleParams {
-    /// Enable or disable scheduled backups
-    pub enabled: bool,
-    /// Cron expression for schedule (e.g., "0 3 * * *" for daily at 3 AM)
-    pub cron: Option<String>,
-    /// Number of days to retain backups
-    pub retention_days: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BackupDestinationParams {
-    /// Unique name for this destination
-    pub name: String,
-    /// Destination type: "s3", "google_drive", or "ftp"
-    pub dest_type: String,
-    /// Configuration as JSON (type-specific settings)
-    pub config: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct BackupDestinationNameParams {
-    /// Name of the destination
-    pub name: String,
-}
-
 // ========== Server Implementation ==========
 
 /// Clara MCP Server
 #[derive(Clone)]
 pub struct ClaraServer {
-    backup: Arc<BackupTools>,
     claude_code: Arc<ClaudeCodeTools>,
     sandbox: Arc<SandboxTools>,
     ors_notes: Arc<OrsNotesTools>,
@@ -166,74 +118,10 @@ pub struct ClaraServer {
 impl ClaraServer {
     pub fn new() -> Self {
         Self {
-            backup: Arc::new(BackupTools::new()),
             claude_code: Arc::new(ClaudeCodeTools::new()),
             sandbox: Arc::new(SandboxTools::new()),
             ors_notes: Arc::new(OrsNotesTools::new()),
             tool_router: Self::tool_router(),
-        }
-    }
-
-    // ===== Backup Tools =====
-
-    #[tool(description = "Trigger an immediate database backup. Backs up Clara and Mem0 databases to configured storage.")]
-    async fn backup_now(&self, Parameters(p): Parameters<BackupNowParams>) -> Result<CallToolResult, McpError> {
-        match self.backup.backup_now(p.destination, p.databases).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "List available database backups with optional filters.")]
-    async fn backup_list(&self, Parameters(p): Parameters<BackupListParams>) -> Result<CallToolResult, McpError> {
-        match self.backup.list_backups(p.destination, p.database, p.limit).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Get current backup status including last backup time, schedule, and configured destinations.")]
-    async fn backup_status(&self) -> Result<CallToolResult, McpError> {
-        match self.backup.get_status().await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Configure the backup schedule. Use cron expressions for timing (e.g., '0 3 * * *' for daily at 3 AM).")]
-    async fn backup_schedule(&self, Parameters(p): Parameters<BackupScheduleParams>) -> Result<CallToolResult, McpError> {
-        match self.backup.set_schedule(p.enabled, p.cron, p.retention_days).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Add or update a backup destination. Supports S3, Google Drive, and FTP/SFTP.")]
-    async fn backup_config(&self, Parameters(p): Parameters<BackupDestinationParams>) -> Result<CallToolResult, McpError> {
-        let config: serde_json::Value = match serde_json::from_str(&p.config) {
-            Ok(v) => v,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!("Invalid config JSON: {}", e))])),
-        };
-
-        match self.backup.configure_destination(p.name, p.dest_type, config).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "List all configured backup destinations.")]
-    async fn backup_destinations(&self) -> Result<CallToolResult, McpError> {
-        match self.backup.list_destinations().await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Remove a backup destination by name.")]
-    async fn backup_destination_delete(&self, Parameters(p): Parameters<BackupDestinationNameParams>) -> Result<CallToolResult, McpError> {
-        match self.backup.delete_destination(p.name).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
@@ -355,7 +243,7 @@ impl ServerHandler for ClaraServer {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some("Clara's native tools for coding, sandbox execution, backups, and notes.".into()),
+            instructions: Some("Clara's native tools for coding, sandbox execution, and notes.".into()),
         }
     }
 }

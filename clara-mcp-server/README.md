@@ -4,7 +4,6 @@ A native MCP (Model Context Protocol) server written in Rust that exposes Clara'
 
 ## Features
 
-- **Database Backups** - Automated backup management for Clara and Mem0 databases to S3, Google Drive, or FTP
 - **Claude Code Integration** - Execute coding tasks via Claude Code CLI
 - **Sandbox Execution** - Run Python code and shell commands in isolated environments
 - **ORS Notes** - Organic Response System note management
@@ -34,23 +33,11 @@ The server reads configuration from environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `CLARA_API_URL` | API service URL for backup operations (default: http://localhost:8000) |
 | `DATABASE_URL` | PostgreSQL connection string for ORS notes |
 | `SANDBOX_API_URL` | Remote sandbox service URL |
 | `SANDBOX_API_KEY` | Remote sandbox API key |
 
 ## Available Tools
-
-### Backup (7 tools)
-| Tool | Description |
-|------|-------------|
-| `backup_now` | Trigger an immediate database backup |
-| `backup_list` | List available database backups with optional filters |
-| `backup_status` | Get current backup status including last backup time and schedule |
-| `backup_schedule` | Configure the backup schedule using cron expressions |
-| `backup_config` | Add or update a backup destination (S3, Google Drive, FTP/SFTP) |
-| `backup_destinations` | List all configured backup destinations |
-| `backup_destination_delete` | Remove a backup destination by name |
 
 ### Claude Code (4 tools)
 | Tool | Description |
@@ -77,46 +64,6 @@ The server reads configuration from environment variables:
 | `ors_add_note` | Add an ORS note |
 | `ors_archive_note` | Archive an ORS note |
 
-## Backup Configuration
-
-The backup tools communicate with Clara's API service to manage database backups. Supported destination types:
-
-### S3-Compatible Storage
-```json
-{
-  "bucket": "my-backups",
-  "endpoint_url": "https://s3.wasabisys.com",
-  "access_key": "...",
-  "secret_key": "...",
-  "region": "us-east-1"
-}
-```
-
-### Google Drive
-```json
-{
-  "folder_id": "...",
-  "credentials_json": "..."
-}
-```
-
-### FTP/SFTP
-```json
-{
-  "host": "ftp.example.com",
-  "port": 22,
-  "username": "...",
-  "password": "...",
-  "path": "/backups",
-  "protocol": "sftp"
-}
-```
-
-### Schedule Examples
-- `0 3 * * *` - Daily at 3:00 AM
-- `0 */6 * * *` - Every 6 hours
-- `0 0 * * 0` - Weekly on Sunday at midnight
-
 ## Integration with Clara
 
 Clara automatically registers this server on startup if the binary is found. The config is stored in `.mcp_servers/clara-tools/config.json`:
@@ -142,7 +89,6 @@ clara-mcp-server/
 │   ├── main.rs         # Server entry point and tool definitions
 │   └── tools/
 │       ├── mod.rs      # Tool module exports
-│       ├── backup.rs   # Database backup tools
 │       ├── claude_code.rs
 │       ├── ors_notes.rs
 │       └── sandbox.rs
