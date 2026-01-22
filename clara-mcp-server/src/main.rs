@@ -22,11 +22,9 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::tools::{
+    backup::BackupTools,
     claude_code::ClaudeCodeTools,
-    discord::DiscordTools,
     sandbox::SandboxTools,
-    local_files::LocalFilesTools,
-    google::GoogleTools,
     ors_notes::OrsNotesTools,
 };
 
@@ -44,14 +42,6 @@ pub struct ClaudeCodeParams {
 pub struct WorkdirParams {
     /// Path to the working directory
     pub path: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ChannelMessageParams {
-    /// Discord channel ID
-    pub channel_id: String,
-    /// Message content
-    pub message: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -93,109 +83,9 @@ pub struct ShellParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct LocalFileParams {
-    /// Filename
-    pub filename: String,
-    /// User ID
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct SaveFileParams {
-    /// Filename
-    pub filename: String,
-    /// Content to save
-    pub content: String,
-    /// User ID
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct UserIdParams {
     /// User ID
     pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DownloadFromSandboxParams {
-    /// Sandbox file path
-    pub sandbox_path: String,
-    /// Local filename (optional)
-    pub local_filename: Option<String>,
-    /// User ID
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UploadToSandboxParams {
-    /// Local filename
-    pub local_filename: String,
-    /// Sandbox destination path (optional)
-    pub sandbox_path: Option<String>,
-    /// User ID
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CalendarListParams {
-    /// User ID
-    pub user_id: String,
-    /// Calendar ID (default: primary)
-    pub calendar_id: Option<String>,
-    /// Maximum results
-    pub max_results: Option<i32>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CalendarCreateParams {
-    /// User ID
-    pub user_id: String,
-    /// Event title
-    pub title: String,
-    /// Start time (ISO 8601)
-    pub start_time: String,
-    /// End time (ISO 8601)
-    pub end_time: String,
-    /// Description (optional)
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct SheetsReadParams {
-    /// User ID
-    pub user_id: String,
-    /// Spreadsheet ID
-    pub spreadsheet_id: String,
-    /// Range in A1 notation
-    pub range: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct SheetsWriteParams {
-    /// User ID
-    pub user_id: String,
-    /// Spreadsheet ID
-    pub spreadsheet_id: String,
-    /// Range in A1 notation
-    pub range: String,
-    /// Data as JSON array
-    pub values: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DriveListParams {
-    /// User ID
-    pub user_id: String,
-    /// Search query (optional)
-    pub query: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DriveDownloadParams {
-    /// User ID
-    pub user_id: String,
-    /// File ID
-    pub file_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -214,16 +104,60 @@ pub struct NoteIdParams {
     pub note_id: String,
 }
 
+// ========== Backup Parameter Types ==========
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BackupNowParams {
+    /// Destination name (optional, uses default if not specified)
+    pub destination: Option<String>,
+    /// Databases to backup (optional, backs up all if not specified)
+    pub databases: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BackupListParams {
+    /// Filter by destination name
+    pub destination: Option<String>,
+    /// Filter by database name (e.g., "clara", "mem0")
+    pub database: Option<String>,
+    /// Maximum number of backups to list
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BackupScheduleParams {
+    /// Enable or disable scheduled backups
+    pub enabled: bool,
+    /// Cron expression for schedule (e.g., "0 3 * * *" for daily at 3 AM)
+    pub cron: Option<String>,
+    /// Number of days to retain backups
+    pub retention_days: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BackupDestinationParams {
+    /// Unique name for this destination
+    pub name: String,
+    /// Destination type: "s3", "google_drive", or "ftp"
+    pub dest_type: String,
+    /// Configuration as JSON (type-specific settings)
+    pub config: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BackupDestinationNameParams {
+    /// Name of the destination
+    pub name: String,
+}
+
 // ========== Server Implementation ==========
 
 /// Clara MCP Server
 #[derive(Clone)]
 pub struct ClaraServer {
+    backup: Arc<BackupTools>,
     claude_code: Arc<ClaudeCodeTools>,
-    discord: Arc<DiscordTools>,
     sandbox: Arc<SandboxTools>,
-    local_files: Arc<LocalFilesTools>,
-    google: Arc<GoogleTools>,
     ors_notes: Arc<OrsNotesTools>,
     tool_router: ToolRouter<Self>,
 }
@@ -232,13 +166,74 @@ pub struct ClaraServer {
 impl ClaraServer {
     pub fn new() -> Self {
         Self {
+            backup: Arc::new(BackupTools::new()),
             claude_code: Arc::new(ClaudeCodeTools::new()),
-            discord: Arc::new(DiscordTools::new()),
             sandbox: Arc::new(SandboxTools::new()),
-            local_files: Arc::new(LocalFilesTools::new()),
-            google: Arc::new(GoogleTools::new()),
             ors_notes: Arc::new(OrsNotesTools::new()),
             tool_router: Self::tool_router(),
+        }
+    }
+
+    // ===== Backup Tools =====
+
+    #[tool(description = "Trigger an immediate database backup. Backs up Clara and Mem0 databases to configured storage.")]
+    async fn backup_now(&self, Parameters(p): Parameters<BackupNowParams>) -> Result<CallToolResult, McpError> {
+        match self.backup.backup_now(p.destination, p.databases).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "List available database backups with optional filters.")]
+    async fn backup_list(&self, Parameters(p): Parameters<BackupListParams>) -> Result<CallToolResult, McpError> {
+        match self.backup.list_backups(p.destination, p.database, p.limit).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "Get current backup status including last backup time, schedule, and configured destinations.")]
+    async fn backup_status(&self) -> Result<CallToolResult, McpError> {
+        match self.backup.get_status().await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "Configure the backup schedule. Use cron expressions for timing (e.g., '0 3 * * *' for daily at 3 AM).")]
+    async fn backup_schedule(&self, Parameters(p): Parameters<BackupScheduleParams>) -> Result<CallToolResult, McpError> {
+        match self.backup.set_schedule(p.enabled, p.cron, p.retention_days).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "Add or update a backup destination. Supports S3, Google Drive, and FTP/SFTP.")]
+    async fn backup_config(&self, Parameters(p): Parameters<BackupDestinationParams>) -> Result<CallToolResult, McpError> {
+        let config: serde_json::Value = match serde_json::from_str(&p.config) {
+            Ok(v) => v,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!("Invalid config JSON: {}", e))])),
+        };
+
+        match self.backup.configure_destination(p.name, p.dest_type, config).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "List all configured backup destinations.")]
+    async fn backup_destinations(&self) -> Result<CallToolResult, McpError> {
+        match self.backup.list_destinations().await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(description = "Remove a backup destination by name.")]
+    async fn backup_destination_delete(&self, Parameters(p): Parameters<BackupDestinationNameParams>) -> Result<CallToolResult, McpError> {
+        match self.backup.delete_destination(p.name).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
@@ -271,16 +266,6 @@ impl ClaraServer {
     #[tool(description = "Check Claude Code availability and status")]
     async fn claude_code_status(&self) -> Result<CallToolResult, McpError> {
         match self.claude_code.status().await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    // ===== Discord Tools =====
-
-    #[tool(description = "Send a message to a Discord channel")]
-    async fn send_message_to_channel(&self, Parameters(p): Parameters<ChannelMessageParams>) -> Result<CallToolResult, McpError> {
-        match self.discord.send_message(p.channel_id, p.message).await {
             Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -336,110 +321,6 @@ impl ClaraServer {
         }
     }
 
-    // ===== Local Files Tools =====
-
-    #[tool(description = "Save content to local file storage")]
-    async fn save_to_local(&self, Parameters(p): Parameters<SaveFileParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.save(p.filename, p.content, p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "List files in local storage for a user")]
-    async fn list_local_files(&self, Parameters(p): Parameters<UserIdParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.list(p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Read a file from local storage")]
-    async fn read_local_file(&self, Parameters(p): Parameters<LocalFileParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.read(p.filename, p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Delete a file from local storage")]
-    async fn delete_local_file(&self, Parameters(p): Parameters<LocalFileParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.delete(p.filename, p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Download a file from sandbox to local storage")]
-    async fn download_from_sandbox(&self, Parameters(p): Parameters<DownloadFromSandboxParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.download_from_sandbox(p.sandbox_path, p.local_filename, p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Upload a file from local storage to sandbox")]
-    async fn upload_to_sandbox(&self, Parameters(p): Parameters<UploadToSandboxParams>) -> Result<CallToolResult, McpError> {
-        match self.local_files.upload_to_sandbox(p.local_filename, p.sandbox_path, p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    // ===== Google Calendar Tools =====
-
-    #[tool(description = "List upcoming Google Calendar events")]
-    async fn google_calendar_list_events(&self, Parameters(p): Parameters<CalendarListParams>) -> Result<CallToolResult, McpError> {
-        match self.google.calendar_list_events(p.user_id, p.calendar_id, p.max_results).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Create a Google Calendar event")]
-    async fn google_calendar_create_event(&self, Parameters(p): Parameters<CalendarCreateParams>) -> Result<CallToolResult, McpError> {
-        match self.google.calendar_create_event(p.user_id, p.title, p.start_time, p.end_time, p.description).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    // ===== Google Sheets Tools =====
-
-    #[tool(description = "Read data from a Google Sheets range")]
-    async fn google_sheets_read(&self, Parameters(p): Parameters<SheetsReadParams>) -> Result<CallToolResult, McpError> {
-        match self.google.sheets_read(p.user_id, p.spreadsheet_id, p.range).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Write data to a Google Sheets range")]
-    async fn google_sheets_write(&self, Parameters(p): Parameters<SheetsWriteParams>) -> Result<CallToolResult, McpError> {
-        match self.google.sheets_write(p.user_id, p.spreadsheet_id, p.range, p.values).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    // ===== Google Drive Tools =====
-
-    #[tool(description = "List files in Google Drive")]
-    async fn google_drive_list(&self, Parameters(p): Parameters<DriveListParams>) -> Result<CallToolResult, McpError> {
-        match self.google.drive_list(p.user_id, p.query).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Download a file from Google Drive")]
-    async fn google_drive_download(&self, Parameters(p): Parameters<DriveDownloadParams>) -> Result<CallToolResult, McpError> {
-        match self.google.drive_download(p.user_id, p.file_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
     // ===== ORS Notes Tools =====
 
     #[tool(description = "List ORS notes for a user")]
@@ -474,7 +355,7 @@ impl ServerHandler for ClaraServer {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some("Clara's native tools for coding, file management, Google Workspace, and more.".into()),
+            instructions: Some("Clara's native tools for coding, sandbox execution, backups, and notes.".into()),
         }
     }
 }

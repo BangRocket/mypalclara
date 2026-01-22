@@ -28,22 +28,14 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Database (for ORS notes, etc.)
+# Database (for ORS notes)
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite"] }
 
 # Environment
 dotenvy = "0.15"
 
-# Google OAuth
-oauth2 = "5"
-
-# File operations
-tempfile = "3"
-walkdir = "2"
-
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
-urlencoding = "2"
 
 [profile.release]
 lto = true
