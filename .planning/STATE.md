@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 1 of 6 (Foundation)
-Plan: 2 of 3 complete
-Status: In progress
-Last activity: 2026-01-23 - Completed 01-02-PLAN.md (SQLite + migrations)
+Plan: 3 of 3 complete
+Status: Phase 1 COMPLETE
+Last activity: 2026-01-23 - Completed 01-03-PLAN.md (Type-safe IPC)
 
-Progress: [======----] 2/3 plans (Phase 1)
+Progress: [==========] 3/3 plans (Phase 1 Complete)
 
 ## Project Reference
 
@@ -20,8 +20,8 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
-| 1 | Foundation | In Progress (2/3) | 3 plans in 3 waves |
-| 2 | Core Notes | Pending | -- |
+| 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
+| 2 | Core Notes | Ready | -- |
 | 3 | Wiki Links & Search | Pending (needs research) | -- |
 | 4 | Calendar & Daily Notes | Pending | -- |
 | 5 | Chat Integration | Pending | -- |
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |------|------|-------------|--------|
 | 01-01 | 1 | Tauri + React scaffold | Complete |
 | 01-02 | 2 | SQLite + migrations | Complete |
-| 01-03 | 3 | Type-safe IPC | Ready |
+| 01-03 | 3 | Type-safe IPC | Complete |
 
 ## Accumulated Context
 
@@ -50,6 +50,10 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [01-02] SQLx over tauri-plugin-sql for compile-time query checking and custom Rust logic
 - [01-02] WAL mode + busy_timeout for concurrent access during autosave
 - [01-02] Migration path relative to CARGO_MANIFEST_DIR (../migrations from src-tauri)
+- [01-03] Used tauri-specta RC versions (v2.0.0-rc.21) as stable v2 not yet released
+- [01-03] Runtime SQLx queries instead of compile-time macros (offline mode issues)
+- [01-03] Disabled noUnusedLocals in tsconfig for tauri-specta event scaffolding
+- [01-03] i64 mapped to number (not BigInt) via BigIntExportBehavior::Number
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -70,13 +74,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [01-02] SQLx 0.8, tokio added to dependencies
 - [01-02] Database path: ~/Library/Application Support/com.mypalclara.desktop/notes.db (macOS)
 - [01-02] Tables: notes, folders, wiki_links, _sqlx_migrations
+- [01-03] tauri-specta, specta, specta-typescript added
+- [01-03] Generated bindings: 146 lines, 5 commands, 3 types
+- [01-03] IPC patterns established: commands.method() returns Promise<Result<T,E>>
 
 ## Session Continuity
 
-Last session: 2026-01-23T18:11:30Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-01-23T18:22:27Z
+Stopped at: Completed 01-03-PLAN.md (Phase 1 Complete)
 Resume file: None
-Next: Execute 01-03-PLAN.md (Type-safe IPC)
+Next: Plan Phase 2 (Core Notes)
 
 ## Files
 
@@ -86,4 +93,5 @@ Next: Execute 01-03-PLAN.md (Type-safe IPC)
 - `.planning/phases/01-foundation/` - Phase 1 execution plans
 - `.planning/phases/01-foundation/01-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/01-foundation/01-02-SUMMARY.md` - Plan 02 completion summary
+- `.planning/phases/01-foundation/01-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
