@@ -40,6 +40,7 @@ import json
 import re
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from PIL import Image
 from datetime import UTC, datetime, timedelta
@@ -136,6 +137,16 @@ CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
 
 # Log channel configuration - mirror console logs to this Discord channel
 LOG_CHANNEL_ID = os.getenv("DISCORD_LOG_CHANNEL_ID", "")
+
+# Version (CalVer: YYYY.WW.N)
+def get_version() -> str:
+    """Read version from VERSION file."""
+    version_file = Path(__file__).parent / "VERSION"
+    if version_file.exists():
+        return version_file.read_text().strip()
+    return "unknown"
+
+BOT_VERSION = get_version()
 
 # Stop phrase configuration - phrases that interrupt running tasks
 # Default phrases that will stop Clara mid-task
@@ -1561,7 +1572,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
     async def on_ready(self):
         """Called when bot is ready."""
-        logger.info(f"Logged in as {self.user}")
+        logger.info(f"Clara v{BOT_VERSION} - Logged in as {self.user}")
         logger.info(f"WebSocket latency: {self.latency * 1000:.0f}ms")
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
@@ -1578,9 +1589,9 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 discord_handler = init_discord_logging(self, channel_id, self.loop)
                 if discord_handler:
                     if self._first_ready:
-                        await discord_handler.send_direct(f"🟢 Bot started - Logged in as {self.user}")
+                        await discord_handler.send_direct(f"🟢 Clara v{BOT_VERSION} started - Logged in as {self.user}")
                     else:
-                        await discord_handler.send_direct(f"🔄 Bot reconnected - {self.user}")
+                        await discord_handler.send_direct(f"🔄 Clara v{BOT_VERSION} reconnected - {self.user}")
                     logger.info(f"Discord log mirroring enabled to channel {channel_id}")
             except ValueError:
                 logger.warning(f"Invalid DISCORD_LOG_CHANNEL_ID: {LOG_CHANNEL_ID}")
