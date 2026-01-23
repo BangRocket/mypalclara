@@ -11,27 +11,25 @@ pub async fn list_notes(
 ) -> Result<Vec<Note>, String> {
     let notes = match folder_id {
         Some(fid) => {
-            sqlx::query_as!(
-                Note,
+            sqlx::query_as::<_, Note>(
                 r#"
                 SELECT id, title, content, folder_id, author, created_at, updated_at
                 FROM notes
                 WHERE folder_id = ?
                 ORDER BY updated_at DESC
                 "#,
-                fid
             )
+            .bind(fid)
             .fetch_all(&db.pool)
             .await
         }
         None => {
-            sqlx::query_as!(
-                Note,
+            sqlx::query_as::<_, Note>(
                 r#"
                 SELECT id, title, content, folder_id, author, created_at, updated_at
                 FROM notes
                 ORDER BY updated_at DESC
-                "#
+                "#,
             )
             .fetch_all(&db.pool)
             .await
@@ -45,15 +43,14 @@ pub async fn list_notes(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_note(db: State<'_, Database>, id: i64) -> Result<Note, String> {
-    sqlx::query_as!(
-        Note,
+    sqlx::query_as::<_, Note>(
         r#"
         SELECT id, title, content, folder_id, author, created_at, updated_at
         FROM notes
         WHERE id = ?
         "#,
-        id
     )
+    .bind(id)
     .fetch_one(&db.pool)
     .await
     .map_err(|e| e.to_string())
@@ -62,21 +59,18 @@ pub async fn get_note(db: State<'_, Database>, id: i64) -> Result<Note, String> 
 /// Create a new note
 #[tauri::command]
 #[specta::specta]
-pub async fn create_note(
-    db: State<'_, Database>,
-    input: CreateNoteInput,
-) -> Result<Note, String> {
+pub async fn create_note(db: State<'_, Database>, input: CreateNoteInput) -> Result<Note, String> {
     let content = input.content.unwrap_or_default();
 
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         INSERT INTO notes (title, content, folder_id, author)
         VALUES (?, ?, ?, 'user')
         "#,
-        input.title,
-        content,
-        input.folder_id
     )
+    .bind(&input.title)
+    .bind(&content)
+    .bind(input.folder_id)
     .execute(&db.pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -101,17 +95,17 @@ pub async fn update_note(
     let content = input.content.unwrap_or(current.content);
     let folder_id = input.folder_id.or(current.folder_id);
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE notes
         SET title = ?, content = ?, folder_id = ?, updated_at = datetime('now')
         WHERE id = ?
         "#,
-        title,
-        content,
-        folder_id,
-        id
     )
+    .bind(&title)
+    .bind(&content)
+    .bind(folder_id)
+    .bind(id)
     .execute(&db.pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -123,7 +117,8 @@ pub async fn update_note(
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_note(db: State<'_, Database>, id: i64) -> Result<(), String> {
-    sqlx::query!("DELETE FROM notes WHERE id = ?", id)
+    sqlx::query("DELETE FROM notes WHERE id = ?")
+        .bind(id)
         .execute(&db.pool)
         .await
         .map_err(|e| e.to_string())?;

@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use sqlx::FromRow;
 
 /// A note in the knowledge base
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, FromRow)]
 pub struct Note {
     pub id: i64,
     pub title: String,
