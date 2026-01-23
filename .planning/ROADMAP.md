@@ -167,6 +167,12 @@ Plans:
 
 **Goal:** Independent feature for temporal organization. Can develop in parallel with Phase 3 refinement.
 
+**Plans:** 2 plans in 2 waves
+
+Plans:
+- [ ] 04-01-PLAN.md — Daily note backend commands (Rust)
+- [ ] 04-02-PLAN.md — Calendar widget and date navigation UI
+
 **Delivers:**
 - Calendar widget showing current month
 - Click date to navigate to daily note
@@ -180,7 +186,7 @@ Plans:
 **Key Patterns:**
 - shadcn/ui calendar component
 - Daily note template (configurable later)
-- Date-based note lookup (special folder or naming convention)
+- Date-based note lookup (is_daily_note flag + daily_note_date column)
 
 **Pitfalls to Avoid:**
 - Timezone issues (use local date consistently)
