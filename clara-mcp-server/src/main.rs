@@ -22,26 +22,11 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::tools::{
-    claude_code::ClaudeCodeTools,
     sandbox::SandboxTools,
     ors_notes::OrsNotesTools,
 };
 
 // ========== Parameter Types ==========
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ClaudeCodeParams {
-    /// The task to execute
-    pub task: String,
-    /// Optional working directory path
-    pub workdir: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct WorkdirParams {
-    /// Path to the working directory
-    pub path: String,
-}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CodeParams {
@@ -108,7 +93,6 @@ pub struct NoteIdParams {
 /// Clara MCP Server
 #[derive(Clone)]
 pub struct ClaraServer {
-    claude_code: Arc<ClaudeCodeTools>,
     sandbox: Arc<SandboxTools>,
     ors_notes: Arc<OrsNotesTools>,
     tool_router: ToolRouter<Self>,
@@ -118,44 +102,9 @@ pub struct ClaraServer {
 impl ClaraServer {
     pub fn new() -> Self {
         Self {
-            claude_code: Arc::new(ClaudeCodeTools::new()),
             sandbox: Arc::new(SandboxTools::new()),
             ors_notes: Arc::new(OrsNotesTools::new()),
             tool_router: Self::tool_router(),
-        }
-    }
-
-    // ===== Claude Code Tools =====
-
-    #[tool(description = "Execute a coding task using Claude Code CLI")]
-    async fn claude_code(&self, Parameters(p): Parameters<ClaudeCodeParams>) -> Result<CallToolResult, McpError> {
-        match self.claude_code.execute(p.task, p.workdir).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Get the current working directory for Claude Code")]
-    async fn claude_code_get_workdir(&self) -> Result<CallToolResult, McpError> {
-        match self.claude_code.get_workdir().await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Set the working directory for Claude Code")]
-    async fn claude_code_set_workdir(&self, Parameters(p): Parameters<WorkdirParams>) -> Result<CallToolResult, McpError> {
-        match self.claude_code.set_workdir(p.path).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Check Claude Code availability and status")]
-    async fn claude_code_status(&self) -> Result<CallToolResult, McpError> {
-        match self.claude_code.status().await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
@@ -243,7 +192,7 @@ impl ServerHandler for ClaraServer {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some("Clara's native tools for coding, sandbox execution, and notes.".into()),
+            instructions: Some("Clara's native tools for sandbox execution and notes.".into()),
         }
     }
 }
