@@ -43,8 +43,8 @@ impl Database {
             .connect(&db_url)
             .await?;
 
-        // Run migrations
-        sqlx::migrate!("../../migrations")
+        // Run migrations (path relative to CARGO_MANIFEST_DIR, i.e., src-tauri/)
+        sqlx::migrate!("../migrations")
             .run(&pool)
             .await?;
 
