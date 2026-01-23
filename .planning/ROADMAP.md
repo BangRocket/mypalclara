@@ -10,7 +10,7 @@
 |-------|------|--------------|---------------|
 | 1 | Foundation | REQ-001, REQ-002, REQ-003 | Skip (standard patterns) |
 | 2 | Core Notes | REQ-004 through REQ-008, REQ-022 | Skip (standard patterns) |
-| 3 | Wiki Links & Search | REQ-009 through REQ-012, REQ-023, REQ-024 | **Research needed** |
+| 3 | Wiki Links & Search | REQ-009 through REQ-012, REQ-023, REQ-024 | **Research complete** |
 | 4 | Calendar & Daily Notes | REQ-013, REQ-014 | Skip (standard patterns) |
 | 5 | Chat Integration | REQ-015, REQ-016 | Skip (standard patterns) |
 | 6 | Clara Note Tools | REQ-017 through REQ-021 | **Research needed** |
@@ -112,7 +112,17 @@ Plans:
 
 **Goal:** Link index is central dependency for backlinks, unlinked mentions, and future graph view.
 
-**Research Flag:** Custom TipTap extension required. No built-in wiki-link support.
+**Research:** Complete (see 03-RESEARCH.md)
+
+**Plans:** 6 plans in 3 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — FTS5 full-text search backend (Wave 1)
+- [ ] 03-02-PLAN.md — Wiki link extraction and backlinks backend (Wave 1)
+- [ ] 03-03-PLAN.md — TipTap WikiLink extension with autocomplete (Wave 2)
+- [ ] 03-04-PLAN.md — Quick switcher and search UI (Wave 2)
+- [ ] 03-05-PLAN.md — Backlinks panel (Wave 2)
+- [ ] 03-06-PLAN.md — Link preview and unlinked mentions UI (Wave 3)
 
 **Delivers:**
 - `[[wiki-link]]` syntax with autocomplete on `[[`
@@ -135,11 +145,14 @@ Plans:
 - FTS5 external content table synced via triggers
 - Debounced link extraction on save
 - TipTap Mark extension for wiki-links
+- cmdk for quick switcher
+- Fuse.js for fuzzy search
 
 **Pitfalls to Avoid:**
 - FTS5 sync drift (use SQLite triggers, not app logic)
 - FTS5 JOIN performance (LIMIT before JOIN)
 - Blocking UI during link extraction
+- Case sensitivity in wiki link matching (use COLLATE NOCASE)
 
 **Acceptance:**
 - Typing `[[` shows autocomplete of note titles
