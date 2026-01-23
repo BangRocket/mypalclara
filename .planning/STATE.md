@@ -21,9 +21,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
-| 2 | Core Notes | Ready | -- |
-| 3 | Wiki Links & Search | Pending (needs research) | -- |
-| 4 | Calendar & Daily Notes | Pending | -- |
+| 2 | Core Notes | PLANNED | 4 plans in 3 waves |
+| 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
+| 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
 
@@ -81,9 +81,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Phase 1 verification complete
+Stopped at: Phases 2, 3, 4 planning complete
 Resume file: None
-Next: Plan Phase 2 (Core Notes) - run `/gsd:plan-phase 2`
+Next: Execute Phase 2 - run `/gsd:execute-phase 2`
 
 ## Files
 
