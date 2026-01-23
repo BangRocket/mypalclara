@@ -64,12 +64,19 @@ Plans:
 
 **Goal:** Primary user interaction must feel solid before adding complexity.
 
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Frontend stack setup (TipTap, Zustand, TanStack Query, Tailwind)
+- [ ] 02-02-PLAN.md — Folder CRUD commands and TypeScript bindings
+- [ ] 02-03-PLAN.md — Sidebar with folder tree and notes list
+- [ ] 02-04-PLAN.md — TipTap editor with auto-save and export
+
 **Delivers:**
 - Notes list view with folder tree sidebar
 - TipTap markdown editor with live preview
 - Note CRUD operations (create, read, update, delete)
 - Folder creation and organization
-- Drag-drop for moving notes between folders
 - Autosave with 1-2 second debounce
 - Export note as markdown file
 
