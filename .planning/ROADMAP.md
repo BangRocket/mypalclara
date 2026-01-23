@@ -21,6 +21,13 @@
 
 **Goal:** Establish data layer and IPC patterns correctly to avoid rewrites later.
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Tauri + React project scaffold
+- [ ] 01-02-PLAN.md — SQLite database setup with migrations
+- [ ] 01-03-PLAN.md — Type-safe IPC with tauri-specta
+
 **Delivers:**
 - Tauri 2.9.x project scaffold in `/webui/`
 - SQLite database with migration system
@@ -98,7 +105,7 @@
 
 **Goal:** Link index is central dependency for backlinks, unlinked mentions, and future graph view.
 
-**⚠️ Research Flag:** Custom TipTap extension required. No built-in wiki-link support.
+**Research Flag:** Custom TipTap extension required. No built-in wiki-link support.
 
 **Delivers:**
 - `[[wiki-link]]` syntax with autocomplete on `[[`
@@ -205,7 +212,7 @@
 
 **Goal:** Final integration layer. Clara becomes co-author with full note access.
 
-**⚠️ Research Flag:** API design for note operations needs coordination with existing Clara backend.
+**Research Flag:** API design for note operations needs coordination with existing Clara backend.
 
 **Delivers:**
 - Clara can search and read notes
@@ -244,20 +251,20 @@
 
 ```
 Phase 1 (Foundation)
-    │
-    ▼
+    |
+    v
 Phase 2 (Core Notes)
-    │
-    ├──────────────────┐
-    ▼                  ▼
+    |
+    +------------------+
+    v                  v
 Phase 3 (Wiki/Search)  Phase 4 (Calendar)
-    │                  │
-    └──────────────────┘
-            │
-            ▼
+    |                  |
+    +------------------+
+            |
+            v
       Phase 5 (Chat)
-            │
-            ▼
+            |
+            v
       Phase 6 (Clara Tools)
 ```
 
