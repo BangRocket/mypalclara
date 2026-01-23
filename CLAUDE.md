@@ -45,6 +45,13 @@ poetry run python discord_bot.py --daemon                    # Run in background
 poetry run python discord_bot.py --daemon --logfile bot.log  # With log file
 poetry run python discord_bot.py --status                    # Check if running
 poetry run python discord_bot.py --stop                      # Stop daemon
+
+# Restart with confirmation and optional delay
+poetry run python scripts/restart_bot.py              # Interactive restart
+poetry run python scripts/restart_bot.py -y           # Skip confirmation
+poetry run python scripts/restart_bot.py -y -d 30     # 30 second delay before restart
+poetry run python scripts/restart_bot.py --no-start   # Stop only, don't restart
+poetry run python scripts/restart_bot.py --logfile /var/log/clara.log  # With log file
 ```
 
 ### Docker
