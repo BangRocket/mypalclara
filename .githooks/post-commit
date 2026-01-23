@@ -1,0 +1,43 @@
+#!/bin/bash
+# Auto-bump version after each commit (CalVer: YYYY.WW.N)
+# Skips if:
+# - Last commit was a version bump
+# - We're in the middle of a rebase/merge
+# - SKIP_VERSION_BUMP env var is set
+
+# Skip if SKIP_VERSION_BUMP is set
+if [ -n "$SKIP_VERSION_BUMP" ]; then
+    exit 0
+fi
+
+# Skip during rebase/merge
+if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || \
+   [ -d "$(git rev-parse --git-dir)/rebase-apply" ] || \
+   [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+    exit 0
+fi
+
+# Get last commit message
+LAST_MSG=$(git log -1 --pretty=%B)
+
+# Skip if last commit was a version bump
+if [[ "$LAST_MSG" == chore:\ bump\ version* ]] || \
+   [[ "$LAST_MSG" == *"[skip-version]"* ]]; then
+    exit 0
+fi
+
+# Find the bump script
+SCRIPT_DIR="$(git rev-parse --show-toplevel)/scripts"
+if [ ! -f "$SCRIPT_DIR/bump_version.py" ]; then
+    exit 0
+fi
+
+# Bump version
+cd "$(git rev-parse --show-toplevel)"
+NEW_VERSION=$(python3 "$SCRIPT_DIR/bump_version.py" 2>/dev/null)
+
+if [ -n "$NEW_VERSION" ]; then
+    # Commit the version bump (with skip flag to prevent recursion)
+    git add VERSION pyproject.toml
+    SKIP_VERSION_BUMP=1 git commit -m "chore: bump version to $NEW_VERSION" --no-verify
+fi
