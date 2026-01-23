@@ -8,39 +8,39 @@ This document defines the scoped requirements for v1.0. Features are categorized
 
 These are non-negotiable for v1.0 - users expect these from any note-taking app.
 
-| ID | Requirement | Phase |
-|----|-------------|-------|
-| REQ-001 | Desktop app shell (Tauri + React + TypeScript) | 1 |
-| REQ-002 | SQLite database with migrations | 1 |
-| REQ-003 | Type-safe IPC between Rust and React | 1 |
-| REQ-004 | Notes CRUD (create, read, update, delete) | 2 |
-| REQ-005 | Markdown editor with live preview (TipTap) | 2 |
-| REQ-006 | Folder/hierarchy organization | 2 |
-| REQ-007 | Sidebar navigation with folder tree | 2 |
-| REQ-008 | Auto-save with debounced persistence | 2 |
-| REQ-009 | [[Wiki-links]] with autocomplete on `[[` | 3 |
-| REQ-010 | Backlinks panel showing bidirectional connections | 3 |
-| REQ-011 | Full-text search (SQLite FTS5) | 3 |
-| REQ-012 | Quick switcher (Cmd+P) for note navigation | 3 |
-| REQ-013 | Calendar widget with date navigation | 4 |
-| REQ-014 | Daily notes (auto-created for today) | 4 |
-| REQ-015 | Chat panel connected to Clara backend | 5 |
-| REQ-016 | Message history with streaming responses | 5 |
+| ID | Requirement | Phase | Status |
+|----|-------------|-------|--------|
+| REQ-001 | Desktop app shell (Tauri + React + TypeScript) | 1 | ✅ Complete |
+| REQ-002 | SQLite database with migrations | 1 | ✅ Complete |
+| REQ-003 | Type-safe IPC between Rust and React | 1 | ✅ Complete |
+| REQ-004 | Notes CRUD (create, read, update, delete) | 2 | Pending |
+| REQ-005 | Markdown editor with live preview (TipTap) | 2 | Pending |
+| REQ-006 | Folder/hierarchy organization | 2 | Pending |
+| REQ-007 | Sidebar navigation with folder tree | 2 | Pending |
+| REQ-008 | Auto-save with debounced persistence | 2 | Pending |
+| REQ-009 | [[Wiki-links]] with autocomplete on `[[` | 3 | Pending |
+| REQ-010 | Backlinks panel showing bidirectional connections | 3 | Pending |
+| REQ-011 | Full-text search (SQLite FTS5) | 3 | Pending |
+| REQ-012 | Quick switcher (Cmd+P) for note navigation | 3 | Pending |
+| REQ-013 | Calendar widget with date navigation | 4 | Pending |
+| REQ-014 | Daily notes (auto-created for today) | 4 | Pending |
+| REQ-015 | Chat panel connected to Clara backend | 5 | Pending |
+| REQ-016 | Message history with streaming responses | 5 | Pending |
 
 ## Should Have (Competitive Differentiators)
 
 These make MyPalClara stand out - the "Clara as co-author" model is the key differentiator.
 
-| ID | Requirement | Phase |
-|----|-------------|-------|
-| REQ-017 | Clara can read notes (search and retrieve) | 6 |
-| REQ-018 | Clara can create notes | 6 |
-| REQ-019 | Clara can edit existing notes | 6 |
-| REQ-020 | "Save this as a note" from conversation | 6 |
-| REQ-021 | Attribution toggle (see who wrote what) | 6 |
-| REQ-022 | Export notes as markdown files | 2 |
-| REQ-023 | Unlinked mentions detection | 3 |
-| REQ-024 | Link preview on hover | 3 |
+| ID | Requirement | Phase | Status |
+|----|-------------|-------|--------|
+| REQ-017 | Clara can read notes (search and retrieve) | 6 | Pending |
+| REQ-018 | Clara can create notes | 6 | Pending |
+| REQ-019 | Clara can edit existing notes | 6 | Pending |
+| REQ-020 | "Save this as a note" from conversation | 6 | Pending |
+| REQ-021 | Attribution toggle (see who wrote what) | 6 | Pending |
+| REQ-022 | Export notes as markdown files | 2 | Pending |
+| REQ-023 | Unlinked mentions detection | 3 | Pending |
+| REQ-024 | Link preview on hover | 3 | Pending |
 
 ## Out of Scope (v2+)
 

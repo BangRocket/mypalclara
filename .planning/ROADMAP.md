@@ -21,12 +21,12 @@
 
 **Goal:** Establish data layer and IPC patterns correctly to avoid rewrites later.
 
-**Plans:** 3 plans
+**Plans:** 3 plans (COMPLETE)
 
 Plans:
-- [ ] 01-01-PLAN.md — Tauri + React project scaffold
-- [ ] 01-02-PLAN.md — SQLite database setup with migrations
-- [ ] 01-03-PLAN.md — Type-safe IPC with tauri-specta
+- [x] 01-01-PLAN.md — Tauri + React project scaffold
+- [x] 01-02-PLAN.md — SQLite database setup with migrations
+- [x] 01-03-PLAN.md — Type-safe IPC with tauri-specta
 
 **Delivers:**
 - Tauri 2.9.x project scaffold in `/webui/`
