@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "webui",
+  "productName": "MyPalClara",
   "version": "0.1.0",
-  "identifier": "com.heidornj.webui",
+  "identifier": "com.mypalclara.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "webui",
-        "width": 800,
-        "height": 600
+        "title": "MyPalClara",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {
