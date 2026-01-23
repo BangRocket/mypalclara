@@ -18,6 +18,7 @@ Environment variables:
     DISCORD_CLIENT_ID - Discord client ID (for invite link)
     DISCORD_MAX_MESSAGES - Max messages in conversation chain (default: 25)
     DISCORD_MAX_CHARS - Max chars per message content (default: 100000)
+    DISCORD_MAX_TOOL_RESULT_CHARS - Max chars per tool result (default: 50000)
     DISCORD_ALLOWED_SERVERS - Comma-separated server IDs (supersedes channels)
     DISCORD_ALLOWED_CHANNELS - Comma-separated channel IDs (optional, empty = all)
     DISCORD_ALLOWED_ROLES - Comma-separated role IDs (optional, empty = all)
@@ -129,6 +130,7 @@ CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 MAX_MESSAGES = int(os.getenv("DISCORD_MAX_MESSAGES", "25"))
 MAX_CHARS = int(os.getenv("DISCORD_MAX_CHARS", "100000"))
 MAX_FILE_SIZE = int(os.getenv("DISCORD_MAX_FILE_SIZE", "100000"))  # 100KB default
+MAX_TOOL_RESULT_CHARS = int(os.getenv("DISCORD_MAX_TOOL_RESULT_CHARS", "50000"))  # 50KB default
 SUMMARY_AGE_MINUTES = int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30"))
 CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
 
@@ -3077,6 +3079,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                         tool_output = "OAuth authorization link sent to user via Discord button."
                 except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                     pass  # Not a button response, use as-is
+
+                # Truncate large tool results to prevent context overflow
+                if len(tool_output) > MAX_TOOL_RESULT_CHARS:
+                    truncated_output = tool_output[:MAX_TOOL_RESULT_CHARS]
+                    # Add helpful message about the truncation
+                    truncation_msg = (
+                        f"\n\n[TRUNCATED: Result was {len(tool_output):,} chars, showing first {MAX_TOOL_RESULT_CHARS:,}. "
+                        f"Use pagination parameters (per_page, page) or more specific filters to get smaller results.]"
+                    )
+                    tool_output = truncated_output + truncation_msg
+                    tools_logger.warning(
+                        f"[msg:{message.id}] {tool_name} result truncated: {len(tool_output):,} -> {MAX_TOOL_RESULT_CHARS:,} chars"
+                    )
 
                 # Add tool result to conversation
                 messages.append(
