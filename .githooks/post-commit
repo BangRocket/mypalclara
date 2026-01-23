@@ -20,9 +20,12 @@ fi
 # Get last commit message
 LAST_MSG=$(git log -1 --pretty=%B)
 
-# Skip if last commit was a version bump
-if [[ "$LAST_MSG" == chore:\ bump\ version* ]] || \
-   [[ "$LAST_MSG" == *"[skip-version]"* ]]; then
+# Get first line of commit message for checking
+FIRST_LINE=$(echo "$LAST_MSG" | head -1)
+
+# Skip if last commit was a version bump or has skip tag in first line
+if [[ "$FIRST_LINE" == chore:\ bump\ version* ]] || \
+   [[ "$FIRST_LINE" == *"[skip-version]"* ]]; then
     exit 0
 fi
 
