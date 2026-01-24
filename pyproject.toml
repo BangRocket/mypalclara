@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mypalclara"
-version = "2026.04.14"
+version = "2026.04.15"
 description = "MyPalClara - AI assistant with session management and memory"
 authors = ["Joshua Heidorn <heidornj@icloud.com>"]
 license = "PolyForm-Noncommercial-1.0.0"
@@ -65,6 +65,7 @@ imap-tools = "^1.11.0"
 # MCP (Model Context Protocol) plugin system
 mcp = "^1.0.0"  # Official MCP Python SDK
 gitpython = "^3.1.0"  # For cloning GitHub repos
+alembic = "^1.18.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
