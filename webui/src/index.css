@@ -150,3 +150,26 @@ body {
   color: oklch(0.577 0.245 27.325);
   text-decoration-color: oklch(0.704 0.191 27.325);
 }
+
+/* Search result highlighting */
+.search-result mark {
+  background-color: oklch(0.905 0.182 98.111);
+  padding-left: 0.125rem;
+  padding-right: 0.125rem;
+  border-radius: 0.125rem;
+}
+
+/* cmdk dialog styling */
+[cmdk-dialog] {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+[cmdk-input] {
+  width: 100%;
+}
+
+[cmdk-item][data-selected="true"] {
+  background-color: oklch(0.932 0.032 255.585);
+}

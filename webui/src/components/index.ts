@@ -3,3 +3,5 @@ export { Sidebar } from './Sidebar';
 export { FolderTree } from './FolderTree';
 export { NotesList } from './NotesList';
 export { NoteEditor } from './NoteEditor';
+export { QuickSwitcher } from './QuickSwitcher';
+export { SearchBar } from './SearchBar';
