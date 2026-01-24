@@ -87,3 +87,6 @@ webui/node_modules/
 webui/src-tauri/target/
 
 webui/src-tauri/gen/
+
+# GSD planning docs (local only)
+.planning/
