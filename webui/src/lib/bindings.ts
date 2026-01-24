@@ -126,6 +126,90 @@ async exportNoteToFile(noteId: number, filePath: string) : Promise<Result<string
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Get or create a daily note for a specific date.
+ * Date format: YYYY-MM-DD (e.g., "2026-01-23")
+ * If a daily note exists for that date, returns it.
+ * If not, creates one with title "January 23, 2026" format.
+ */
+async getOrCreateDailyNote(date: string) : Promise<Result<Note, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_or_create_daily_note", { date }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List all dates that have daily notes (for calendar highlighting)
+ * Returns list of DailyNote with id, title, date, timestamps
+ */
+async listDailyNoteDates() : Promise<Result<DailyNote[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_daily_note_dates") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Search notes using FTS5 full-text search
+ * Returns results ranked by BM25 with highlighted snippets
+ */
+async searchNotes(query: string, limit: number | null) : Promise<Result<SearchResult[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search_notes", { query, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get all note titles for autocomplete
+ * Returns notes ordered by most recently updated
+ */
+async getAllNoteTitles() : Promise<Result<NoteTitle[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_all_note_titles") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Extract wiki links from note content and save to wiki_links table
+ * Returns the count of links saved
+ */
+async extractAndSaveWikiLinks(noteId: number, content: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("extract_and_save_wiki_links", { noteId, content }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get all notes that link TO the given note
+ */
+async getBacklinks(noteId: number) : Promise<Result<Backlink[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_backlinks", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get notes that mention this note's title without a wiki link wrapper
+ */
+async getUnlinkedMentions(noteId: number) : Promise<Result<UnlinkedMention[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_unlinked_mentions", { noteId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -140,6 +224,10 @@ async exportNoteToFile(noteId: number, filePath: string) : Promise<Result<string
 /** user-defined types **/
 
 /**
+ * Backlink information for UI display
+ */
+export type Backlink = { id: number; title: string; updated_at: string }
+/**
  * Input for creating a new folder
  */
 export type CreateFolderInput = { name: string; parent_id: number | null }
@@ -148,13 +236,29 @@ export type CreateFolderInput = { name: string; parent_id: number | null }
  */
 export type CreateNoteInput = { title: string; content: string | null; folder_id: number | null }
 /**
+ * A daily note entry (used for calendar display)
+ */
+export type DailyNote = { id: number; title: string; daily_note_date: string; created_at: string; updated_at: string }
+/**
  * A folder for organizing notes
  */
 export type Folder = { id: number; name: string; parent_id: number | null; created_at: string; updated_at: string }
 /**
  * A note in the knowledge base
  */
-export type Note = { id: number; title: string; content: string; folder_id: number | null; author: string; created_at: string; updated_at: string }
+export type Note = { id: number; title: string; content: string; folder_id: number | null; author: string; is_daily_note: boolean; daily_note_date: string | null; created_at: string; updated_at: string }
+/**
+ * A lightweight note title for autocomplete
+ */
+export type NoteTitle = { id: number; title: string }
+/**
+ * A search result with FTS5 ranking and snippet
+ */
+export type SearchResult = { id: number; title: string; snippet: string; rank: number }
+/**
+ * Unlinked mention information with snippet context
+ */
+export type UnlinkedMention = { id: number; title: string; snippet: string }
 /**
  * Input for updating a folder
  */
