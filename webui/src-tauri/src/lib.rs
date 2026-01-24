@@ -2,7 +2,7 @@ mod commands;
 mod db;
 mod models;
 
-use commands::{export, folders, notes};
+use commands::{daily_notes, export, folders, notes, search, wiki_links};
 use db::Database;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
@@ -22,6 +22,13 @@ pub fn run() {
         folders::update_folder,
         folders::delete_folder,
         export::export_note_to_file,
+        daily_notes::get_or_create_daily_note,
+        daily_notes::list_daily_note_dates,
+        search::search_notes,
+        search::get_all_note_titles,
+        wiki_links::extract_and_save_wiki_links,
+        wiki_links::get_backlinks,
+        wiki_links::get_unlinked_mentions,
     ]);
 
     // Generate TypeScript bindings in debug mode
