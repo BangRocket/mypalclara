@@ -59,6 +59,61 @@ async deleteNote(id: number) : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * List all folders, optionally filtered by parent
+ */
+async listFolders(parentId: number | null) : Promise<Result<Folder[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_folders", { parentId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get a single folder by ID
+ */
+async getFolder(id: number) : Promise<Result<Folder, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_folder", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a new folder
+ */
+async createFolder(input: CreateFolderInput) : Promise<Result<Folder, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_folder", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update an existing folder
+ */
+async updateFolder(id: number, input: UpdateFolderInput) : Promise<Result<Folder, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_folder", { id, input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Delete a folder (notes in folder will have folder_id set to NULL)
+ */
+async deleteFolder(id: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_folder", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -73,13 +128,25 @@ async deleteNote(id: number) : Promise<Result<null, string>> {
 /** user-defined types **/
 
 /**
+ * Input for creating a new folder
+ */
+export type CreateFolderInput = { name: string; parent_id: number | null }
+/**
  * Input for creating a new note
  */
 export type CreateNoteInput = { title: string; content: string | null; folder_id: number | null }
 /**
+ * A folder for organizing notes
+ */
+export type Folder = { id: number; name: string; parent_id: number | null; created_at: string; updated_at: string }
+/**
  * A note in the knowledge base
  */
 export type Note = { id: number; title: string; content: string; folder_id: number | null; author: string; created_at: string; updated_at: string }
+/**
+ * Input for updating a folder
+ */
+export type UpdateFolderInput = { name: string | null; parent_id: number | null }
 /**
  * Input for updating a note
  */

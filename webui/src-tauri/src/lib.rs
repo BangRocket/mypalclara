@@ -2,7 +2,7 @@ mod commands;
 mod db;
 mod models;
 
-use commands::notes;
+use commands::{folders, notes};
 use db::Database;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
@@ -16,6 +16,11 @@ pub fn run() {
         notes::create_note,
         notes::update_note,
         notes::delete_note,
+        folders::list_folders,
+        folders::get_folder,
+        folders::create_folder,
+        folders::update_folder,
+        folders::delete_folder,
     ]);
 
     // Generate TypeScript bindings in debug mode
