@@ -114,6 +114,18 @@ async deleteFolder(id: number) : Promise<Result<null, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Export a note to a markdown file at the specified path
+ * Returns the path where the file was saved
+ */
+async exportNoteToFile(noteId: number, filePath: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_note_to_file", { noteId, filePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
