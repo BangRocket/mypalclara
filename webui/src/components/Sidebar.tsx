@@ -1,5 +1,6 @@
 import { FolderTree } from './FolderTree';
 import { NotesList } from './NotesList';
+import { CalendarPanel } from './Calendar';
 import { useCreateNote, useCreateFolder } from '../hooks';
 import { useUiStore } from '../stores';
 
@@ -28,6 +29,9 @@ export function Sidebar() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Calendar for daily notes */}
+      <CalendarPanel />
+
       {/* Actions */}
       <div className="p-2 border-b border-gray-200 flex gap-1">
         <button

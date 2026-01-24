@@ -5,3 +5,4 @@ export { NotesList } from './NotesList';
 export { NoteEditor } from './NoteEditor';
 export { QuickSwitcher } from './QuickSwitcher';
 export { SearchBar } from './SearchBar';
+export { CalendarPanel, DateNavigation } from './Calendar';

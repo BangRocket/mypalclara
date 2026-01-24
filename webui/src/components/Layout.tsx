@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
+import { DateNavigation } from './Calendar';
 import { useUiStore } from '../stores';
 
 interface LayoutProps {
@@ -15,7 +16,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Sidebar */}
       <aside
         className={`${
-          sidebarCollapsed ? 'w-0' : 'w-64'
+          sidebarCollapsed ? 'w-0' : 'w-80'
         } flex-shrink-0 transition-all duration-200 overflow-hidden border-r border-gray-200 bg-white`}
       >
         <Sidebar />
@@ -46,6 +47,9 @@ export function Layout({ children }: LayoutProps) {
           </button>
           <span className="ml-4 text-sm text-gray-600">MyPalClara</span>
         </header>
+
+        {/* Date navigation for daily notes */}
+        <DateNavigation />
 
         {/* Content area */}
         <div className="flex-1 overflow-auto">
