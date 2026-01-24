@@ -76,8 +76,12 @@ from clara_core.emotional_context import (
 # Import MCP plugin system
 from clara_core.mcp import get_mcp_manager, init_mcp, shutdown_mcp
 
-# Import Discord slash commands
+# Import Discord slash commands and utilities
 from clara_core.discord import setup as setup_slash_commands
+from clara_core.discord.utils import (
+    format_user_timezone_timestamp,
+    resize_image_for_vision as _resize_image_impl,
+)
 from clara_core.topic_recurrence import extract_and_store_topics
 from config.logging import (
     get_discord_handler,
@@ -218,8 +222,7 @@ MAX_IMAGES_PER_REQUEST = int(os.getenv("DISCORD_MAX_IMAGES_PER_REQUEST", "1"))
 def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> tuple[bytes, str]:
     """Resize an image to fit within max_dimension while preserving aspect ratio.
 
-    DEPRECATED: Use clara_core.discord.utils.resize_image_for_vision instead.
-    This wrapper maintains backward compatibility during the refactoring period.
+    Delegates to clara_core.discord.utils.resize_image_for_vision.
 
     Args:
         image_bytes: Raw image bytes
@@ -228,9 +231,7 @@ def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_D
     Returns:
         Tuple of (resized image bytes in JPEG format, media_type)
     """
-    from clara_core.discord.utils import resize_image_for_vision as _resize_impl
-
-    return _resize_impl(image_bytes, max_dimension)
+    return _resize_image_impl(image_bytes, max_dimension)
 
 
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
@@ -327,13 +328,10 @@ def _get_current_time() -> str:
 def _format_discord_timestamp(dt: datetime) -> str:
     """Format a Discord message timestamp in the user's timezone.
 
-    DEPRECATED: Use clara_core.discord.utils.format_user_timezone_timestamp instead.
-    This wrapper maintains backward compatibility during the refactoring period.
+    Delegates to clara_core.discord.utils.format_user_timezone_timestamp.
 
     Returns format like "10:43 PM EST".
     """
-    from clara_core.discord.utils import format_user_timezone_timestamp
-
     return format_user_timezone_timestamp(dt, DEFAULT_TIMEZONE)
 
 
@@ -1068,6 +1066,49 @@ class BotMonitor:
 monitor = BotMonitor()
 
 
+def _create_discord_memory_callback():
+    """Create callback that sends memory events as Discord embeds.
+
+    This callback is passed to MemoryManager.initialize() and called when
+    memories are retrieved or extracted. It queues Discord embeds for display.
+    """
+    def on_memory_event(event_type: str, data: dict):
+        discord_handler = get_discord_handler()
+        if not discord_handler:
+            return
+
+        if event_type == "memory_retrieved":
+            fields = [
+                {"name": "Key", "value": str(data["key_count"]), "inline": True},
+                {"name": "User", "value": str(data["user_count"]), "inline": True},
+                {"name": "Project", "value": str(data["proj_count"]), "inline": True},
+            ]
+            samples = data.get("samples", [])
+            description = "\n".join(f"- {s}" for s in samples) if samples else None
+
+            discord_handler.queue_embed(
+                title=f"Memory Retrieval ({data['total']} total)",
+                description=description,
+                fields=fields,
+                footer=f"user: {data['user_id'][:8]}",
+                tag="mem0",
+            )
+
+        elif event_type == "memory_extracted":
+            samples = data.get("samples", [])
+            description = "\n".join(f"- {s}" for s in samples) if samples else None
+
+            discord_handler.queue_embed(
+                title=f"Memory Extracted ({data['count']} new)",
+                description=description,
+                fields=[{"name": "Source", "value": data["source_type"], "inline": True}],
+                footer=f"user: {data['user_id'][:8]}",
+                tag="mem0",
+            )
+
+    return on_memory_event
+
+
 class ClaraDiscordBot(discord_commands.Bot):
     """Discord bot that integrates Clara's memory-enhanced AI."""
 
@@ -1101,7 +1142,8 @@ class ClaraDiscordBot(discord_commands.Bot):
         self._first_ready = True
 
         # Initialize Clara's unified platform (DB, LLM, MemoryManager, ToolRegistry)
-        init_platform()
+        # Pass Discord-specific memory callback for embed notifications
+        init_platform(on_memory_event=_create_discord_memory_callback())
         self.mm = MemoryManager.get_instance()
 
     def _sync_llm(self, messages: list[dict]) -> str:
@@ -2484,43 +2526,34 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         For channels: One shared thread per channel (all users share context)
         For DMs: One thread per user (private conversations)
 
+        Uses MemoryManager.get_or_create_session with context_id for
+        platform-agnostic session isolation.
+
         Returns:
             tuple: (thread, thread_owner_id)
         """
         db = SessionLocal()
         try:
             if is_dm:
-                # DMs: per-user thread
+                # DMs: per-user thread with user-specific context
                 thread_owner = f"discord-dm-{message.author.id}"
+                context_id = f"dm-{message.author.id}"
                 thread_title = f"DM with {message.author.display_name}"
             else:
                 # Channels: shared thread for the channel
                 thread_owner = f"discord-channel-{message.channel.id}"
+                context_id = f"channel-{message.channel.id}"
                 guild_name = message.guild.name if message.guild else "Server"
                 channel_name = getattr(message.channel, "name", "channel")
                 thread_title = f"{guild_name} #{channel_name}"
 
-            # Find existing active thread
-            thread = (
-                db.query(Session)
-                .filter_by(user_id=thread_owner, title=thread_title)
-                .filter(Session.archived != "true")
-                .order_by(Session.last_activity_at.desc())
-                .first()
+            # Use MemoryManager.get_or_create_session with context_id
+            thread = self.mm.get_or_create_session(
+                db=db,
+                user_id=thread_owner,
+                context_id=context_id,
+                title=thread_title,
             )
-
-            if not thread:
-                project_id = await self._ensure_project(thread_owner)
-                thread = Session(
-                    project_id=project_id,
-                    user_id=thread_owner,
-                    title=thread_title,
-                    archived="false",
-                )
-                db.add(thread)
-                db.commit()
-                db.refresh(thread)
-                logger.debug(f" Created thread: {thread_title}")
 
             return thread, thread_owner
         finally:
