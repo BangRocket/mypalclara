@@ -10,6 +10,18 @@ pub struct Note {
     pub content: String,
     pub folder_id: Option<i64>,
     pub author: String,
+    pub is_daily_note: bool,
+    pub daily_note_date: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A daily note entry (used for calendar display)
+#[derive(Debug, Clone, Serialize, Deserialize, Type, FromRow)]
+pub struct DailyNote {
+    pub id: i64,
+    pub title: String,
+    pub daily_note_date: String,
     pub created_at: String,
     pub updated_at: String,
 }
