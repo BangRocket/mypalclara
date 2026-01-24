@@ -2,12 +2,12 @@
 
 ## Current Position
 
-Phase: 2 of 6 (Core Notes)
-Plan: 4 of 4 complete
-Status: Phase complete
-Last activity: 2026-01-24 - Completed 02-04-PLAN.md (Note Editor Integration)
+Phase: 4 of 6 (Calendar & Daily Notes)
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-01-24 - Completed 04-01-PLAN.md (Daily Note Commands)
 
-Progress: [████░░░░░░] 7/16 plans (44%)
+Progress: [█████░░░░░] 8/16 plans (50%)
 
 ## Project Reference
 
@@ -22,8 +22,8 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
-| 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
+| 3 | Wiki Links & Search | IN PROGRESS | 6 plans in 3 waves |
+| 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
 
@@ -43,6 +43,13 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 02-02 | 1 | Folder commands | Complete |
 | 02-03 | 2 | Sidebar tree component | Complete |
 | 02-04 | 3 | Note editor integration | Complete |
+
+## Phase 4 Plans
+
+| Plan | Wave | Description | Status |
+|------|------|-------------|--------|
+| 04-01 | 1 | Daily note commands | Complete |
+| 04-02 | 2 | Calendar component | Pending |
 
 ## Accumulated Context
 
@@ -78,6 +85,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-04] Inline debounce implementation (setTimeout + useCallback) rather than external hook
 - [02-04] Simple HTML-to-text for storage (proper markdown conversion deferred to Phase 3)
 - [02-04] YAML frontmatter in exports includes title, author, created, updated dates
+- [04-01] Date format YYYY-MM-DD for storage, "Month Day, Year" for display titles
+- [04-01] Get-or-create pattern ensures no duplicate daily notes
+- [04-01] DailyNote lightweight type (no content) for calendar display
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -115,13 +125,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-04] Export command uses YAML frontmatter format
 - [02-04] Dialog plugin added for native save dialog
 - [02-04] Generated bindings now include exportNoteToFile (11 commands total)
+- [04-01] Daily note commands: get_or_create_daily_note, list_daily_note_dates
+- [04-01] Note model extended with is_daily_note (bool) and daily_note_date fields
+- [04-01] DailyNote type created for calendar display (id, title, date, timestamps)
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 02-04-PLAN.md (Phase 2 complete)
+Stopped at: Completed 04-01-PLAN.md (Daily Note Commands)
 Resume file: None
-Next: Start Phase 3 - Wiki Links & Search
+Next: Execute 04-02-PLAN.md (Calendar Component)
 
 ## Files
 
@@ -137,4 +150,6 @@ Next: Start Phase 3 - Wiki Links & Search
 - `.planning/phases/02-core-notes/02-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/02-core-notes/02-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/phases/02-core-notes/02-04-SUMMARY.md` - Plan 04 completion summary
+- `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
+- `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
