@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 3 of 6 (Wiki Links & Search)
-Plan: 1 of 6 complete
+Plan: 2 of 6 complete
 Status: In progress
-Last activity: 2026-01-24 - Completed 03-01-PLAN.md (FTS5 Search Backend)
+Last activity: 2026-01-24 - Completed 03-02-PLAN.md (Wiki Link Extraction)
 
-Progress: [██████░░░░] 9/16 plans (56%)
+Progress: [██████░░░░] 10/16 plans (62%)
 
 ## Project Reference
 
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | IN PROGRESS (1/6) | 6 plans in 3 waves |
+| 3 | Wiki Links & Search | IN PROGRESS (2/6) | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
@@ -49,9 +49,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Plan | Wave | Description | Status |
 |------|------|-------------|--------|
 | 03-01 | 1 | FTS5 search backend | Complete |
-| 03-02 | 1 | Quick switcher modal | Pending |
+| 03-02 | 1 | Wiki link extraction | Complete |
 | 03-03 | 2 | Wiki link TipTap extension | Pending |
-| 03-04 | 2 | Wiki link suggestion | Pending |
+| 03-04 | 2 | Quick switcher modal | Pending |
 | 03-05 | 3 | Search bar UI | Pending |
 | 03-06 | 3 | Backlinks panel | Pending |
 
@@ -146,13 +146,18 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [03-01] FTS5 virtual table: notes_fts with external content to notes table
 - [03-01] Search commands: search_notes (FTS5 with BM25), get_all_note_titles (autocomplete)
 - [03-01] Generated bindings: SearchResult, NoteTitle types added
+- [03-02] Wiki link regex: \[\[(?P<title>[^\[\]|]+)(?:\|[^\[\]]*)?\]\]
+- [03-02] COLLATE NOCASE for case-insensitive title matching
+- [03-02] Delete-then-insert for link updates (full replace on save)
+- [03-02] Commands: extract_and_save_wiki_links, get_backlinks, get_unlinked_mentions
+- [03-02] Types: Backlink, UnlinkedMention
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 03-01-PLAN.md (FTS5 Search Backend)
+Stopped at: Completed 03-02-PLAN.md (Wiki Link Extraction)
 Resume file: None
-Next: Execute 03-02-PLAN.md (Quick Switcher) or continue Phase 3
+Next: Execute 03-03-PLAN.md (Wiki Link TipTap Extension) or continue Phase 3
 
 ## Files
 
@@ -170,6 +175,7 @@ Next: Execute 03-02-PLAN.md (Quick Switcher) or continue Phase 3
 - `.planning/phases/02-core-notes/02-04-SUMMARY.md` - Plan 04 completion summary
 - `.planning/phases/03-wiki-links-search/` - Phase 3 execution plans
 - `.planning/phases/03-wiki-links-search/03-01-SUMMARY.md` - Plan 01 completion summary
+- `.planning/phases/03-wiki-links-search/03-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
