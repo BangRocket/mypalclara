@@ -13,7 +13,7 @@ pub async fn list_notes(
         Some(fid) => {
             sqlx::query_as::<_, Note>(
                 r#"
-                SELECT id, title, content, folder_id, author, created_at, updated_at
+                SELECT id, title, content, folder_id, author, is_daily_note, daily_note_date, created_at, updated_at
                 FROM notes
                 WHERE folder_id = ?
                 ORDER BY updated_at DESC
@@ -26,7 +26,7 @@ pub async fn list_notes(
         None => {
             sqlx::query_as::<_, Note>(
                 r#"
-                SELECT id, title, content, folder_id, author, created_at, updated_at
+                SELECT id, title, content, folder_id, author, is_daily_note, daily_note_date, created_at, updated_at
                 FROM notes
                 ORDER BY updated_at DESC
                 "#,
@@ -45,7 +45,7 @@ pub async fn list_notes(
 pub async fn get_note(db: State<'_, Database>, id: i64) -> Result<Note, String> {
     sqlx::query_as::<_, Note>(
         r#"
-        SELECT id, title, content, folder_id, author, created_at, updated_at
+        SELECT id, title, content, folder_id, author, is_daily_note, daily_note_date, created_at, updated_at
         FROM notes
         WHERE id = ?
         "#,
