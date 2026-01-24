@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 2 of 6 (Core Notes)
-Plan: 1 of 4 complete
+Plan: 2 of 4 complete
 Status: In progress
-Last activity: 2026-01-23 - Completed 02-01-PLAN.md (Frontend Stack Setup)
+Last activity: 2026-01-23 - Completed 02-02-PLAN.md (Folder Commands)
 
-Progress: [█░░░░░░░░░] 4/16 plans (25%)
+Progress: [█░░░░░░░░░] 5/16 plans (31%)
 
 ## Project Reference
 
@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
-| 2 | Core Notes | IN PROGRESS (1/4) | 4 plans in 3 waves |
+| 2 | Core Notes | IN PROGRESS (2/4) | 4 plans in 3 waves |
 | 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
@@ -40,8 +40,8 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Plan | Wave | Description | Status |
 |------|------|-------------|--------|
 | 02-01 | 1 | Frontend stack setup | Complete |
-| 02-02 | 2 | Layout component | Pending |
-| 02-03 | 2 | Note list component | Pending |
+| 02-02 | 1 | Folder commands | Complete |
+| 02-03 | 2 | Sidebar tree component | Pending |
 | 02-04 | 3 | Note editor integration | Pending |
 
 ## Accumulated Context
@@ -68,6 +68,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-01] Avoid @apply with utility classes in Tailwind v4 - use native CSS
 - [02-01] QueryClient staleTime 1 minute, refetchOnWindowFocus disabled
 - [02-01] uiStore tracks selectedNoteId, selectedFolderId, sidebarCollapsed
+- [02-02] Cannot delete default Notes folder (id=1)
+- [02-02] Made commands modules public (not re-exported) for lib.rs access pattern
+- [02-02] UpdateFolderInput uses Option types for partial updates
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -95,13 +98,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-01] Tailwind v4.1.18 with @tailwindcss/postcss and typography plugin
 - [02-01] uiStore pattern: create<T>() with typed state and actions
 - [02-01] Task 01 was already complete from prior session
+- [02-02] Generated bindings expanded: 146→241 lines (5→10 commands, 3→6 types)
+- [02-02] Bindings regenerate at runtime in debug mode, not during build
+- [02-02] Protection logic: cannot delete default "Notes" folder (id=1)
 
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 02-01-PLAN.md
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
-Next: Continue Phase 2 - execute 02-02-PLAN.md (Layout component)
+Next: Continue Phase 2 - execute 02-03-PLAN.md (Sidebar tree component)
 
 ## Files
 
@@ -114,4 +120,5 @@ Next: Continue Phase 2 - execute 02-02-PLAN.md (Layout component)
 - `.planning/phases/01-foundation/01-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/phases/02-core-notes/` - Phase 2 execution plans
 - `.planning/phases/02-core-notes/02-01-SUMMARY.md` - Plan 01 completion summary
+- `.planning/phases/02-core-notes/02-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
