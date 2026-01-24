@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from config.logging import get_discord_handler, get_logger
+from config.logging import get_logger
 
 # Module loggers
 logger = get_logger("mem0")
@@ -178,15 +178,20 @@ class MemoryManager:
         self,
         llm_callable: Callable[[list[dict]], str],
         agent_id: str = "clara",
+        on_memory_event: Callable[[str, dict[str, Any]], None] | None = None,
     ):
         """Initialize MemoryManager.
 
         Args:
             llm_callable: Function that takes messages and returns LLM response
             agent_id: Bot persona identifier for entity-scoped memory (default: "clara")
+            on_memory_event: Optional callback for memory events (retrieval, extraction).
+                Called with (event_type, data) where event_type is "memory_retrieved"
+                or "memory_extracted" and data contains event-specific information.
         """
         self.llm = llm_callable
         self.agent_id = agent_id
+        self._on_memory_event = on_memory_event
 
     @classmethod
     def get_instance(cls) -> "MemoryManager":
@@ -206,12 +211,14 @@ class MemoryManager:
         cls,
         llm_callable: Callable[[list[dict]], str],
         agent_id: str | None = None,
+        on_memory_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> "MemoryManager":
         """Initialize the singleton MemoryManager.
 
         Args:
             llm_callable: Function that takes messages and returns LLM response
             agent_id: Bot persona identifier. If None, uses BOT_NAME env var or "clara".
+            on_memory_event: Optional callback for memory events (retrieval, extraction).
 
         Returns:
             The initialized MemoryManager instance
@@ -220,7 +227,11 @@ class MemoryManager:
             # Get agent_id from BOT_NAME env var if not provided
             if agent_id is None:
                 agent_id = os.getenv("BOT_NAME", "clara").lower()
-            cls._instance = cls(llm_callable=llm_callable, agent_id=agent_id)
+            cls._instance = cls(
+                llm_callable=llm_callable,
+                agent_id=agent_id,
+                on_memory_event=on_memory_event,
+            )
             memory_logger.info(f"MemoryManager initialized (agent_id={agent_id})")
         return cls._instance
 
@@ -505,46 +516,30 @@ class MemoryManager:
         proj_count: int,
         sample_memories: list[str],
     ) -> None:
-        """Send a Discord embed with memory retrieval summary."""
-        discord_handler = get_discord_handler()
-        if not discord_handler:
+        """Notify about memory retrieval (if callback registered)."""
+        if not self._on_memory_event:
             return
 
         total = key_count + user_count + proj_count
         if total == 0:
             return
 
-        # Format memory samples (truncate for embed)
-        sample_text = ""
-        if sample_memories:
-            samples = []
-            for mem in sample_memories[:3]:
-                # Remove [KEY] prefix for cleaner display
-                clean_mem = mem.replace("[KEY] ", "")
-                if len(clean_mem) > 60:
-                    clean_mem = clean_mem[:57] + "..."
-                samples.append(f"• {clean_mem}")
-            sample_text = "\n".join(samples)
+        # Format samples for notification
+        samples = []
+        for mem in sample_memories[:3]:
+            clean_mem = mem.replace("[KEY] ", "")
+            if len(clean_mem) > 60:
+                clean_mem = clean_mem[:57] + "..."
+            samples.append(clean_mem)
 
-        # Build embed fields
-        fields = [
-            {"name": "Key", "value": str(key_count), "inline": True},
-            {"name": "User", "value": str(user_count), "inline": True},
-            {"name": "Project", "value": str(proj_count), "inline": True},
-        ]
-
-        # Extract short user ID for footer
-        _, short_id = self.parse_user_id(user_id)
-        if len(short_id) > 8:
-            short_id = short_id[:8]
-
-        discord_handler.queue_embed(
-            title=f"Memory Retrieval ({total} total)",
-            description=sample_text if sample_text else None,
-            fields=fields,
-            footer=f"user: {short_id}",
-            tag="mem0",
-        )
+        self._on_memory_event("memory_retrieved", {
+            "user_id": user_id,
+            "key_count": key_count,
+            "user_count": user_count,
+            "proj_count": proj_count,
+            "total": total,
+            "samples": samples,
+        })
 
     def add_to_mem0(
         self,
@@ -635,34 +630,24 @@ class MemoryManager:
         source_type: str,
         results: list[dict],
     ) -> None:
-        """Send a Discord embed when memories are extracted and stored."""
-        discord_handler = get_discord_handler()
-        if not discord_handler or count == 0:
+        """Notify about memory extraction (if callback registered)."""
+        if not self._on_memory_event or count == 0:
             return
 
-        # Format memory samples (truncate for embed)
-        sample_text = ""
-        if results:
-            samples = []
-            for r in results[:3]:
-                mem = r.get("memory", "")
-                if len(mem) > 60:
-                    mem = mem[:57] + "..."
-                samples.append(f"• {mem}")
-            sample_text = "\n".join(samples)
+        # Format samples for notification
+        samples = []
+        for r in results[:3]:
+            mem = r.get("memory", "")
+            if len(mem) > 60:
+                mem = mem[:57] + "..."
+            samples.append(mem)
 
-        # Extract short user ID for footer
-        _, short_id = self.parse_user_id(user_id)
-        if len(short_id) > 8:
-            short_id = short_id[:8]
-
-        discord_handler.queue_embed(
-            title=f"Memory Extracted ({count} new)",
-            description=sample_text if sample_text else None,
-            fields=[{"name": "Source", "value": source_type, "inline": True}],
-            footer=f"user: {short_id}",
-            tag="mem0",
-        )
+        self._on_memory_event("memory_extracted", {
+            "user_id": user_id,
+            "count": count,
+            "source_type": source_type,
+            "samples": samples,
+        })
 
     # ---------- emotional context ----------
 
