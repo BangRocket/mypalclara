@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 3 of 6 (Wiki Links & Search)
-Plan: 2 of 6 complete
+Plan: 3 of 6 complete
 Status: In progress
-Last activity: 2026-01-24 - Completed 03-02-PLAN.md (Wiki Link Extraction)
+Last activity: 2026-01-24 - Completed 03-05-PLAN.md (Backlinks Panel)
 
-Progress: [██████░░░░] 10/16 plans (62%)
+Progress: [███████░░░] 11/16 plans (68%)
 
 ## Project Reference
 
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | IN PROGRESS (2/6) | 6 plans in 3 waves |
+| 3 | Wiki Links & Search | IN PROGRESS (3/6) | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
@@ -52,8 +52,8 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 03-02 | 1 | Wiki link extraction | Complete |
 | 03-03 | 2 | Wiki link TipTap extension | Pending |
 | 03-04 | 2 | Quick switcher modal | Pending |
-| 03-05 | 3 | Search bar UI | Pending |
-| 03-06 | 3 | Backlinks panel | Pending |
+| 03-05 | 3 | Backlinks panel | Complete |
+| 03-06 | 3 | Integration | Pending |
 
 ## Phase 4 Plans
 
@@ -151,13 +151,17 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [03-02] Delete-then-insert for link updates (full replace on save)
 - [03-02] Commands: extract_and_save_wiki_links, get_backlinks, get_unlinked_mentions
 - [03-02] Types: Backlink, UnlinkedMention
+- [03-05] useBacklinks hook with TanStack Query for backlinks fetching
+- [03-05] useInvalidateBacklinks for cache invalidation (invalidateNotes, invalidateAll)
+- [03-05] BacklinksPanel component with click-to-navigate via selectNote
+- [03-05] 1 minute stale time, refetchOnWindowFocus disabled for backlinks
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 03-02-PLAN.md (Wiki Link Extraction)
+Stopped at: Completed 03-05-PLAN.md (Backlinks Panel)
 Resume file: None
-Next: Execute 03-03-PLAN.md (Wiki Link TipTap Extension) or continue Phase 3
+Next: Execute 03-03-PLAN.md (Wiki Link TipTap Extension) or 03-04-PLAN.md (Quick Switcher)
 
 ## Files
 
@@ -176,6 +180,7 @@ Next: Execute 03-03-PLAN.md (Wiki Link TipTap Extension) or continue Phase 3
 - `.planning/phases/03-wiki-links-search/` - Phase 3 execution plans
 - `.planning/phases/03-wiki-links-search/03-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/03-wiki-links-search/03-02-SUMMARY.md` - Plan 02 completion summary
+- `.planning/phases/03-wiki-links-search/03-05-SUMMARY.md` - Plan 05 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
