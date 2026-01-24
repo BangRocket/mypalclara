@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 2 of 6 (Core Notes)
-Plan: 3 of 4 complete
-Status: In progress
-Last activity: 2026-01-24 - Completed 02-03-PLAN.md (Sidebar Tree Component)
+Plan: 4 of 4 complete
+Status: Phase complete
+Last activity: 2026-01-24 - Completed 02-04-PLAN.md (Note Editor Integration)
 
-Progress: [██░░░░░░░░] 6/16 plans (38%)
+Progress: [████░░░░░░] 7/16 plans (44%)
 
 ## Project Reference
 
@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
-| 2 | Core Notes | IN PROGRESS (3/4) | 4 plans in 3 waves |
+| 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
 | 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
@@ -42,7 +42,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 02-01 | 1 | Frontend stack setup | Complete |
 | 02-02 | 1 | Folder commands | Complete |
 | 02-03 | 2 | Sidebar tree component | Complete |
-| 02-04 | 3 | Note editor integration | Pending |
+| 02-04 | 3 | Note editor integration | Complete |
 
 ## Accumulated Context
 
@@ -75,6 +75,9 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-03] FolderTree starts expanded by default for discoverability
 - [02-03] Notes list shows preview text from content (first 60 chars)
 - [02-03] All Notes option shows notes regardless of folder filter
+- [02-04] Inline debounce implementation (setTimeout + useCallback) rather than external hook
+- [02-04] Simple HTML-to-text for storage (proper markdown conversion deferred to Phase 3)
+- [02-04] YAML frontmatter in exports includes title, author, created, updated dates
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -108,13 +111,17 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-03] TanStack Query hooks wrap all Tauri commands with proper cache invalidation
 - [02-03] 8 new files created (hooks + components) for sidebar navigation
 - [02-03] App.tsx simplified to use Layout component with empty state
+- [02-04] NoteEditor.tsx: 226 lines with toolbar and inline debounced save
+- [02-04] Export command uses YAML frontmatter format
+- [02-04] Dialog plugin added for native save dialog
+- [02-04] Generated bindings now include exportNoteToFile (11 commands total)
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 02-03-PLAN.md
+Stopped at: Completed 02-04-PLAN.md (Phase 2 complete)
 Resume file: None
-Next: Continue Phase 2 - execute 02-04-PLAN.md (Note editor integration)
+Next: Start Phase 3 - Wiki Links & Search
 
 ## Files
 
@@ -129,4 +136,5 @@ Next: Continue Phase 2 - execute 02-04-PLAN.md (Note editor integration)
 - `.planning/phases/02-core-notes/02-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/02-core-notes/02-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/02-core-notes/02-03-SUMMARY.md` - Plan 03 completion summary
+- `.planning/phases/02-core-notes/02-04-SUMMARY.md` - Plan 04 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
