@@ -2,12 +2,12 @@
 
 ## Current Position
 
-Phase: 4 of 6 (Calendar & Daily Notes)
-Plan: 1 of 2 complete
+Phase: 3 of 6 (Wiki Links & Search)
+Plan: 1 of 6 complete
 Status: In progress
-Last activity: 2026-01-24 - Completed 04-01-PLAN.md (Daily Note Commands)
+Last activity: 2026-01-24 - Completed 03-01-PLAN.md (FTS5 Search Backend)
 
-Progress: [█████░░░░░] 8/16 plans (50%)
+Progress: [██████░░░░] 9/16 plans (56%)
 
 ## Project Reference
 
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | IN PROGRESS | 6 plans in 3 waves |
+| 3 | Wiki Links & Search | IN PROGRESS (1/6) | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
@@ -43,6 +43,17 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 02-02 | 1 | Folder commands | Complete |
 | 02-03 | 2 | Sidebar tree component | Complete |
 | 02-04 | 3 | Note editor integration | Complete |
+
+## Phase 3 Plans
+
+| Plan | Wave | Description | Status |
+|------|------|-------------|--------|
+| 03-01 | 1 | FTS5 search backend | Complete |
+| 03-02 | 1 | Quick switcher modal | Pending |
+| 03-03 | 2 | Wiki link TipTap extension | Pending |
+| 03-04 | 2 | Wiki link suggestion | Pending |
+| 03-05 | 3 | Search bar UI | Pending |
+| 03-06 | 3 | Backlinks panel | Pending |
 
 ## Phase 4 Plans
 
@@ -88,6 +99,10 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [04-01] Date format YYYY-MM-DD for storage, "Month Day, Year" for display titles
 - [04-01] Get-or-create pattern ensures no duplicate daily notes
 - [04-01] DailyNote lightweight type (no content) for calendar display
+- [03-01] FTS5 external content with AFTER triggers (saves 50-80% space)
+- [03-01] porter+unicode61 tokenizers for stemming + international characters
+- [03-01] BM25 ranking with snippet generation using <mark> tags
+- [03-01] Empty queries return empty results (prevents full-table scans)
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -128,13 +143,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [04-01] Daily note commands: get_or_create_daily_note, list_daily_note_dates
 - [04-01] Note model extended with is_daily_note (bool) and daily_note_date fields
 - [04-01] DailyNote type created for calendar display (id, title, date, timestamps)
+- [03-01] FTS5 virtual table: notes_fts with external content to notes table
+- [03-01] Search commands: search_notes (FTS5 with BM25), get_all_note_titles (autocomplete)
+- [03-01] Generated bindings: SearchResult, NoteTitle types added
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 04-01-PLAN.md (Daily Note Commands)
+Stopped at: Completed 03-01-PLAN.md (FTS5 Search Backend)
 Resume file: None
-Next: Execute 04-02-PLAN.md (Calendar Component)
+Next: Execute 03-02-PLAN.md (Quick Switcher) or continue Phase 3
 
 ## Files
 
@@ -150,6 +168,8 @@ Next: Execute 04-02-PLAN.md (Calendar Component)
 - `.planning/phases/02-core-notes/02-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/02-core-notes/02-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/phases/02-core-notes/02-04-SUMMARY.md` - Plan 04 completion summary
+- `.planning/phases/03-wiki-links-search/` - Phase 3 execution plans
+- `.planning/phases/03-wiki-links-search/03-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
