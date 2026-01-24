@@ -173,3 +173,42 @@ body {
 [cmdk-item][data-selected="true"] {
   background-color: oklch(0.932 0.032 255.585);
 }
+
+/* Wiki link preview tooltip */
+.wiki-link-preview {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  border: 1px solid oklch(0.922 0 0);
+}
+
+/* Line clamping for preview content */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Tippy theme for wiki link preview */
+.tippy-box[data-theme~='light-border'] {
+  background-color: white;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  border: 1px solid oklch(0.922 0 0);
+  border-radius: 0.5rem;
+}
+
+.tippy-box[data-theme~='light-border'] > .tippy-content {
+  padding: 0;
+}
+
+.tippy-box[data-theme~='light-border'] > .tippy-arrow::before {
+  border-bottom-color: oklch(0.922 0 0);
+}

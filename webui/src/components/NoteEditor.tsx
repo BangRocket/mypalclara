@@ -1,10 +1,11 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useNote, useUpdateNote, useDeleteNote } from '../hooks';
 import { useUiStore } from '../stores';
 import { WikiLink, wikiLinkSuggestion } from '../editor/extensions';
+import { WikiLinkPreview } from '../editor/components';
 
 interface EditorToolbarProps {
   editor: ReturnType<typeof useEditor>;
@@ -145,6 +146,7 @@ export function NoteEditor({ noteId, onExport }: NoteEditorProps) {
   const updateNote = useUpdateNote();
   const deleteNote = useDeleteNote();
   const selectNote = useUiStore((state) => state.selectNote);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const [title, setTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -279,9 +281,12 @@ export function NoteEditor({ noteId, onExport }: NoteEditorProps) {
       />
 
       {/* Editor */}
-      <div className="flex-1 overflow-auto">
+      <div ref={editorContainerRef} className="flex-1 overflow-auto">
         <EditorContent editor={editor} />
       </div>
+
+      {/* Wiki link preview - invisible component managing hover tooltips */}
+      <WikiLinkPreview editorRef={editorContainerRef} />
     </div>
   );
 }

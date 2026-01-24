@@ -1,11 +1,13 @@
-import { Layout, NoteEditor, QuickSwitcher } from './components';
+import { Layout, NoteEditor, QuickSwitcher, BacklinksPanel, UnlinkedMentionsPanel } from './components';
 import { useUiStore } from './stores';
+import { useNote } from './hooks';
 import { commands } from './lib/bindings';
 import { save } from '@tauri-apps/plugin-dialog';
 import './App.css';
 
 function App() {
   const selectedNoteId = useUiStore((state) => state.selectedNoteId);
+  const { data: selectedNote } = useNote(selectedNoteId);
 
   const handleExport = async (noteId: number) => {
     try {
@@ -35,7 +37,21 @@ function App() {
 
       <Layout>
         {selectedNoteId ? (
-          <NoteEditor noteId={selectedNoteId} onExport={handleExport} />
+          <div className="flex h-full">
+            {/* Main editor area */}
+            <div className="flex-1 min-w-0">
+              <NoteEditor noteId={selectedNoteId} onExport={handleExport} />
+            </div>
+
+            {/* Right sidebar with link panels */}
+            <aside className="w-64 flex-shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+              <BacklinksPanel noteId={selectedNoteId} />
+              <UnlinkedMentionsPanel
+                noteId={selectedNoteId}
+                noteTitle={selectedNote?.title ?? null}
+              />
+            </aside>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="text-center">

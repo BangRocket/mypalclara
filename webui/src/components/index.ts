@@ -6,3 +6,5 @@ export { NoteEditor } from './NoteEditor';
 export { QuickSwitcher } from './QuickSwitcher';
 export { SearchBar } from './SearchBar';
 export { CalendarPanel, DateNavigation } from './Calendar';
+export { BacklinksPanel } from './BacklinksPanel';
+export { UnlinkedMentionsPanel } from './UnlinkedMentionsPanel';
