@@ -32,6 +32,9 @@ tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 specta-typescript = "0.0.9"
 
+# Dialog plugin
+tauri-plugin-dialog = "2"
+
 [package.metadata.sqlx]
 offline = true
 

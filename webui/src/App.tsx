@@ -1,18 +1,37 @@
-import { Layout } from './components';
+import { Layout, NoteEditor } from './components';
 import { useUiStore } from './stores';
+import { commands } from './lib/bindings';
+import { save } from '@tauri-apps/plugin-dialog';
 import './App.css';
 
 function App() {
   const selectedNoteId = useUiStore((state) => state.selectedNoteId);
 
+  const handleExport = async (noteId: number) => {
+    try {
+      // Open save dialog
+      const filePath = await save({
+        defaultPath: 'note.md',
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+
+      if (filePath) {
+        const result = await commands.exportNoteToFile(noteId, filePath);
+        if (result.status === 'ok') {
+          alert(`Note exported to ${result.data}`);
+        } else {
+          alert(`Export failed: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      alert(`Export failed: ${error}`);
+    }
+  };
+
   return (
     <Layout>
       {selectedNoteId ? (
-        <div className="p-4">
-          <p className="text-gray-600">
-            Note #{selectedNoteId} selected. Editor coming in next plan.
-          </p>
-        </div>
+        <NoteEditor noteId={selectedNoteId} onExport={handleExport} />
       ) : (
         <div className="flex items-center justify-center h-full text-gray-500">
           <div className="text-center">
