@@ -35,6 +35,9 @@ specta-typescript = "0.0.9"
 # Dialog plugin
 tauri-plugin-dialog = "2"
 
+# Wiki link parsing
+regex = "1"
+
 [package.metadata.sqlx]
 offline = true
 
