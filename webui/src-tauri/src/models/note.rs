@@ -29,13 +29,3 @@ pub struct UpdateNoteInput {
     pub content: Option<String>,
     pub folder_id: Option<i64>,
 }
-
-/// A folder for organizing notes
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct Folder {
-    pub id: i64,
-    pub name: String,
-    pub parent_id: Option<i64>,
-    pub created_at: String,
-    pub updated_at: String,
-}
