@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useNote, useUpdateNote, useDeleteNote } from '../hooks';
 import { useUiStore } from '../stores';
+import { WikiLink, wikiLinkSuggestion } from '../editor/extensions';
 
 interface EditorToolbarProps {
   editor: ReturnType<typeof useEditor>;
@@ -156,6 +157,12 @@ export function NoteEditor({ noteId, onExport }: NoteEditorProps) {
       }),
       Placeholder.configure({
         placeholder: 'Start writing...',
+      }),
+      WikiLink.configure({
+        onWikiLinkClick: (noteId, _title) => {
+          selectNote(noteId);
+        },
+        suggestion: wikiLinkSuggestion,
       }),
     ],
     content: '',
