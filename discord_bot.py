@@ -27,6 +27,10 @@ Environment variables:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from adapters.discord.adapter import DiscordAdapter
 
 # Load .env BEFORE other imports that read env vars at module level
 from dotenv import load_dotenv
@@ -141,6 +145,11 @@ CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
 
 # Log channel configuration - mirror console logs to this Discord channel
 LOG_CHANNEL_ID = os.getenv("DISCORD_LOG_CHANNEL_ID", "")
+
+# Feature flag for Discord adapter (Strangler Fig pattern)
+# When true, messages route through DiscordAdapter
+# When false (default), use existing direct code path
+USE_DISCORD_ADAPTER = os.getenv("USE_DISCORD_ADAPTER", "false").lower() == "true"
 
 # Version (CalVer: YYYY.WW.N)
 def get_version() -> str:
@@ -1145,6 +1154,14 @@ class ClaraDiscordBot(discord_commands.Bot):
         # Pass Discord-specific memory callback for embed notifications
         init_platform(on_memory_event=_create_discord_memory_callback())
         self.mm = MemoryManager.get_instance()
+
+        # Discord adapter for platform-agnostic message handling (Strangler Fig pattern)
+        self._adapter: DiscordAdapter | None = None
+        if USE_DISCORD_ADAPTER:
+            from adapters.discord import DiscordAdapter
+
+            self._adapter = DiscordAdapter(self)
+            logger.info("Discord adapter enabled via USE_DISCORD_ADAPTER")
 
     def _sync_llm(self, messages: list[dict]) -> str:
         """Synchronous LLM call for MemoryManager."""
