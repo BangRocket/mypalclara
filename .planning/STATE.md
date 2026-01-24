@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 3 of 6 (Wiki Links & Search)
-Plan: 4 of 6 complete
+Plan: 5 of 6 complete
 Status: In progress
-Last activity: 2026-01-24 - Completed 03-03-PLAN.md (WikiLink TipTap Extension)
+Last activity: 2026-01-24 - Completed 03-04-PLAN.md (Quick Switcher & Search Bar)
 
-Progress: [████████░░] 12/16 plans (75%)
+Progress: [█████████░] 13/16 plans (81%)
 
 ## Project Reference
 
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | IN PROGRESS (4/6) | 6 plans in 3 waves |
+| 3 | Wiki Links & Search | IN PROGRESS (5/6) | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
@@ -51,7 +51,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 03-01 | 1 | FTS5 search backend | Complete |
 | 03-02 | 1 | Wiki link extraction | Complete |
 | 03-03 | 2 | Wiki link TipTap extension | Complete |
-| 03-04 | 2 | Quick switcher modal | Pending |
+| 03-04 | 2 | Quick switcher modal | Complete |
 | 03-05 | 3 | Backlinks panel | Complete |
 | 03-06 | 3 | Integration | Pending |
 
@@ -161,13 +161,18 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [03-03] WikiLinkSuggestionList with keyboard navigation (up/down/enter/escape)
 - [03-03] Tippy.js for dropdown positioning
 - [03-03] onWikiLinkClick callback wired to selectNote for navigation
+- [03-04] cmdk for command palette modal with Cmd+P/Ctrl+P shortcut
+- [03-04] Fuse.js fuzzy search for note title filtering
+- [03-04] TanStack Query for search with 30s stale time
+- [03-04] QuickSwitcher rendered at app root level as modal overlay
+- [03-04] SearchBar with FTS5 results and snippet highlighting via dangerouslySetInnerHTML
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 03-03-PLAN.md (WikiLink TipTap Extension)
+Stopped at: Completed 03-04-PLAN.md (Quick Switcher & Search Bar)
 Resume file: None
-Next: Execute 03-04-PLAN.md (Quick Switcher) or 03-06-PLAN.md (Integration)
+Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3
 
 ## Files
 
@@ -187,6 +192,7 @@ Next: Execute 03-04-PLAN.md (Quick Switcher) or 03-06-PLAN.md (Integration)
 - `.planning/phases/03-wiki-links-search/03-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/03-wiki-links-search/03-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/03-wiki-links-search/03-03-SUMMARY.md` - Plan 03 completion summary
+- `.planning/phases/03-wiki-links-search/03-04-SUMMARY.md` - Plan 04 completion summary
 - `.planning/phases/03-wiki-links-search/03-05-SUMMARY.md` - Plan 05 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
