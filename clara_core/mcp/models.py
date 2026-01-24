@@ -260,6 +260,22 @@ class RemoteServerConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RemoteServerConfig:
         """Create instance from dictionary."""
+        # Handle legacy or malformed configs - ensure required fields
+        if "name" not in data:
+            raise ValueError("RemoteServerConfig requires 'name' field")
+
+        # server_url is required - check various field names
+        if "server_url" not in data:
+            # Try legacy field names
+            if "serverUrl" in data:
+                data["server_url"] = data.pop("serverUrl")
+            elif "endpoint_url" in data:
+                data["server_url"] = data.pop("endpoint_url")
+            elif "url" in data:
+                data["server_url"] = data.pop("url")
+            else:
+                raise ValueError(f"RemoteServerConfig '{data['name']}' requires 'server_url' field")
+
         # Filter to only known fields
         known_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
@@ -414,9 +430,13 @@ def list_local_server_configs() -> list[LocalServerConfig]:
         if not server_dir.is_dir():
             continue
 
-        config = load_local_server_config(server_dir.name)
-        if config:
-            configs.append(config)
+        try:
+            config = load_local_server_config(server_dir.name)
+            if config:
+                configs.append(config)
+        except Exception as e:
+            logger.warning(f"[MCP] Skipping invalid local config '{server_dir.name}': {e}")
+            continue
 
     return configs
 
@@ -446,14 +466,59 @@ def load_remote_server_config(server_name: str) -> RemoteServerConfig | None:
         # Check if it's in standard MCP format
         if "mcpServers" in data:
             server_data = data["mcpServers"].get(server_name, {})
-            if server_data:
-                return RemoteServerConfig.from_standard_format(server_name, server_data)
-            return None
+            if not server_data:
+                return None
+
+            # Create base config from standard format
+            config = RemoteServerConfig.from_standard_format(server_name, server_data)
+
+            # Merge in _metadata if present (from our save format)
+            if "_metadata" in data:
+                metadata = data["_metadata"]
+                # Update config with metadata fields
+                if metadata.get("id"):
+                    config.id = metadata["id"]
+                if metadata.get("display_name"):
+                    config.display_name = metadata["display_name"]
+                if metadata.get("transport"):
+                    config.transport = metadata["transport"]
+                if metadata.get("source_type"):
+                    config.source_type = metadata["source_type"]
+                if metadata.get("source_url"):
+                    config.source_url = metadata["source_url"]
+                if "enabled" in metadata:
+                    config.enabled = metadata["enabled"]
+                if metadata.get("timeout"):
+                    config.timeout = metadata["timeout"]
+                if metadata.get("retry_count"):
+                    config.retry_count = metadata["retry_count"]
+                if "oauth_required" in metadata:
+                    config.oauth_required = metadata["oauth_required"]
+                if metadata.get("oauth_server_url"):
+                    config.oauth_server_url = metadata["oauth_server_url"]
+                if metadata.get("status"):
+                    config.status = metadata["status"]
+                if metadata.get("last_error"):
+                    config.last_error = metadata["last_error"]
+                if metadata.get("last_error_at"):
+                    config.last_error_at = metadata["last_error_at"]
+                if metadata.get("tool_count"):
+                    config.tool_count = metadata["tool_count"]
+                if metadata.get("tools"):
+                    config.tools = metadata["tools"]
+                if metadata.get("installed_by"):
+                    config.installed_by = metadata["installed_by"]
+                if metadata.get("created_at"):
+                    config.created_at = metadata["created_at"]
+                if metadata.get("updated_at"):
+                    config.updated_at = metadata["updated_at"]
+
+            return config
 
         # Otherwise it's our internal format
         return RemoteServerConfig.from_dict(data)
 
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, ValueError) as e:
         logger.error(f"[MCP] Failed to load remote config for {server_name}: {e}")
         return None
 
@@ -547,9 +612,13 @@ def list_remote_server_configs() -> list[RemoteServerConfig]:
         if not server_dir.is_dir():
             continue
 
-        config = load_remote_server_config(server_dir.name)
-        if config:
-            configs.append(config)
+        try:
+            config = load_remote_server_config(server_dir.name)
+            if config:
+                configs.append(config)
+        except Exception as e:
+            logger.warning(f"[MCP] Skipping invalid remote config '{server_dir.name}': {e}")
+            continue
 
     return configs
 
