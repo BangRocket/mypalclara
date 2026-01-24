@@ -2,12 +2,12 @@
 
 ## Current Position
 
-Phase: 4 of 6 (Calendar & Daily Notes)
-Plan: 2 of 2 complete
+Phase: 3 of 6 (Wiki Links & Search)
+Plan: 6 of 6 complete
 Status: Phase complete
-Last activity: 2026-01-24 - Completed 04-02-PLAN.md (Calendar Widget UI Component)
+Last activity: 2026-01-24 - Completed 03-06-PLAN.md (Link preview tooltips and unlinked mentions panel)
 
-Progress: [██████████] 14/16 plans (87%)
+Progress: [███████████████] 15/16 plans (93%)
 
 ## Project Reference
 
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
-| 3 | Wiki Links & Search | IN PROGRESS (5/6) | 6 plans in 3 waves |
+| 3 | Wiki Links & Search | COMPLETE (6/6) | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | COMPLETE (2/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
@@ -53,7 +53,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 03-03 | 2 | Wiki link TipTap extension | Complete |
 | 03-04 | 2 | Quick switcher modal | Complete |
 | 03-05 | 3 | Backlinks panel | Complete |
-| 03-06 | 3 | Integration | Pending |
+| 03-06 | 3 | Link preview + unlinked mentions | Complete |
 
 ## Phase 4 Plans
 
@@ -103,6 +103,10 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [03-01] porter+unicode61 tokenizers for stemming + international characters
 - [03-01] BM25 ranking with snippet generation using <mark> tags
 - [03-01] Empty queries return empty results (prevents full-table scans)
+- [03-06] WikiLinkPreview is invisible component (returns null) managing hover logic
+- [03-06] Preview caches for 5 minutes, unlinked mentions for 2 minutes
+- [03-06] Unlinked mentions panel only shows when mentions exist (hidden when empty)
+- [03-06] Right sidebar width 256px for link panels
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -130,7 +134,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-01] Tailwind v4.1.18 with @tailwindcss/postcss and typography plugin
 - [02-01] uiStore pattern: create<T>() with typed state and actions
 - [02-01] Task 01 was already complete from prior session
-- [02-02] Generated bindings expanded: 146→241 lines (5→10 commands, 3→6 types)
+- [02-02] Generated bindings expanded: 146->241 lines (5->10 commands, 3->6 types)
 - [02-02] Bindings regenerate at runtime in debug mode, not during build
 - [02-02] Protection logic: cannot delete default "Notes" folder (id=1)
 - [02-03] TanStack Query hooks wrap all Tauri commands with proper cache invalidation
@@ -171,13 +175,17 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [04-02] CalendarPanel at top of Sidebar for visibility
 - [04-02] DateNavigation below header in Layout when viewing daily notes
 - [04-02] uiStore extended with selectedDate (YYYY-MM-DD) and viewingDailyNote
+- [03-06] WikiLinkPreview with Tippy.js tooltips for hover previews
+- [03-06] useUnlinkedMentions hook with 2min stale time
+- [03-06] UnlinkedMentionsPanel with yellow highlighted snippets
+- [03-06] Right sidebar layout with BacklinksPanel + UnlinkedMentionsPanel
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 04-02-PLAN.md (Calendar Widget UI Component)
+Stopped at: Completed 03-06-PLAN.md (Link preview tooltips and unlinked mentions panel)
 Resume file: None
-Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3, then Phase 5
+Next: Phase 5 (Chat Integration) or Phase 6 (Clara Note Tools - needs research)
 
 ## Files
 
@@ -199,6 +207,7 @@ Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3, then Phase 5
 - `.planning/phases/03-wiki-links-search/03-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/phases/03-wiki-links-search/03-04-SUMMARY.md` - Plan 04 completion summary
 - `.planning/phases/03-wiki-links-search/03-05-SUMMARY.md` - Plan 05 completion summary
+- `.planning/phases/03-wiki-links-search/03-06-SUMMARY.md` - Plan 06 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/04-calendar-daily-notes/04-02-SUMMARY.md` - Plan 02 completion summary
