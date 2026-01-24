@@ -2,12 +2,12 @@
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation)
-Plan: 3 of 3 complete
-Status: Phase 1 COMPLETE
-Last activity: 2026-01-23 - Completed 01-03-PLAN.md (Type-safe IPC)
+Phase: 2 of 6 (Core Notes)
+Plan: 1 of 4 complete
+Status: In progress
+Last activity: 2026-01-23 - Completed 02-01-PLAN.md (Frontend Stack Setup)
 
-Progress: [==========] 3/3 plans (Phase 1 Complete)
+Progress: [█░░░░░░░░░] 4/16 plans (25%)
 
 ## Project Reference
 
@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
-| 2 | Core Notes | PLANNED | 4 plans in 3 waves |
+| 2 | Core Notes | IN PROGRESS (1/4) | 4 plans in 3 waves |
 | 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
@@ -34,6 +34,15 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 01-01 | 1 | Tauri + React scaffold | Complete |
 | 01-02 | 2 | SQLite + migrations | Complete |
 | 01-03 | 3 | Type-safe IPC | Complete |
+
+## Phase 2 Plans
+
+| Plan | Wave | Description | Status |
+|------|------|-------------|--------|
+| 02-01 | 1 | Frontend stack setup | Complete |
+| 02-02 | 2 | Layout component | Pending |
+| 02-03 | 2 | Note list component | Pending |
+| 02-04 | 3 | Note editor integration | Pending |
 
 ## Accumulated Context
 
@@ -54,6 +63,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [01-03] Runtime SQLx queries instead of compile-time macros (offline mode issues)
 - [01-03] Disabled noUnusedLocals in tsconfig for tauri-specta event scaffolding
 - [01-03] i64 mapped to number (not BigInt) via BigIntExportBehavior::Number
+- [02-01] Tailwind v4 requires @tailwindcss/postcss plugin (breaking change from v3)
+- [02-01] @import "tailwindcss" replaces @tailwind directives in v4
+- [02-01] Avoid @apply with utility classes in Tailwind v4 - use native CSS
+- [02-01] QueryClient staleTime 1 minute, refetchOnWindowFocus disabled
+- [02-01] uiStore tracks selectedNoteId, selectedFolderId, sidebarCollapsed
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -77,13 +91,17 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [01-03] tauri-specta, specta, specta-typescript added
 - [01-03] Generated bindings: 146 lines, 5 commands, 3 types
 - [01-03] IPC patterns established: commands.method() returns Promise<Result<T,E>>
+- [02-01] 8 frontend dependencies installed: TipTap, Zustand, TanStack Query, Tailwind
+- [02-01] Tailwind v4.1.18 with @tailwindcss/postcss and typography plugin
+- [02-01] uiStore pattern: create<T>() with typed state and actions
+- [02-01] Task 01 was already complete from prior session
 
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Phases 2, 3, 4 planning complete
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
-Next: Execute Phase 2 - run `/gsd:execute-phase 2`
+Next: Continue Phase 2 - execute 02-02-PLAN.md (Layout component)
 
 ## Files
 
@@ -94,4 +112,6 @@ Next: Execute Phase 2 - run `/gsd:execute-phase 2`
 - `.planning/phases/01-foundation/01-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/01-foundation/01-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/phases/01-foundation/01-03-SUMMARY.md` - Plan 03 completion summary
+- `.planning/phases/02-core-notes/` - Phase 2 execution plans
+- `.planning/phases/02-core-notes/02-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
