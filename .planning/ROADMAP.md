@@ -64,13 +64,13 @@ Plans:
 
 **Goal:** Primary user interaction must feel solid before adding complexity.
 
-**Plans:** 4 plans
+**Plans:** 4 plans (COMPLETE)
 
 Plans:
-- [ ] 02-01-PLAN.md — Frontend stack setup (TipTap, Zustand, TanStack Query, Tailwind)
-- [ ] 02-02-PLAN.md — Folder CRUD commands and TypeScript bindings
-- [ ] 02-03-PLAN.md — Sidebar with folder tree and notes list
-- [ ] 02-04-PLAN.md — TipTap editor with auto-save and export
+- [x] 02-01-PLAN.md — Frontend stack setup (TipTap, Zustand, TanStack Query, Tailwind)
+- [x] 02-02-PLAN.md — Folder CRUD commands and TypeScript bindings
+- [x] 02-03-PLAN.md — Sidebar with folder tree and notes list
+- [x] 02-04-PLAN.md — TipTap editor with auto-save and export
 
 **Delivers:**
 - Notes list view with folder tree sidebar
