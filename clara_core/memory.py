@@ -274,6 +274,78 @@ class MemoryManager:
             return parts[0], parts[1]
         return "unknown", unified_user_id
 
+    # ---------- Session management ----------
+
+    def get_or_create_session(
+        self,
+        db: "OrmSession",
+        user_id: str,
+        context_id: str = "default",
+        project_id: str | None = None,
+        title: str | None = None,
+    ) -> "Session":
+        """Get or create a session with platform-agnostic context.
+
+        Finds an active session matching user_id + context_id + project_id,
+        or creates a new one if none exists.
+
+        Args:
+            db: Database session
+            user_id: Unified user ID (e.g., "discord-123", "cli-demo")
+            context_id: Context identifier for session isolation
+                - Discord: "channel-{channel_id}" or "dm-{user_id}"
+                - CLI: "cli" or "cli-{terminal_session}"
+                - Default: "default" for backward compatibility
+            project_id: Optional project UUID. If None, uses or creates default project.
+            title: Optional session title for UI display
+
+        Returns:
+            Session object (existing or newly created)
+        """
+        from db.models import Project, Session
+
+        # Ensure we have a project
+        if project_id is None:
+            # Get or create default project for this user
+            project = db.query(Project).filter_by(owner_id=user_id).first()
+            if not project:
+                import os
+                project_name = os.getenv("DEFAULT_PROJECT", "Default Project")
+                project = Project(owner_id=user_id, name=project_name)
+                db.add(project)
+                db.commit()
+                db.refresh(project)
+            project_id = project.id
+
+        # Find existing active session for this user + context + project
+        session = (
+            db.query(Session)
+            .filter(
+                Session.user_id == user_id,
+                Session.context_id == context_id,
+                Session.project_id == project_id,
+                Session.archived != "true",
+            )
+            .order_by(Session.last_activity_at.desc())
+            .first()
+        )
+
+        if session:
+            return session
+
+        # Create new session
+        session = Session(
+            user_id=user_id,
+            context_id=context_id,
+            project_id=project_id,
+            title=title,
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        thread_logger.info(f"Created session {session.id} for {user_id}/{context_id}")
+        return session
+
     # ---------- Thread/Message helpers ----------
 
     def get_thread(self, db: "OrmSession", thread_id: str) -> "Session | None":
