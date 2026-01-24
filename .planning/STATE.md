@@ -2,12 +2,12 @@
 
 ## Current Position
 
-Phase: 3 of 6 (Wiki Links & Search)
-Plan: 5 of 6 complete
-Status: In progress
-Last activity: 2026-01-24 - Completed 03-04-PLAN.md (Quick Switcher & Search Bar)
+Phase: 4 of 6 (Calendar & Daily Notes)
+Plan: 2 of 2 complete
+Status: Phase complete
+Last activity: 2026-01-24 - Completed 04-02-PLAN.md (Calendar Widget UI Component)
 
-Progress: [█████████░] 13/16 plans (81%)
+Progress: [██████████] 14/16 plans (87%)
 
 ## Project Reference
 
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
 | 2 | Core Notes | COMPLETE (4/4) | 4 plans in 3 waves |
 | 3 | Wiki Links & Search | IN PROGRESS (5/6) | 6 plans in 3 waves |
-| 4 | Calendar & Daily Notes | IN PROGRESS (1/2) | 2 plans in 2 waves |
+| 4 | Calendar & Daily Notes | COMPLETE (2/2) | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
 | 6 | Clara Note Tools | Pending (needs research) | -- |
 
@@ -60,7 +60,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Plan | Wave | Description | Status |
 |------|------|-------------|--------|
 | 04-01 | 1 | Daily note commands | Complete |
-| 04-02 | 2 | Calendar component | Pending |
+| 04-02 | 2 | Calendar component | Complete |
 
 ## Accumulated Context
 
@@ -166,13 +166,18 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [03-04] TanStack Query for search with 30s stale time
 - [03-04] QuickSwitcher rendered at app root level as modal overlay
 - [03-04] SearchBar with FTS5 results and snippet highlighting via dangerouslySetInnerHTML
+- [04-02] Added @/ path aliases to tsconfig and vite for shadcn/ui compatibility
+- [04-02] Sidebar widened from 256px to 320px to fit calendar widget
+- [04-02] CalendarPanel at top of Sidebar for visibility
+- [04-02] DateNavigation below header in Layout when viewing daily notes
+- [04-02] uiStore extended with selectedDate (YYYY-MM-DD) and viewingDailyNote
 
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 03-04-PLAN.md (Quick Switcher & Search Bar)
+Stopped at: Completed 04-02-PLAN.md (Calendar Widget UI Component)
 Resume file: None
-Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3
+Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3, then Phase 5
 
 ## Files
 
@@ -196,4 +201,5 @@ Next: Execute 03-06-PLAN.md (Integration) to complete Phase 3
 - `.planning/phases/03-wiki-links-search/03-05-SUMMARY.md` - Plan 05 completion summary
 - `.planning/phases/04-calendar-daily-notes/` - Phase 4 execution plans
 - `.planning/phases/04-calendar-daily-notes/04-01-SUMMARY.md` - Plan 01 completion summary
+- `.planning/phases/04-calendar-daily-notes/04-02-SUMMARY.md` - Plan 02 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
