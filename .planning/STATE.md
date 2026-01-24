@@ -3,11 +3,11 @@
 ## Current Position
 
 Phase: 2 of 6 (Core Notes)
-Plan: 2 of 4 complete
+Plan: 3 of 4 complete
 Status: In progress
-Last activity: 2026-01-23 - Completed 02-02-PLAN.md (Folder Commands)
+Last activity: 2026-01-24 - Completed 02-03-PLAN.md (Sidebar Tree Component)
 
-Progress: [█░░░░░░░░░] 5/16 plans (31%)
+Progress: [██░░░░░░░░] 6/16 plans (38%)
 
 ## Project Reference
 
@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | COMPLETE (3/3) | 3 plans in 3 waves |
-| 2 | Core Notes | IN PROGRESS (2/4) | 4 plans in 3 waves |
+| 2 | Core Notes | IN PROGRESS (3/4) | 4 plans in 3 waves |
 | 3 | Wiki Links & Search | PLANNED | 6 plans in 3 waves |
 | 4 | Calendar & Daily Notes | PLANNED | 2 plans in 2 waves |
 | 5 | Chat Integration | Pending | -- |
@@ -41,7 +41,7 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 |------|------|-------------|--------|
 | 02-01 | 1 | Frontend stack setup | Complete |
 | 02-02 | 1 | Folder commands | Complete |
-| 02-03 | 2 | Sidebar tree component | Pending |
+| 02-03 | 2 | Sidebar tree component | Complete |
 | 02-04 | 3 | Note editor integration | Pending |
 
 ## Accumulated Context
@@ -71,6 +71,10 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-02] Cannot delete default Notes folder (id=1)
 - [02-02] Made commands modules public (not re-exported) for lib.rs access pattern
 - [02-02] UpdateFolderInput uses Option types for partial updates
+- [02-03] useFolders fetches children for each parent_id (enables recursive tree)
+- [02-03] FolderTree starts expanded by default for discoverability
+- [02-03] Notes list shows preview text from content (first 60 chars)
+- [02-03] All Notes option shows notes regardless of folder filter
 
 ### Research Completed
 - Stack: Tauri 2.9.x, React 19, TipTap 3.15.x, Zustand 5.x, SQLite FTS5
@@ -101,13 +105,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 - [02-02] Generated bindings expanded: 146→241 lines (5→10 commands, 3→6 types)
 - [02-02] Bindings regenerate at runtime in debug mode, not during build
 - [02-02] Protection logic: cannot delete default "Notes" folder (id=1)
+- [02-03] TanStack Query hooks wrap all Tauri commands with proper cache invalidation
+- [02-03] 8 new files created (hooks + components) for sidebar navigation
+- [02-03] App.tsx simplified to use Layout component with empty state
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-01-24
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
-Next: Continue Phase 2 - execute 02-03-PLAN.md (Sidebar tree component)
+Next: Continue Phase 2 - execute 02-04-PLAN.md (Note editor integration)
 
 ## Files
 
@@ -121,4 +128,5 @@ Next: Continue Phase 2 - execute 02-03-PLAN.md (Sidebar tree component)
 - `.planning/phases/02-core-notes/` - Phase 2 execution plans
 - `.planning/phases/02-core-notes/02-01-SUMMARY.md` - Plan 01 completion summary
 - `.planning/phases/02-core-notes/02-02-SUMMARY.md` - Plan 02 completion summary
+- `.planning/phases/02-core-notes/02-03-SUMMARY.md` - Plan 03 completion summary
 - `.planning/research/SUMMARY.md` - Research synthesis
