@@ -1846,7 +1846,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 message.reference and message.reference.resolved and message.reference.resolved.author == self.user
             )
 
-        # Try to acquire channel for processing (queue if busy)
+        # Route through adapter if enabled (Strangler Fig pattern)
+        # NOTE: Adapter currently bypasses queue for simplicity.
+        # Full queue integration through adapter is Phase 3+ work.
+        if self._adapter and USE_DISCORD_ADAPTER:
+            # Convert to platform-agnostic message
+            platform_msg = self._adapter.message_to_platform(message)
+            # Keep original Discord message for delegation
+            platform_msg.metadata["_discord_message"] = message
+            # Delegate to adapter (which delegates back to _handle_message)
+            await self._adapter.handle_message(platform_msg)
+            return
+
+        # Legacy path: direct processing (unchanged)
         await self._process_with_queue(message, is_dm, is_mention)
 
     async def _process_with_queue(self, message: DiscordMessage, is_dm: bool, is_mention: bool = False):
