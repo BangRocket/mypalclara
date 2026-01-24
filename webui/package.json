@@ -18,8 +18,12 @@
     "@tiptap/pm": "^3.17.0",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
+    "@tiptap/suggestion": "^3.17.0",
+    "cmdk": "^1.1.1",
+    "fuse.js": "^7.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "tippy.js": "^6.3.7",
     "zustand": "^5.0.10"
   },
   "devDependencies": {
