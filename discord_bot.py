@@ -218,6 +218,9 @@ MAX_IMAGES_PER_REQUEST = int(os.getenv("DISCORD_MAX_IMAGES_PER_REQUEST", "1"))
 def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> tuple[bytes, str]:
     """Resize an image to fit within max_dimension while preserving aspect ratio.
 
+    DEPRECATED: Use clara_core.discord.utils.resize_image_for_vision instead.
+    This wrapper maintains backward compatibility during the refactoring period.
+
     Args:
         image_bytes: Raw image bytes
         max_dimension: Maximum pixels on longest edge (default: 1568)
@@ -225,48 +228,9 @@ def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_D
     Returns:
         Tuple of (resized image bytes in JPEG format, media_type)
     """
-    with Image.open(io.BytesIO(image_bytes)) as img:
-        # Get original dimensions
-        orig_width, orig_height = img.size
+    from clara_core.discord.utils import resize_image_for_vision as _resize_impl
 
-        # Check if resize is needed
-        if orig_width <= max_dimension and orig_height <= max_dimension:
-            # Image is already small enough, but still convert to JPEG for consistency
-            # (unless it's already a small PNG/GIF that should stay as-is)
-            if len(image_bytes) < 500_000:  # < 500KB, keep original format
-                # Determine format from image
-                img_format = img.format or "PNG"
-                media_type = f"image/{img_format.lower()}"
-                if media_type == "image/jpeg":
-                    media_type = "image/jpeg"
-                return image_bytes, media_type
-
-        # Calculate new dimensions maintaining aspect ratio
-        if orig_width > orig_height:
-            new_width = max_dimension
-            new_height = int(orig_height * (max_dimension / orig_width))
-        else:
-            new_height = max_dimension
-            new_width = int(orig_width * (max_dimension / orig_height))
-
-        # Convert to RGB if necessary (for JPEG output)
-        if img.mode in ("RGBA", "P", "LA"):
-            # Create white background for transparency
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            if img.mode == "P":
-                img = img.convert("RGBA")
-            background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-            img = background
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-
-        # Resize with high-quality resampling
-        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-        # Save to bytes as JPEG with good quality
-        output = io.BytesIO()
-        resized.save(output, format="JPEG", quality=85, optimize=True)
-        return output.getvalue(), "image/jpeg"
+    return _resize_impl(image_bytes, max_dimension)
 
 
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
@@ -363,17 +327,14 @@ def _get_current_time() -> str:
 def _format_discord_timestamp(dt: datetime) -> str:
     """Format a Discord message timestamp in the user's timezone.
 
+    DEPRECATED: Use clara_core.discord.utils.format_user_timezone_timestamp instead.
+    This wrapper maintains backward compatibility during the refactoring period.
+
     Returns format like "10:43 PM EST".
     """
-    from zoneinfo import ZoneInfo
+    from clara_core.discord.utils import format_user_timezone_timestamp
 
-    try:
-        tz = ZoneInfo(DEFAULT_TIMEZONE)
-        # Discord timestamps are always UTC-aware
-        local_dt = dt.astimezone(tz)
-        return local_dt.strftime("%-I:%M %p %Z")
-    except Exception:
-        return dt.strftime("%H:%M UTC")
+    return format_user_timezone_timestamp(dt, DEFAULT_TIMEZONE)
 
 
 async def init_modular_tools() -> None:
