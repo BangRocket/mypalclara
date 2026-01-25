@@ -23,8 +23,10 @@ from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.status import Status
 
 from adapters.cli import CLIAdapter
+from adapters.cli.logging import configure_cli_logging
 from clara_core import (
     MemoryManager,
     get_config,
@@ -101,13 +103,30 @@ async def generate_response(
     # Get streaming LLM
     llm_stream = make_llm_streaming(tier=tier_override)
 
-    # Stream response with Rich Live
+    # Show subtle spinner while thinking
     console.print()
     console.print("[bold]Clara:[/bold]")
 
     accumulated = ""
-    with Live(Markdown(""), console=console, refresh_per_second=10, transient=False) as live:
-        for chunk in llm_stream(prompt_messages):
+
+    # Brief spinner before streaming starts
+    with Status(
+        "[dim]thinking...[/dim]",
+        console=console,
+        spinner="dots",
+        spinner_style="dim",
+    ):
+        # Initialize the stream (first chunk triggers spinner to stop)
+        stream_iter = iter(llm_stream(prompt_messages))
+        try:
+            first_chunk = next(stream_iter)
+            accumulated += first_chunk
+        except StopIteration:
+            pass
+
+    # Now stream the response with Live
+    with Live(Markdown(accumulated), console=console, refresh_per_second=10, transient=False) as live:
+        for chunk in stream_iter:
             accumulated += chunk
             live.update(Markdown(accumulated))
 
@@ -190,7 +209,10 @@ def parse_tier_prefix(content: str) -> tuple[str | None, str]:
 
 async def main() -> None:
     """Main CLI entry point."""
-    # Load environment first
+    # Configure logging FIRST - before any other imports that trigger logging
+    log_file = configure_cli_logging()
+
+    # Load environment
     load_dotenv(override=True)
 
     # Initialize platform
@@ -216,6 +238,7 @@ async def main() -> None:
     # Welcome message
     console.print(f"[bold blue]Clara CLI v{get_version()}[/bold blue]")
     console.print(f"User: {user_id}")
+    console.print(f"Logs: {log_file}")
     console.print("Type your message. Ctrl+C to cancel, Ctrl+D to exit.")
     console.print("Model prefixes: !high, !mid, !low")
     console.print()
