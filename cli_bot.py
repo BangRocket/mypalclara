@@ -590,10 +590,10 @@ async def main() -> None:
                 mm, console, session, user_id, context_id, project_id, content, tier_override
             )
 
-            # Store exchange in memory
+            # Store exchange in memory (run in background to not block prompt)
             if response:
-                await store_exchange(
-                    mm, user_id, context_id, project_id, content, response
+                asyncio.create_task(
+                    store_exchange(mm, user_id, context_id, project_id, content, response)
                 )
 
         except KeyboardInterrupt:
