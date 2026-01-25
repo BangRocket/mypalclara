@@ -365,25 +365,22 @@ async def _generate_with_tools_anthropic(
             console.print()
             return text_content
 
-        # Build assistant message in Anthropic format for message history
-        assistant_content = []
-        if text_content:
-            assistant_content.append({"type": "text", "text": text_content})
-        for tu in tool_uses:
-            assistant_content.append({
-                "type": "tool_use",
-                "id": tu.id,
-                "name": tu.name,
-                "input": tu.input,
-            })
-
+        # Build assistant message in OpenAI format (converter will handle it)
+        # This ensures _convert_message_to_anthropic properly converts to Anthropic format
         messages.append({
             "role": "assistant",
-            "content": assistant_content,
+            "content": text_content or "",
+            "tool_calls": [
+                {
+                    "id": tu.id,
+                    "type": "function",
+                    "function": {"name": tu.name, "arguments": json.dumps(tu.input)},
+                }
+                for tu in tool_uses
+            ],
         })
 
-        # Execute each tool call and collect results
-        tool_results = []
+        # Execute each tool call and add results in OpenAI format
         for idx, tool_use in enumerate(tool_uses, 1):
             tool_name = tool_use.name
             arguments = tool_use.input if isinstance(tool_use.input, dict) else {}
@@ -397,17 +394,12 @@ async def _generate_with_tools_anthropic(
             except Exception as e:
                 result = f"Error: {str(e)}"
 
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_use.id,
+            # Add tool result in OpenAI format (converter will handle it)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_use.id,
                 "content": result,
             })
-
-        # Add tool results as user message (Anthropic format)
-        messages.append({
-            "role": "user",
-            "content": tool_results,
-        })
 
     # Max iterations reached
     console.print(
