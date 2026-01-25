@@ -34,7 +34,9 @@ from clara_core import (
     init_platform,
     make_llm_streaming,
 )
+from clara_core.mcp import get_mcp_manager, init_mcp
 from db.connection import SessionLocal
+from tools import ToolContext, get_registry, init_tools
 
 
 async def generate_response(
@@ -180,6 +182,56 @@ async def store_exchange(
     )
 
 
+def get_cli_tools() -> list[dict]:
+    """Get all available tools for CLI (native + MCP).
+
+    Returns:
+        List of tool definitions in OpenAI format
+    """
+    # Get native tools from registry
+    registry = get_registry()
+    native_tools = registry.get_tools(platform="cli", format="openai")
+
+    # Get MCP tools if available
+    mcp_manager = get_mcp_manager()
+    mcp_tools = []
+    if mcp_manager:
+        try:
+            mcp_tools = mcp_manager.get_tools_openai_format()
+        except Exception as e:
+            print(f"[CLI] Warning: Failed to get MCP tools: {e}")
+
+    return native_tools + mcp_tools
+
+
+def make_tool_context(
+    user_id: str,
+    console: Console,
+    session: PromptSession,
+) -> ToolContext:
+    """Create a ToolContext for CLI tool execution.
+
+    Args:
+        user_id: User identifier
+        console: Rich Console instance
+        session: PromptSession for interactive approval
+
+    Returns:
+        ToolContext with CLI-specific extras
+    """
+    return ToolContext(
+        user_id=user_id,
+        channel_id="cli-terminal",
+        platform="cli",
+        extra={
+            "console": console,
+            "session": session,
+            "shell_cwd": os.getcwd(),
+            "shell_env": {},
+        },
+    )
+
+
 def parse_tier_prefix(content: str) -> tuple[str | None, str]:
     """Parse tier prefix from user input.
 
@@ -217,6 +269,10 @@ async def main() -> None:
 
     # Initialize platform
     init_platform()
+
+    # Initialize tools and MCP
+    await init_tools(hot_reload=False)
+    await init_mcp()
 
     # Get singletons
     mm = MemoryManager.get_instance()
