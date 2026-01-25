@@ -17,6 +17,12 @@ from __future__ import annotations
 import asyncio
 import os
 
+# Configure logging FIRST - before any imports that trigger logging
+# This must happen before clara_core imports, which load mem0 at module level
+from adapters.cli.logging import configure_cli_logging
+
+_LOG_FILE = configure_cli_logging()
+
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -26,7 +32,6 @@ from rich.markdown import Markdown
 from rich.status import Status
 
 from adapters.cli import CLIAdapter
-from adapters.cli.logging import configure_cli_logging
 from clara_core import (
     MemoryManager,
     get_config,
@@ -534,8 +539,8 @@ def parse_tier_prefix(content: str) -> tuple[str | None, str]:
 
 async def main() -> None:
     """Main CLI entry point."""
-    # Configure logging FIRST - before any other imports that trigger logging
-    log_file = configure_cli_logging()
+    # Logging already configured at module load (before imports)
+    log_file = _LOG_FILE
 
     # Load environment
     load_dotenv(override=True)
