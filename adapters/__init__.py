@@ -6,6 +6,7 @@ objects (e.g., Discord messages) and Clara's platform-agnostic abstractions.
 
 Available adapters:
     - discord: Discord bot adapter (adapters.discord.DiscordAdapter)
+    - cli: CLI adapter for terminal interaction (adapters.cli.CLIAdapter)
 
 As new platforms are added, their adapters will be registered here.
 """
