@@ -11,9 +11,12 @@ The bot name is extracted from the first line of the personality if it starts wi
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
+
+logger = logging.getLogger("config.bot")
 
 # Default bot name
 BOT_NAME = os.getenv("BOT_NAME", "Clara")
@@ -54,14 +57,14 @@ def _load_personality() -> str:
     if personality_file:
         path = Path(personality_file)
         if path.exists():
-            print(f"[config] Loading personality from {personality_file}")
+            logger.debug(f"Loading personality from {personality_file}")
             return path.read_text(encoding="utf-8").strip()
-        print(f"[config] WARNING: BOT_PERSONALITY_FILE not found: {personality_file}")
+        logger.warning(f"BOT_PERSONALITY_FILE not found: {personality_file}")
 
     # Priority 2: Inline env var
     personality_env = os.getenv("BOT_PERSONALITY")
     if personality_env:
-        print("[config] Using personality from BOT_PERSONALITY env var")
+        logger.debug("Using personality from BOT_PERSONALITY env var")
         return personality_env.strip()
 
     # Priority 3: Default

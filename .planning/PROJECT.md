@@ -1,80 +1,86 @@
-# MyPalClara
+# MyPalClara Platform Refactor
 
 ## What This Is
 
-MyPalClara is a personal AI assistant with persistent memory, currently accessed via Discord. This milestone adds a desktop UI — a shared knowledge platform where Clara and the user collaborate on notes, ideas, and conversations in one unified workspace.
+Refactoring MyPalClara to separate the core AI assistant functionality (memory, personality, LLM, tools, MCP) from platform-specific code (Discord), enabling multiple input interfaces. The first new interface is a CLI that provides a Claude Code-like terminal experience with Clara's personality and shared memory.
 
 ## Core Value
 
-A seamless collaborative space where human and AI knowledge blend together — Clara reads, writes, and references notes alongside the user, making the knowledge base truly shared.
-
-## Current Milestone: v1.0 MyPalClara Desktop UI
-
-**Goal:** Build a Tauri + React desktop app that serves as the primary interface for Clara, combining chat and collaborative knowledge management.
-
-**Target features:**
-- Desktop chat interface connected to Clara's backend
-- Notes with markdown editor, folders, autosave
-- Wiki-style linking with backlinks
-- Full-text search across notes
-- Calendar with daily notes and events
-- Clara can read, create, and edit notes
-- Attribution toggle (see who wrote what)
+Clara works identically across any interface — same personality, same memory, same capabilities — with platform-appropriate presentation.
 
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+*Existing capabilities from the current codebase:*
+
+- ✓ LLM provider abstraction (OpenRouter, NanoGPT, OpenAI, Anthropic) — existing
+- ✓ Session-based conversation management — existing
+- ✓ mem0 semantic memory integration — existing
+- ✓ Tool registry with async execution — existing
+- ✓ MCP plugin system for extensible tools — existing
+- ✓ Discord bot with streaming responses — existing
+- ✓ Code sandbox execution (Docker/remote) — existing
+- ✓ File storage (local/S3) — existing
+- ✓ Personality and persona system — existing
+- ✓ Model tier selection (high/mid/low) — existing
+- ✓ Skills system — existing
 
 ### Active
 
-- [ ] Desktop app shell (Tauri + React + TypeScript)
-- [ ] Notes CRUD with markdown editor
-- [ ] Folder organization with sidebar navigation
-- [ ] Clara chat panel integrated into UI
-- [ ] Wiki links and backlinks
-- [ ] Full-text search (SQLite FTS5)
-- [ ] Calendar view with daily notes
-- [ ] Clara can create/read/edit notes
-- [ ] Export notes as markdown files
-- [ ] Attribution toggle for Clara vs user content
+*New capabilities for this milestone:*
+
+- [ ] Platform-agnostic core that any interface can use
+- [ ] Abstract "channel" concept (Discord channels, DMs, CLI sessions)
+- [ ] CLI interface with REPL-style chat
+- [ ] CLI streaming output (like Claude Code)
+- [ ] CLI file read/write tools
+- [ ] CLI shell command execution
+- [ ] CLI MCP server access
+- [ ] CLI Skills support
+- [ ] Shared user memory across all platforms
+- [ ] Separate conversation context per channel/session
 
 ### Out of Scope
 
-- Mobile app — desktop-first, mobile later
-- Multi-user collaboration — single user + Clara only for v1
-- Cloud sync — local SQLite only, export for backup
-- Real-time collaboration — not needed for single user + AI
+- Web UI — future milestone, not this one
+- Slack integration — future milestone
+- Mobile app — no plans
+- Multi-user CLI — personal use only
+- Breaking Discord functionality — must remain fully operational
 
 ## Context
 
-**Starting point:** Grafnote (github.com/ily123/grafnote) as UI reference — an Evernote clone with Obsidian styling. Completely rewritten with modern stack.
+**Current architecture has partial abstraction:**
+- `clara_core/` exists with `MemoryManager`, `ToolRegistry`, `PlatformAdapter`
+- `PlatformAdapter` base class exists but Discord implementation is tangled in 4,391-line `discord_bot.py`
+- Some tools are Discord-specific (send embeds, reactions) vs platform-agnostic
 
-**Existing infrastructure:**
-- Clara backend: mem0 for memory, PostgreSQL for sessions/messages
-- Discord bot: Current primary interface
-- FastAPI services: OAuth, monitoring dashboards
+**The refactor challenge:**
+- Extract truly platform-agnostic core from `discord_bot.py`
+- Make `PlatformAdapter` a real abstraction that CLI can implement
+- Handle platform-specific tool variants (e.g., file sending works differently in CLI vs Discord)
 
-**Technical approach:**
-- Tauri for desktop shell (~5MB binary vs Electron's ~150MB)
-- React + TypeScript for frontend
-- SQLite for local note storage (markdown as text blobs)
-- Connects to existing Clara backend via API
+**CLI goals:**
+- Feel like Claude Code but with Clara's personality
+- File operations and shell commands for coding tasks
+- Same mem0 memories as Discord Clara
+- CLI sessions are just another "channel" in the system
 
 ## Constraints
 
-- **Stack**: Tauri + React + TypeScript + SQLite (decided)
-- **Location**: `/webui/` directory in existing repo
-- **Integration**: Must connect to existing Clara backend, not standalone
+- **Backwards compatibility**: Discord bot must continue working throughout refactor
+- **Same codebase**: CLI and Discord share one repo, one core
+- **Personal use**: CLI is for owner only, no auth/multi-user complexity
+- **Python stack**: Continue using Python 3.11+, Poetry, existing dependencies
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Tauri over Electron | Smaller binary (~5MB vs ~150MB), Rust performance, modern | — Pending |
-| SQLite with markdown blobs | Local-first, portable, exportable to files | — Pending |
-| Shared knowledge model | Clara is co-author, not just assistant | — Pending |
+| CLI as first new platform | Simplest to implement, immediate personal value | — Pending |
+| Shared memory, separate conversations | Matches current Discord channel behavior | — Pending |
+| Streaming output for CLI | Matches Claude Code UX, better experience | — Pending |
 
 ---
-*Last updated: 2026-01-23 after milestone v1.0 initialization*
+*Last updated: 2026-01-24 after initialization*

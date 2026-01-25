@@ -28,6 +28,38 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class LoggerWriter:
+    """File-like object that writes to a logger.
+
+    Used to capture MCP server stderr and route it through Python logging
+    instead of printing directly to console.
+    """
+
+    def __init__(self, logger: logging.Logger, level: int = logging.DEBUG, prefix: str = "") -> None:
+        self.logger = logger
+        self.level = level
+        self.prefix = prefix
+        self._buffer = ""
+
+    def write(self, message: str) -> int:
+        """Write message to logger, buffering until newline."""
+        if not message:
+            return 0
+
+        self._buffer += message
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            if line.strip():  # Only log non-empty lines
+                self.logger.log(self.level, f"{self.prefix}{line.rstrip()}")
+        return len(message)
+
+    def flush(self) -> None:
+        """Flush any remaining buffer content."""
+        if self._buffer.strip():
+            self.logger.log(self.level, f"{self.prefix}{self._buffer.rstrip()}")
+            self._buffer = ""
+
+
 @dataclass
 class MCPTool:
     """Represents a tool discovered from an MCP server."""
@@ -140,8 +172,14 @@ class MCPClient:
             self._exit_stack = AsyncExitStack()
             await self._exit_stack.__aenter__()
 
-            # Enter stdio client context
-            read_stream, write_stream = await self._exit_stack.enter_async_context(stdio_client(params))
+            # Route MCP server stderr through our logging system
+            # This captures server startup messages without polluting the console
+            server_logger = LoggerWriter(logger, logging.DEBUG, prefix=f"[{self.name}] ")
+
+            # Enter stdio client context with logged stderr
+            read_stream, write_stream = await self._exit_stack.enter_async_context(
+                stdio_client(params, errlog=server_logger)
+            )
 
             # Enter session context
             self._session = await self._exit_stack.enter_async_context(ClientSession(read_stream, write_stream))

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from .client import LoggerWriter
 from .models import (
     LocalServerConfig,
     get_local_server_dir,
@@ -153,9 +154,12 @@ class LocalServerProcess:
             self._exit_stack = AsyncExitStack()
             await self._exit_stack.__aenter__()
 
-            # Enter stdio client context
+            # Route server stderr through logging system
+            server_errlog = LoggerWriter(logger, logging.DEBUG, prefix=f"[{self.name}] ")
+
+            # Enter stdio client context with logged stderr
             read_stream, write_stream = await self._exit_stack.enter_async_context(
-                stdio_client(params)
+                stdio_client(params, errlog=server_errlog)
             )
 
             # Enter session context
