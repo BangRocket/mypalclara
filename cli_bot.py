@@ -33,6 +33,7 @@ from clara_core import (
     get_version,
     init_platform,
     make_llm_streaming,
+    make_llm_with_tools,
 )
 from clara_core.mcp import get_mcp_manager, init_mcp
 from db.connection import SessionLocal
@@ -42,17 +43,19 @@ from tools import ToolContext, get_registry, init_tools
 async def generate_response(
     mm: MemoryManager,
     console: Console,
+    session: PromptSession,
     user_id: str,
     context_id: str,
     project_id: str,
     user_message: str,
     tier_override: str | None = None,
 ) -> str:
-    """Generate a streaming response from Clara.
+    """Generate a streaming response from Clara with tool execution support.
 
     Args:
         mm: The MemoryManager instance
         console: Rich Console for output
+        session: PromptSession for interactive approvals
         user_id: User identifier
         context_id: Context identifier (e.g., "cli-default")
         project_id: Project identifier
@@ -73,9 +76,9 @@ async def generate_response(
     # Get session and recent messages
     db = SessionLocal()
     try:
-        session = mm.get_or_create_session(db, user_id, context_id, project_id)
-        recent_msgs = mm.get_recent_messages(db, session.id)
-        session_summary = session.session_summary if hasattr(session, "session_summary") else None
+        db_session = mm.get_or_create_session(db, user_id, context_id, project_id)
+        recent_msgs = mm.get_recent_messages(db, db_session.id)
+        session_summary = db_session.session_summary if hasattr(db_session, "session_summary") else None
     finally:
         db.close()
 
@@ -102,7 +105,34 @@ async def generate_response(
         recurring_topics=recurring_topics,
     )
 
-    # Get streaming LLM
+    # Get available tools
+    tools = get_cli_tools()
+
+    # Check if we have tools - use tool-enabled LLM if so
+    if tools:
+        return await _generate_with_tools(
+            console, session, user_id, prompt_messages, tools, tier_override
+        )
+    else:
+        # No tools, use streaming response
+        return await _generate_streaming(console, prompt_messages, tier_override)
+
+
+async def _generate_streaming(
+    console: Console,
+    messages: list[dict],
+    tier_override: str | None = None,
+) -> str:
+    """Generate a streaming response without tools.
+
+    Args:
+        console: Rich Console for output
+        messages: Prompt messages
+        tier_override: Optional tier override
+
+    Returns:
+        Complete assistant response
+    """
     llm_stream = make_llm_streaming(tier=tier_override)
 
     # Show subtle spinner while thinking
@@ -119,7 +149,7 @@ async def generate_response(
         spinner_style="dim",
     ):
         # Initialize the stream (first chunk triggers spinner to stop)
-        stream_iter = iter(llm_stream(prompt_messages))
+        stream_iter = iter(llm_stream(messages))
         try:
             first_chunk = next(stream_iter)
             accumulated += first_chunk
@@ -134,6 +164,117 @@ async def generate_response(
 
     console.print()  # Spacing after response
     return accumulated
+
+
+async def _generate_with_tools(
+    console: Console,
+    session: PromptSession,
+    user_id: str,
+    messages: list[dict],
+    tools: list[dict],
+    tier_override: str | None = None,
+) -> str:
+    """Generate a response with tool execution loop.
+
+    Args:
+        console: Rich Console for output
+        session: PromptSession for interactive approvals
+        user_id: User identifier
+        messages: Prompt messages (modified in place)
+        tools: Available tools in OpenAI format
+        tier_override: Optional tier override
+
+    Returns:
+        Final assistant response
+    """
+    # Get LLM with tool support
+    llm_call = make_llm_with_tools(tools=tools, tier=tier_override)
+
+    # Create tool context
+    tool_context = make_tool_context(user_id, console, session)
+    registry = get_registry()
+
+    # Tool execution loop (max 10 iterations to prevent infinite loops)
+    max_iterations = 10
+    iteration = 0
+
+    console.print()
+    console.print("[bold]Clara:[/bold]")
+
+    while iteration < max_iterations:
+        iteration += 1
+
+        # Show thinking spinner
+        with Status(
+            "[dim]thinking...[/dim]" if iteration == 1 else "[dim]processing...[/dim]",
+            console=console,
+            spinner="dots",
+            spinner_style="dim",
+        ):
+            response = llm_call(messages)
+
+        # Check for tool calls
+        if not response.choices or not response.choices[0].message.tool_calls:
+            # No tool calls - final response
+            final_content = response.choices[0].message.content or ""
+            console.print(Markdown(final_content))
+            console.print()
+            return final_content
+
+        # Extract tool calls
+        assistant_message = response.choices[0].message
+        tool_calls = assistant_message.tool_calls
+
+        # Add assistant message with tool calls to history
+        messages.append(
+            {
+                "role": "assistant",
+                "content": assistant_message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in tool_calls
+                ],
+            }
+        )
+
+        # Execute each tool call
+        for idx, tool_call in enumerate(tool_calls, 1):
+            tool_name = tool_call.function.name
+            try:
+                import json
+
+                arguments = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+
+            # Show which tool is being used
+            console.print(f"[dim]🛠  Using {tool_name}... (step {idx})[/dim]")
+
+            # Execute tool
+            try:
+                result = await registry.execute(tool_name, arguments, tool_context)
+            except Exception as e:
+                result = f"Error: {str(e)}"
+
+            # Add tool result to messages
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                }
+            )
+
+    # Max iterations reached
+    console.print(
+        "[yellow]Warning: Maximum tool execution iterations reached. Returning last result.[/yellow]"
+    )
+    console.print()
+    return "I encountered too many tool calls and had to stop. Please try rephrasing your request."
 
 
 async def store_exchange(
@@ -314,7 +455,7 @@ async def main() -> None:
 
             # Generate response
             response = await generate_response(
-                mm, console, user_id, context_id, project_id, content, tier_override
+                mm, console, session, user_id, context_id, project_id, content, tier_override
             )
 
             # Store exchange in memory
