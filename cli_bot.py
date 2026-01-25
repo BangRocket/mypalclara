@@ -34,6 +34,7 @@ from clara_core import (
     init_platform,
     make_llm_streaming,
     make_llm_with_tools,
+    make_llm_with_tools_anthropic,
 )
 from clara_core.mcp import get_mcp_manager, init_mcp
 from db.connection import SessionLocal
@@ -187,7 +188,16 @@ async def _generate_with_tools(
     Returns:
         Final assistant response
     """
-    # Get LLM with tool support
+    # Check which provider to use
+    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+
+    # Use native Anthropic SDK for anthropic provider (better tool support)
+    if provider == "anthropic":
+        return await _generate_with_tools_anthropic(
+            console, session, user_id, messages, tools, tier_override
+        )
+
+    # OpenAI-compatible providers
     llm_call = make_llm_with_tools(tools=tools, tier=tier_override)
 
     # Create tool context
@@ -268,6 +278,136 @@ async def _generate_with_tools(
                     "content": result,
                 }
             )
+
+    # Max iterations reached
+    console.print(
+        "[yellow]Warning: Maximum tool execution iterations reached. Returning last result.[/yellow]"
+    )
+    console.print()
+    return "I encountered too many tool calls and had to stop. Please try rephrasing your request."
+
+
+async def _generate_with_tools_anthropic(
+    console: Console,
+    session: PromptSession,
+    user_id: str,
+    messages: list[dict],
+    tools: list[dict],
+    tier_override: str | None = None,
+) -> str:
+    """Generate a response with tool execution using native Anthropic SDK.
+
+    This provides better tool calling support for Claude proxies like clewdr.
+
+    Args:
+        console: Rich Console for output
+        session: PromptSession for interactive approvals
+        user_id: User identifier
+        messages: Prompt messages (modified in place)
+        tools: Available tools in OpenAI format
+        tier_override: Optional tier override
+
+    Returns:
+        Final assistant response
+    """
+    import json
+
+    # Get native Anthropic LLM with tool support
+    llm_call = make_llm_with_tools_anthropic(tools=tools, tier=tier_override)
+
+    # Create tool context
+    tool_context = make_tool_context(user_id, console, session)
+    registry = get_registry()
+
+    # Tool execution loop (max 10 iterations to prevent infinite loops)
+    max_iterations = 10
+    iteration = 0
+
+    console.print()
+    console.print("[bold]Clara:[/bold]")
+
+    while iteration < max_iterations:
+        iteration += 1
+
+        # Show thinking spinner
+        with Status(
+            "[dim]thinking...[/dim]" if iteration == 1 else "[dim]processing...[/dim]",
+            console=console,
+            spinner="dots",
+            spinner_style="dim",
+        ):
+            response = llm_call(messages)
+
+        # Anthropic returns content as a list of blocks
+        # Check stop_reason for tool_use
+        if response.stop_reason != "tool_use":
+            # Extract text content from response
+            final_content = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    final_content += block.text
+            console.print(Markdown(final_content))
+            console.print()
+            return final_content
+
+        # Extract tool use blocks and text content
+        text_content = ""
+        tool_uses = []
+        for block in response.content:
+            if hasattr(block, "text"):
+                text_content += block.text
+            elif block.type == "tool_use":
+                tool_uses.append(block)
+
+        if not tool_uses:
+            # No tool uses found despite stop_reason - return what we have
+            console.print(Markdown(text_content))
+            console.print()
+            return text_content
+
+        # Build assistant message in Anthropic format for message history
+        assistant_content = []
+        if text_content:
+            assistant_content.append({"type": "text", "text": text_content})
+        for tu in tool_uses:
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tu.id,
+                "name": tu.name,
+                "input": tu.input,
+            })
+
+        messages.append({
+            "role": "assistant",
+            "content": assistant_content,
+        })
+
+        # Execute each tool call and collect results
+        tool_results = []
+        for idx, tool_use in enumerate(tool_uses, 1):
+            tool_name = tool_use.name
+            arguments = tool_use.input if isinstance(tool_use.input, dict) else {}
+
+            # Show which tool is being used
+            console.print(f"[dim]🛠  Using {tool_name}... (step {idx})[/dim]")
+
+            # Execute tool
+            try:
+                result = await registry.execute(tool_name, arguments, tool_context)
+            except Exception as e:
+                result = f"Error: {str(e)}"
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use.id,
+                "content": result,
+            })
+
+        # Add tool results as user message (Anthropic format)
+        messages.append({
+            "role": "user",
+            "content": tool_results,
+        })
 
     # Max iterations reached
     console.print(
