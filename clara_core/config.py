@@ -5,10 +5,13 @@ Loads environment variables and provides a unified configuration interface.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
+
+logger = logging.getLogger("clara_core.config")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -235,10 +238,10 @@ def init_platform(
 
     # Mark as initialized
     if ClaraConfig._initialized:
-        print("[clara_core] Platform already initialized, skipping")
+        logger.debug("Platform already initialized, skipping")
         return
 
-    print("[clara_core] Initializing platform...")
+    logger.info("Initializing platform...")
 
     # 1. Initialize database
     init_db()
@@ -255,4 +258,4 @@ def init_platform(
         load_initial_profile(config.user_id)
 
     ClaraConfig._initialized = True
-    print("[clara_core] Platform initialized successfully")
+    logger.info("Platform initialized successfully")

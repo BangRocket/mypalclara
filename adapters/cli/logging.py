@@ -37,12 +37,25 @@ def configure_cli_logging() -> Path:
     # Suppress console output from these loggers
     # Set handlers to file-only and disable propagation
     noisy_loggers = [
+        "cli_bot",
+        "config",
+        "config.bot",
         "mem0",
+        "mem0.config",
         "httpx",
         "anthropic",
         "openai",
         "clara_core",
+        "clara_core.config",
+        "clara_core.mcp",
+        "clara_core.mcp.client",
+        "clara_core.mcp.local_server",
+        "clara_core.mcp.manager",
+        "clara_core.tools",
         "db",
+        "tools",
+        "tools.loader",
+        "tools.registry",
         "sqlalchemy.engine",
     ]
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
+
+logger = logging.getLogger("db")
 
 # Support both SQLite (local dev) and PostgreSQL (production)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -24,14 +27,14 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres"):
         pool_pre_ping=True,  # Verify connections before use
         echo=False,
     )
-    print(f"[db] Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
+    logger.info(f"Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
 else:
     # Fallback to SQLite for local development
     DATA_DIR = Path(os.getenv("DATA_DIR", "."))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE_URL = f"sqlite:///{DATA_DIR}/assistant.db"
     engine = create_engine(DATABASE_URL, echo=False, future=True)
-    print(f"[db] Using SQLite: {DATABASE_URL}")
+    logger.info(f"Using SQLite: {DATABASE_URL}")
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

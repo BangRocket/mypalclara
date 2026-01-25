@@ -19,9 +19,13 @@ import os
 
 # Configure logging FIRST - before any imports that trigger logging
 # This must happen before clara_core imports, which load mem0 at module level
+import logging
+
 from adapters.cli.logging import configure_cli_logging
 
 _LOG_FILE = configure_cli_logging()
+
+logger = logging.getLogger("cli_bot")
 
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
@@ -477,7 +481,7 @@ def get_cli_tools() -> list[dict]:
         try:
             mcp_tools = mcp_manager.get_tools_openai_format()
         except Exception as e:
-            print(f"[CLI] Warning: Failed to get MCP tools: {e}")
+            logger.warning(f"Failed to get MCP tools: {e}")
 
     return native_tools + mcp_tools
 
