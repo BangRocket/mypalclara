@@ -2,7 +2,7 @@
 # For local development with docker-compose
 
 # Stage 1: Build Rust MCP server
-FROM rust:1.83-slim AS mcp-builder
+FROM rust:1.85-slim AS mcp-builder
 
 WORKDIR /build
 
