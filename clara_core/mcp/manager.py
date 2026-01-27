@@ -398,8 +398,33 @@ class MCPServerManager:
             total = len(self._local) + len(self._remote)
             logger.info(f"[MCP] Shutting down {total} servers...")
 
-            await self._local.shutdown()
-            await self._remote.shutdown()
+            # Suppress noisy asyncio errors during async generator cleanup
+            # These occur when stdio_client generators are closed from a different task
+            loop = asyncio.get_running_loop()
+            original_handler = loop.get_exception_handler()
+
+            def _shutdown_exception_handler(loop, context):
+                msg = context.get("message", "")
+                exc = context.get("exception")
+                # Suppress known harmless shutdown errors
+                if "closing of asynchronous generator" in msg:
+                    return
+                if exc and ("cancel scope" in str(exc).lower() or "GeneratorExit" in str(exc)):
+                    return
+                # Fall through to original handler for other errors
+                if original_handler:
+                    original_handler(loop, context)
+                else:
+                    loop.default_exception_handler(context)
+
+            loop.set_exception_handler(_shutdown_exception_handler)
+
+            try:
+                await self._local.shutdown()
+                await self._remote.shutdown()
+            finally:
+                # Restore original handler
+                loop.set_exception_handler(original_handler)
 
             self._initialized = False
             logger.info("[MCP] Shutdown complete")
