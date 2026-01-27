@@ -11,11 +11,13 @@ Usage:
     poetry run python scripts/backfill_graph_memory.py --user <id>  # Specific user only
     poetry run python scripts/backfill_graph_memory.py --limit 100  # Limit sessions
     poetry run python scripts/backfill_graph_memory.py --resume     # Resume from progress file
+    poetry run python scripts/backfill_graph_memory.py --parallel 4 # Process 4 sessions concurrently
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -142,7 +144,7 @@ def get_session_messages(db: OrmSession, session_id: str) -> list[Message]:
     )
 
 
-def chunk_messages(messages: list[Message], chunk_size: int = 6) -> list[list[dict]]:
+def chunk_messages(messages: list[Message], chunk_size: int = 4) -> list[list[dict]]:
     """
     Chunk messages into conversation slices for processing.
 
@@ -163,6 +165,105 @@ def chunk_messages(messages: list[Message], chunk_size: int = 6) -> list[list[di
     return chunks
 
 
+async def process_chunk_async(
+    chunk: list[dict],
+    chunk_idx: int,
+    user_id: str,
+    project_id: str,
+    mem0,
+    semaphore: asyncio.Semaphore,
+) -> dict:
+    """Process a single chunk asynchronously."""
+    async with semaphore:
+        try:
+            # Use async add if available, otherwise run sync in thread
+            if hasattr(mem0, 'aadd'):
+                result = await mem0.aadd(
+                    chunk,
+                    user_id=user_id,
+                    agent_id=AGENT_ID,
+                    metadata={"project_id": project_id, "backfill": True},
+                )
+            else:
+                result = await asyncio.to_thread(
+                    mem0.add,
+                    chunk,
+                    user_id=user_id,
+                    agent_id=AGENT_ID,
+                    metadata={"project_id": project_id, "backfill": True},
+                )
+
+            memories_added = 0
+            graph_entities_added = 0
+
+            if isinstance(result, dict):
+                memories_added = len(result.get("results", []))
+                relations = result.get("relations", {})
+                if isinstance(relations, dict):
+                    graph_entities_added = len(relations.get("added_entities", []))
+
+            return {
+                "success": True,
+                "memories_added": memories_added,
+                "graph_entities_added": graph_entities_added,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Chunk {chunk_idx}: {str(e)}",
+            }
+
+
+async def process_session_async(
+    session: Session,
+    messages: list[Message],
+    mem0,
+    chunk_semaphore: asyncio.Semaphore,
+    dry_run: bool = True,
+    verbose: bool = False,
+) -> dict:
+    """
+    Process a session's messages to extract graph relations (async version).
+
+    Returns stats about what was processed.
+    """
+    user_id = session.user_id
+    project_id = session.project_id
+
+    chunks = chunk_messages(messages)
+    stats = {
+        "session_id": session.id,
+        "user_id": user_id,
+        "message_count": len(messages),
+        "chunk_count": len(chunks),
+        "graph_entities_added": 0,
+        "memories_added": 0,
+        "errors": [],
+    }
+
+    if dry_run:
+        return stats
+
+    # Process all chunks concurrently with semaphore limiting
+    tasks = [
+        process_chunk_async(chunk, i, user_id, project_id, mem0, chunk_semaphore)
+        for i, chunk in enumerate(chunks)
+    ]
+    results = await asyncio.gather(*tasks)
+
+    for result in results:
+        if result["success"]:
+            stats["memories_added"] += result["memories_added"]
+            stats["graph_entities_added"] += result["graph_entities_added"]
+        else:
+            stats["errors"].append(result["error"])
+            if verbose:
+                logger.warning(f"    ⚠ {result['error']}")
+
+    return stats
+
+
 def process_session(
     session: Session,
     messages: list[Message],
@@ -171,7 +272,7 @@ def process_session(
     verbose: bool = False,
 ) -> dict:
     """
-    Process a session's messages to extract graph relations.
+    Process a session's messages to extract graph relations (sync version).
 
     Returns stats about what was processed.
     """
@@ -220,6 +321,125 @@ def process_session(
     return stats
 
 
+async def run_parallel(
+    sessions: list[Session],
+    db: OrmSession,
+    mem0,
+    dry_run: bool,
+    verbose: bool,
+    parallel: int,
+    processed_ids: set[str],
+    progress: dict,
+) -> dict:
+    """Run backfill with parallel session processing."""
+    total_sessions = len(sessions)
+    total_stats = {
+        "sessions_processed": 0,
+        "messages_processed": 0,
+        "chunks_processed": 0,
+        "graph_entities_added": 0,
+        "memories_added": 0,
+        "errors": 0,
+    }
+
+    # Semaphore to limit concurrent LLM calls (chunks across all sessions)
+    # Use parallel * 2 to allow some overlap while limiting API pressure
+    chunk_semaphore = asyncio.Semaphore(parallel * 2)
+
+    # Session semaphore to limit concurrent sessions
+    session_semaphore = asyncio.Semaphore(parallel)
+
+    current_date = None
+    start_time = datetime.now()
+
+    async def process_one_session(idx: int, session: Session) -> tuple[int, dict]:
+        """Process a single session with semaphore."""
+        async with session_semaphore:
+            messages = get_session_messages(db, session.id)
+            if not messages:
+                return idx, None
+
+            stats = await process_session_async(
+                session, messages, mem0, chunk_semaphore,
+                dry_run=dry_run, verbose=verbose
+            )
+            return idx, stats
+
+    # Process sessions in batches for better progress reporting
+    batch_size = parallel * 2
+    for batch_start in range(0, total_sessions, batch_size):
+        batch_end = min(batch_start + batch_size, total_sessions)
+        batch_sessions = sessions[batch_start:batch_end]
+
+        # Create tasks for this batch
+        tasks = [
+            process_one_session(batch_start + i, session)
+            for i, session in enumerate(batch_sessions)
+        ]
+
+        # Wait for batch to complete
+        results = await asyncio.gather(*tasks)
+
+        # Process results and update progress
+        for idx, stats in results:
+            if stats is None:
+                continue
+
+            session = sessions[idx]
+            pct = ((idx + 1) / total_sessions) * 100
+
+            # Show date header when date changes
+            session_date = session.started_at.date() if session.started_at else None
+            if session_date and session_date != current_date:
+                current_date = session_date
+                logger.info("")
+                logger.info(f"─── {current_date.strftime('%A, %B %d, %Y')} ───")
+
+            # Update totals
+            total_stats["sessions_processed"] += 1
+            total_stats["messages_processed"] += stats["message_count"]
+            total_stats["chunks_processed"] += stats["chunk_count"]
+            total_stats["graph_entities_added"] += stats["graph_entities_added"]
+            total_stats["memories_added"] += stats["memories_added"]
+            total_stats["errors"] += len(stats["errors"])
+
+            # Status line
+            session_time = format_date(session.started_at) if session.started_at else "unknown"
+            user_display = session.user_id
+            if len(user_display) > 25:
+                user_display = user_display[:22] + "..."
+
+            if dry_run:
+                logger.info(
+                    f"  [{idx + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                    f"{session_time[11:16]} │ "
+                    f"{stats['message_count']:3} msgs, {stats['chunk_count']:2} chunks │ "
+                    f"{user_display}"
+                )
+            else:
+                graph_icon = "🔗" if stats["graph_entities_added"] > 0 else "  "
+                mem_icon = "💾" if stats["memories_added"] > 0 else "  "
+                err_icon = "⚠" if stats["errors"] else " "
+
+                logger.info(
+                    f"  [{idx + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                    f"{session_time[11:16]} │ "
+                    f"{graph_icon} +{stats['graph_entities_added']:2} "
+                    f"{mem_icon} +{stats['memories_added']:2} "
+                    f"{err_icon}│ {user_display}"
+                )
+
+            # Save progress after each session (if not dry run)
+            if not dry_run:
+                processed_ids.add(session.id)
+                progress["processed_session_ids"] = list(processed_ids)
+                progress["last_updated"] = datetime.now().isoformat()
+                progress["stats"] = total_stats
+                save_progress(progress)
+
+    return total_stats
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Backfill graph memory from existing chat history"
@@ -254,6 +474,12 @@ def main():
         action="store_true",
         help="Show detailed progress for each chunk",
     )
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        help="Number of sessions to process in parallel (default: 1)",
+    )
     args = parser.parse_args()
 
     dry_run = not args.apply
@@ -275,6 +501,9 @@ def main():
         sys.exit(1)
 
     logger.info("✓ mem0 initialized with graph memory enabled")
+
+    if args.parallel > 1:
+        logger.info(f"✓ Parallel mode: {args.parallel} concurrent sessions")
 
     # Handle progress
     progress = {}
@@ -328,90 +557,93 @@ def main():
             logger.info("└" + "─" * 58 + "┘")
             logger.info("")
 
-        # Summary stats
-        total_stats = {
-            "sessions_processed": 0,
-            "messages_processed": 0,
-            "chunks_processed": 0,
-            "graph_entities_added": 0,
-            "memories_added": 0,
-            "errors": 0,
-        }
-
-        # Track current date for grouping output
-        current_date = None
         start_time = datetime.now()
 
-        for i, session in enumerate(sessions):
-            messages = get_session_messages(db, session.id)
-
-            if not messages:
-                continue
-
-            # Show date header when date changes
-            session_date = session.started_at.date() if session.started_at else None
-            if session_date and session_date != current_date:
-                current_date = session_date
-                logger.info("")
-                logger.info(f"─── {current_date.strftime('%A, %B %d, %Y')} ───")
-
-            # Calculate progress percentage
-            pct = ((i + 1) / total_sessions) * 100
-
-            # Get session time info
-            session_time = format_date(session.started_at) if session.started_at else "unknown"
-
-            # Truncate user_id for display
-            user_display = session.user_id
-            if len(user_display) > 25:
-                user_display = user_display[:22] + "..."
-
-            stats = process_session(
-                session, messages, MEM0,
-                dry_run=dry_run,
-                verbose=args.verbose
+        # Use async processing if parallel > 1
+        if args.parallel > 1:
+            total_stats = asyncio.run(
+                run_parallel(
+                    sessions, db, MEM0, dry_run, args.verbose,
+                    args.parallel, processed_ids, progress
+                )
             )
+        else:
+            # Original sequential processing
+            total_stats = {
+                "sessions_processed": 0,
+                "messages_processed": 0,
+                "chunks_processed": 0,
+                "graph_entities_added": 0,
+                "memories_added": 0,
+                "errors": 0,
+            }
 
-            # Update totals
-            total_stats["sessions_processed"] += 1
-            total_stats["messages_processed"] += stats["message_count"]
-            total_stats["chunks_processed"] += stats["chunk_count"]
-            total_stats["graph_entities_added"] += stats["graph_entities_added"]
-            total_stats["memories_added"] += stats["memories_added"]
-            total_stats["errors"] += len(stats["errors"])
+            current_date = None
 
-            # Status line
-            if dry_run:
-                logger.info(
-                    f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
-                    f"{session_time[11:16]} │ "
-                    f"{stats['message_count']:3} msgs, {stats['chunk_count']:2} chunks │ "
-                    f"{user_display}"
+            for i, session in enumerate(sessions):
+                messages = get_session_messages(db, session.id)
+
+                if not messages:
+                    continue
+
+                # Show date header when date changes
+                session_date = session.started_at.date() if session.started_at else None
+                if session_date and session_date != current_date:
+                    current_date = session_date
+                    logger.info("")
+                    logger.info(f"─── {current_date.strftime('%A, %B %d, %Y')} ───")
+
+                pct = ((i + 1) / total_sessions) * 100
+                session_time = format_date(session.started_at) if session.started_at else "unknown"
+
+                user_display = session.user_id
+                if len(user_display) > 25:
+                    user_display = user_display[:22] + "..."
+
+                stats = process_session(
+                    session, messages, MEM0,
+                    dry_run=dry_run,
+                    verbose=args.verbose
                 )
-            else:
-                # Show what was extracted
-                graph_icon = "🔗" if stats["graph_entities_added"] > 0 else "  "
-                mem_icon = "💾" if stats["memories_added"] > 0 else "  "
-                err_icon = "⚠" if stats["errors"] else " "
 
-                logger.info(
-                    f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
-                    f"{session_time[11:16]} │ "
-                    f"{graph_icon} +{stats['graph_entities_added']:2} "
-                    f"{mem_icon} +{stats['memories_added']:2} "
-                    f"{err_icon}│ {user_display}"
-                )
+                # Update totals
+                total_stats["sessions_processed"] += 1
+                total_stats["messages_processed"] += stats["message_count"]
+                total_stats["chunks_processed"] += stats["chunk_count"]
+                total_stats["graph_entities_added"] += stats["graph_entities_added"]
+                total_stats["memories_added"] += stats["memories_added"]
+                total_stats["errors"] += len(stats["errors"])
 
-            # Save progress after each session (if not dry run)
-            if not dry_run:
-                processed_ids.add(session.id)
-                progress["processed_session_ids"] = list(processed_ids)
-                progress["last_updated"] = datetime.now().isoformat()
-                progress["stats"] = total_stats
-                save_progress(progress)
+                # Status line
+                if dry_run:
+                    logger.info(
+                        f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                        f"{session_time[11:16]} │ "
+                        f"{stats['message_count']:3} msgs, {stats['chunk_count']:2} chunks │ "
+                        f"{user_display}"
+                    )
+                else:
+                    graph_icon = "🔗" if stats["graph_entities_added"] > 0 else "  "
+                    mem_icon = "💾" if stats["memories_added"] > 0 else "  "
+                    err_icon = "⚠" if stats["errors"] else " "
+
+                    logger.info(
+                        f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                        f"{session_time[11:16]} │ "
+                        f"{graph_icon} +{stats['graph_entities_added']:2} "
+                        f"{mem_icon} +{stats['memories_added']:2} "
+                        f"{err_icon}│ {user_display}"
+                    )
+
+                # Save progress after each session (if not dry run)
+                if not dry_run:
+                    processed_ids.add(session.id)
+                    progress["processed_session_ids"] = list(processed_ids)
+                    progress["last_updated"] = datetime.now().isoformat()
+                    progress["stats"] = total_stats
+                    save_progress(progress)
 
         # Calculate elapsed time
-        elapsed = datetime.now() - start_time
         elapsed_str = format_duration(start_time, datetime.now())
 
         # Print summary
@@ -426,6 +658,8 @@ def main():
         logger.info(f"  Memories added:        {total_stats['memories_added']:,}")
         logger.info(f"  Errors:                {total_stats['errors']:,}")
         logger.info(f"  Time elapsed:          {elapsed_str}")
+        if args.parallel > 1:
+            logger.info(f"  Parallelism:           {args.parallel}x")
 
         if dry_run:
             logger.info("")

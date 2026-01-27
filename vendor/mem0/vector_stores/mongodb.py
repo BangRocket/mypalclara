@@ -12,8 +12,8 @@ except ImportError:
 
 from vendor.mem0.vector_stores.base import VectorStoreBase
 
+# Get logger (don't call basicConfig - let the app configure logging)
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class OutputData(BaseModel):

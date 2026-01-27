@@ -186,6 +186,7 @@ def _get_llm_config() -> dict | None:
                 "api_key": api_key,
                 "anthropic_base_url": base_url,  # Now works with our vendored fix!
                 "temperature": 0,
+                "max_tokens": 8000,  # Increased from 2000 to prevent JSON truncation
             },
         }
 
@@ -197,6 +198,7 @@ def _get_llm_config() -> dict | None:
             "api_key": api_key,
             "openai_base_url": base_url,
             "temperature": 0,
+            "max_tokens": 8000,  # Increased from 2000 to prevent JSON truncation
         },
     }
 
