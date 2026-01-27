@@ -390,7 +390,6 @@ async def run_parallel(
 
             # Show date header when date changes
             session_date = session.started_at.date() if session.started_at else None
-            nonlocal current_date
             if session_date and session_date != current_date:
                 current_date = session_date
                 logger.info("")
