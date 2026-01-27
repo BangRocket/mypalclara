@@ -78,7 +78,7 @@ async def generate_response(
     loop = asyncio.get_event_loop()
 
     # Fetch memories (blocking, run in executor)
-    user_mems, proj_mems = await loop.run_in_executor(
+    user_mems, proj_mems, graph_relations = await loop.run_in_executor(
         None,
         lambda: mm.fetch_mem0_context(user_id, project_id, user_message, is_dm=True),
     )
@@ -113,6 +113,7 @@ async def generate_response(
         user_message,
         emotional_context=emotional_context,
         recurring_topics=recurring_topics,
+        graph_relations=graph_relations,
     )
 
     # Get available tools

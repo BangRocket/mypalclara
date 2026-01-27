@@ -2196,7 +2196,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Fetch memories (DMs prioritize personal, servers prioritize project)
                 # Run in dedicated executor to avoid blocking the event loop
                 loop = asyncio.get_event_loop()
-                user_mems, proj_mems = await loop.run_in_executor(
+                user_mems, proj_mems, graph_relations = await loop.run_in_executor(
                     BLOCKING_IO_EXECUTOR,
                     lambda: self.mm.fetch_mem0_context(
                         user_id,
@@ -2237,6 +2237,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     user_content,
                     emotional_context=emotional_context,
                     recurring_topics=recurring_topics,
+                    graph_relations=graph_relations,
                 )
 
                 # Inject Discord-specific context after the base system prompt

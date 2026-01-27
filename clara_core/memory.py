@@ -36,6 +36,7 @@ SUMMARY_INTERVAL = 10
 MAX_SEARCH_QUERY_CHARS = 6000
 MAX_KEY_MEMORIES = 15  # Key memories always included in every request
 MAX_MEMORIES_PER_TYPE = 35  # Limit per type (50 total - 15 reserved for key memories)
+MAX_GRAPH_RELATIONS = 20  # Limit graph relations to avoid prompt bloat
 
 # Paths for initial profile loading
 BASE_DIR = Path(__file__).parent.parent
@@ -444,7 +445,7 @@ class MemoryManager:
         user_message: str,
         participants: list[dict] | None = None,
         is_dm: bool = False,
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[dict]]:
         """Fetch relevant memories from mem0.
 
         Uses entity-scoped memory with user_id + agent_id for proper isolation.
@@ -452,7 +453,8 @@ class MemoryManager:
         Memory retrieval:
         1. First fetch "key" memories (is_key=true) - always included
         2. Then fetch relevant memories via semantic search
-        3. Combine with key memories first, then relevant (deduplicated)
+        3. Fetch graph relations (entity relationships)
+        4. Combine with key memories first, then relevant (deduplicated)
 
         Args:
             user_id: The user making the request
@@ -462,12 +464,13 @@ class MemoryManager:
             is_dm: Whether this is a DM conversation (changes retrieval priority)
 
         Returns:
-            Tuple of (user_memories, project_memories)
+            Tuple of (user_memories, project_memories, graph_relations)
+            graph_relations is a list of dicts with keys: source, relationship, destination
         """
         from config.mem0 import MEM0
 
         if MEM0 is None:
-            return [], []
+            return [], [], []
 
         # 1. Fetch key memories first (always included)
         key_mems: list[str] = []
@@ -490,12 +493,18 @@ class MemoryManager:
             logger.debug(f"Truncated search query to {MAX_SEARCH_QUERY_CHARS} chars")
 
         # 2. Entity-scoped search: user_id + agent_id
+        # Also collect graph relations from search results
+        graph_relations: list[dict] = []
+
         try:
             user_res = MEM0.search(
                 search_query,
                 user_id=user_id,
                 agent_id=self.agent_id,
             )
+            # Collect graph relations if present
+            if user_res.get("relations"):
+                graph_relations.extend(user_res["relations"])
         except Exception as e:
             logger.error(f"Error searching user memories: {e}", exc_info=True)
             user_res = {"results": []}
@@ -507,6 +516,14 @@ class MemoryManager:
                 agent_id=self.agent_id,
                 filters={"project_id": project_id},
             )
+            # Collect graph relations if present (deduplicate)
+            if proj_res.get("relations"):
+                existing = {(r.get("source"), r.get("relationship"), r.get("destination")) for r in graph_relations}
+                for rel in proj_res["relations"]:
+                    key = (rel.get("source"), rel.get("relationship"), rel.get("destination"))
+                    if key not in existing:
+                        graph_relations.append(rel)
+                        existing.add(key)
         except Exception as e:
             logger.error(f"Error searching project memories: {e}", exc_info=True)
             proj_res = {"results": []}
@@ -563,12 +580,15 @@ class MemoryManager:
             user_mems = user_mems[:num_key + MAX_MEMORIES_PER_TYPE]
         if len(proj_mems) > MAX_MEMORIES_PER_TYPE:
             proj_mems = proj_mems[:MAX_MEMORIES_PER_TYPE]
+        if len(graph_relations) > MAX_GRAPH_RELATIONS:
+            graph_relations = graph_relations[:MAX_GRAPH_RELATIONS]
 
-        if user_mems or proj_mems:
+        if user_mems or proj_mems or graph_relations:
             logger.info(
                 f"Found {len(key_mems)} key, "
                 f"{len(user_mems) - len(key_mems)} user, "
-                f"{len(proj_mems)} project memories"
+                f"{len(proj_mems)} project memories, "
+                f"{len(graph_relations)} graph relations"
             )
             # Send Discord embed with memory summary
             self._send_memory_embed(
@@ -576,9 +596,10 @@ class MemoryManager:
                 key_count=len(key_mems),
                 user_count=len(user_mems) - len(key_mems),
                 proj_count=len(proj_mems),
+                graph_count=len(graph_relations),
                 sample_memories=user_mems[:3] if user_mems else [],
             )
-        return user_mems, proj_mems
+        return user_mems, proj_mems, graph_relations
 
     def _send_memory_embed(
         self,
@@ -587,12 +608,13 @@ class MemoryManager:
         user_count: int,
         proj_count: int,
         sample_memories: list[str],
+        graph_count: int = 0,
     ) -> None:
         """Notify about memory retrieval (if callback registered)."""
         if not self._on_memory_event:
             return
 
-        total = key_count + user_count + proj_count
+        total = key_count + user_count + proj_count + graph_count
         if total == 0:
             return
 
@@ -609,6 +631,7 @@ class MemoryManager:
             "key_count": key_count,
             "user_count": user_count,
             "proj_count": proj_count,
+            "graph_count": graph_count,
             "total": total,
             "samples": samples,
         })
@@ -678,18 +701,31 @@ class MemoryManager:
             if isinstance(result, dict):
                 if result.get("error"):
                     logger.error(f"Error adding memories: {result.get('error')}")
-                elif result.get("results"):
-                    count = len(result.get("results", []))
-                    logger.info(f"Added {count} memories")
-                    # Send Discord embed for memory extraction
-                    self._send_memory_added_embed(
-                        user_id=user_id,
-                        count=count,
-                        source_type=source_type,
-                        results=result.get("results", []),
-                    )
                 else:
-                    logger.debug(f"Add result: {result}")
+                    mem_count = len(result.get("results", []))
+                    # Handle graph relations from add result
+                    relations = result.get("relations", {})
+                    added_entities = relations.get("added_entities", []) if isinstance(relations, dict) else []
+                    deleted_entities = relations.get("deleted_entities", []) if isinstance(relations, dict) else []
+
+                    if mem_count or added_entities:
+                        logger.info(
+                            f"Added {mem_count} memories, "
+                            f"{len(added_entities)} graph entities"
+                        )
+                        if deleted_entities:
+                            logger.debug(f"Deleted {len(deleted_entities)} outdated graph entities")
+
+                        # Send Discord embed for memory extraction
+                        self._send_memory_added_embed(
+                            user_id=user_id,
+                            count=mem_count,
+                            source_type=source_type,
+                            results=result.get("results", []),
+                            graph_added=len(added_entities),
+                        )
+                    else:
+                        logger.debug(f"Add result: {result}")
             else:
                 logger.debug(f"Added memories: {result}")
         except Exception as e:
@@ -701,9 +737,10 @@ class MemoryManager:
         count: int,
         source_type: str,
         results: list[dict],
+        graph_added: int = 0,
     ) -> None:
         """Notify about memory extraction (if callback registered)."""
-        if not self._on_memory_event or count == 0:
+        if not self._on_memory_event or (count == 0 and graph_added == 0):
             return
 
         # Format samples for notification
@@ -719,6 +756,7 @@ class MemoryManager:
             "count": count,
             "source_type": source_type,
             "samples": samples,
+            "graph_added": graph_added,
         })
 
     # ---------- emotional context ----------
@@ -821,6 +859,7 @@ class MemoryManager:
         user_message: str,
         emotional_context: list[dict] | None = None,
         recurring_topics: list[dict] | None = None,
+        graph_relations: list[dict] | None = None,
     ) -> list[dict[str, str]]:
         """Build the full prompt for the LLM.
 
@@ -832,6 +871,7 @@ class MemoryManager:
             user_message: Current user message
             emotional_context: Optional emotional context from recent sessions
             recurring_topics: Optional recurring topic patterns from fetch_topic_recurrence
+            graph_relations: Optional list of entity relationships from graph memory
 
         Returns:
             List of messages ready for LLM
@@ -850,6 +890,12 @@ class MemoryManager:
         if proj_mems:
             proj_block = "\n".join(f"- {m}" for m in proj_mems)
             context_parts.append(f"PROJECT MEMORIES:\n{proj_block}")
+
+        # Add graph relations (entity relationships)
+        if graph_relations:
+            graph_block = self._format_graph_relations(graph_relations)
+            if graph_block:
+                context_parts.append(f"KNOWN RELATIONSHIPS:\n{graph_block}")
 
         # Add emotional context from recent sessions (for tone calibration)
         if emotional_context:
@@ -1034,5 +1080,47 @@ class MemoryManager:
                 lines.append(f"- {topic_name}: {pattern_note}")
             else:
                 lines.append(f"- {topic_name}: mentioned {mention_count} times")
+
+        return "\n".join(lines) if lines else ""
+
+    def _format_graph_relations(self, graph_relations: list[dict]) -> str:
+        """
+        Format graph relations for inclusion in the system prompt.
+
+        Converts entity relationships from the graph store into a readable format.
+
+        Args:
+            graph_relations: List of relation dicts with keys: source, relationship, destination
+                (or source, relationship, target for some providers)
+
+        Returns:
+            Formatted string for the prompt, or empty string if nothing meaningful
+        """
+        if not graph_relations:
+            return ""
+
+        lines = []
+        seen = set()  # Deduplicate
+
+        for rel in graph_relations:
+            source = rel.get("source", "")
+            relationship = rel.get("relationship", "")
+            # Handle both "destination" and "target" keys
+            destination = rel.get("destination") or rel.get("target", "")
+
+            if not source or not relationship or not destination:
+                continue
+
+            # Clean up relationship name (convert snake_case to readable)
+            readable_rel = relationship.replace("_", " ").lower()
+
+            # Create dedup key
+            key = (source.lower(), readable_rel, destination.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Format: "josh → works at → anthropic"
+            lines.append(f"- {source} → {readable_rel} → {destination}")
 
         return "\n".join(lines) if lines else ""
