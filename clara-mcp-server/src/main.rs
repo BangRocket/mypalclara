@@ -21,10 +21,7 @@ use schemars::JsonSchema;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::tools::{
-    sandbox::SandboxTools,
-    ors_notes::OrsNotesTools,
-};
+use crate::tools::sandbox::SandboxTools;
 
 // ========== Parameter Types ==========
 
@@ -66,35 +63,12 @@ pub struct ShellParams {
     pub command: String,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UserIdParams {
-    /// User ID
-    pub user_id: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddNoteParams {
-    /// User ID
-    pub user_id: String,
-    /// Note content
-    pub content: String,
-    /// Category (optional)
-    pub category: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct NoteIdParams {
-    /// Note ID
-    pub note_id: String,
-}
-
 // ========== Server Implementation ==========
 
 /// Clara MCP Server
 #[derive(Clone)]
 pub struct ClaraServer {
     sandbox: Arc<SandboxTools>,
-    ors_notes: Arc<OrsNotesTools>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -103,7 +77,6 @@ impl ClaraServer {
     pub fn new() -> Self {
         Self {
             sandbox: Arc::new(SandboxTools::new()),
-            ors_notes: Arc::new(OrsNotesTools::new()),
             tool_router: Self::tool_router(),
         }
     }
@@ -153,32 +126,6 @@ impl ClaraServer {
     #[tool(description = "Run a shell command in the sandbox")]
     async fn run_shell(&self, Parameters(p): Parameters<ShellParams>) -> Result<CallToolResult, McpError> {
         match self.sandbox.run_shell(p.command).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    // ===== ORS Notes Tools =====
-
-    #[tool(description = "List ORS notes for a user")]
-    async fn ors_list_notes(&self, Parameters(p): Parameters<UserIdParams>) -> Result<CallToolResult, McpError> {
-        match self.ors_notes.list(p.user_id).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Add an ORS note")]
-    async fn ors_add_note(&self, Parameters(p): Parameters<AddNoteParams>) -> Result<CallToolResult, McpError> {
-        match self.ors_notes.add(p.user_id, p.content, p.category).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
-
-    #[tool(description = "Archive an ORS note")]
-    async fn ors_archive_note(&self, Parameters(p): Parameters<NoteIdParams>) -> Result<CallToolResult, McpError> {
-        match self.ors_notes.archive(p.note_id).await {
             Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }

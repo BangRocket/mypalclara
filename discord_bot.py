@@ -99,7 +99,6 @@ from db.channel_config import (
     CLARA_ADMIN_ROLE,
     get_channel_mode,
     get_guild_channels,
-    is_ors_enabled,
     set_channel_mode,
     should_respond_to_message,
 )
@@ -111,15 +110,6 @@ from email_monitor import (
 from email_service.monitor import (
     email_monitor_loop,
     is_email_monitoring_enabled,
-)
-from organic_response_system import (
-    is_enabled as proactive_enabled,
-)
-from organic_response_system import (
-    on_user_message as proactive_on_user_message,
-)
-from organic_response_system import (
-    ors_main_loop as proactive_check_loop,
 )
 from sandbox.manager import get_sandbox_manager
 from storage.local_files import get_file_manager
@@ -1378,7 +1368,7 @@ You have persistent memory via mem0. Use memories naturally without announcing "
             registry = get_registry()
             tool_prompts = registry.get_system_prompts(
                 platform="discord",
-                allowed_modules=["mcp_management", "ors_notes"],
+                allowed_modules=["mcp_management"],
             )
             if tool_prompts:
                 static_parts.append(tool_prompts)
@@ -1645,17 +1635,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if is_email_monitoring_enabled():
             self.loop.create_task(email_monitor_loop(self))
             logger.info("User email monitoring service started")
-
-        # Start proactive conversation engine (if enabled)
-        if proactive_enabled():
-            sync_llm = make_llm(tier="mid")  # Use mid tier for proactive decisions
-
-            # Wrap sync LLM in async for ORS
-            async def async_llm(messages: list[dict[str, str]]) -> str:
-                return sync_llm(messages)
-
-            self.loop.create_task(proactive_check_loop(self, async_llm))
-            logger.info("Proactive conversation engine started")
 
     async def on_guild_join(self, guild):
         """Called when bot joins a guild."""
@@ -2088,16 +2067,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 user_id = f"discord-{message.author.id}"
                 project_id = await self._ensure_project(user_id)
                 logger.debug(f" User: {user_id}, Project: {project_id}")
-
-                # Track interaction for proactive engine
-                proactive_channel_id = (
-                    f"discord-dm-{message.author.id}" if is_dm else f"discord-channel-{message.channel.id}"
-                )
-                await proactive_on_user_message(
-                    user_id=user_id,
-                    channel_id=proactive_channel_id,
-                    message_preview=message.content[:100] if message.content else None,
-                )
 
                 # Get the user's message content (or use auto-continue content, or batched)
                 tier_override = None
