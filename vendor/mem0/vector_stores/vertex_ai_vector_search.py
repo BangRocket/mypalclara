@@ -19,8 +19,7 @@ from vendor.mem0.configs.vector_stores.vertex_ai_vector_search import (
 )
 from vendor.mem0.vector_stores.base import VectorStoreBase
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Get logger (don't call basicConfig - let the app configure logging)
 logger = logging.getLogger(__name__)
 
 
