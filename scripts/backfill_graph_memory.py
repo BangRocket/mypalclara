@@ -142,7 +142,7 @@ def get_session_messages(db: OrmSession, session_id: str) -> list[Message]:
     )
 
 
-def chunk_messages(messages: list[Message], chunk_size: int = 6) -> list[list[dict]]:
+def chunk_messages(messages: list[Message], chunk_size: int = 4) -> list[list[dict]]:
     """
     Chunk messages into conversation slices for processing.
 
