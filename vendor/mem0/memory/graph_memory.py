@@ -216,7 +216,16 @@ class MemoryGraph:
                 if tool_call["name"] != "extract_entities":
                     continue
                 for item in tool_call["arguments"]["entities"]:
-                    entity_type_map[item["entity"]] = item["entity_type"]
+                    # Skip malformed entities (missing required keys or None values)
+                    if not isinstance(item, dict):
+                        logger.warning(f"Skipping non-dict entity item: {item}")
+                        continue
+                    entity = item.get("entity")
+                    entity_type = item.get("entity_type")
+                    if not entity or not entity_type:
+                        logger.warning(f"Skipping malformed entity (missing entity or entity_type): {item}")
+                        continue
+                    entity_type_map[entity] = entity_type
         except Exception as e:
             logger.exception(
                 f"Error in search tool: {e}, llm_provider={self.llm_provider}, search_results={search_results}"
