@@ -161,9 +161,7 @@ async def execute_shell(
 
         # Wait for completion with timeout
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             # Decode output
             stdout = stdout_bytes.decode("utf-8", errors="replace")

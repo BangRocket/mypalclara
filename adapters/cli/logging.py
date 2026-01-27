@@ -24,9 +24,7 @@ def configure_cli_logging() -> Path:
     # Set up file handler with DEBUG level
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 
     # Clear all handlers from root logger and add only file handler
     root = logging.getLogger()

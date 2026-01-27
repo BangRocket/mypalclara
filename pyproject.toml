@@ -73,6 +73,9 @@ alembic = "^1.18.1"
 prompt_toolkit = "^3.0.52"
 rich = "^14.0.0"
 
+# Gateway
+websockets = "^15.0"  # WebSocket server for gateway architecture
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 ruff = "^0.8"
