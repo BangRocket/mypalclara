@@ -30,16 +30,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Suppress noisy loggers from dependencies BEFORE importing them
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("anthropic").setLevel(logging.WARNING)
+logging.getLogger("neo4j").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("mem0").setLevel(logging.WARNING)
+logging.getLogger("mem0.config").setLevel(logging.WARNING)
+logging.getLogger("vendor.mem0").setLevel(logging.WARNING)
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session as OrmSession
 
 from db import SessionLocal
 from db.models import Message, Session
 
-# Configure logging
+# Configure logging - only show our messages
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(message)s",  # Clean format without timestamps for readability
 )
 logger = logging.getLogger(__name__)
 
@@ -48,6 +59,30 @@ PROGRESS_FILE = Path(__file__).parent.parent / ".graph_backfill_progress.json"
 
 # Agent ID to use for graph memory (should match your bot)
 AGENT_ID = os.getenv("BOT_NAME", "clara").lower()
+
+
+def format_date(dt: datetime | None) -> str:
+    """Format datetime for display."""
+    if dt is None:
+        return "unknown"
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def format_duration(start: datetime | None, end: datetime | None) -> str:
+    """Format duration between two datetimes."""
+    if not start or not end:
+        return ""
+    delta = end - start
+    days = delta.days
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    if days > 0:
+        return f"{days}d {hours}h"
+    elif hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
 
 
 def load_progress() -> dict:
@@ -86,6 +121,17 @@ def get_sessions_to_process(
     return query.all()
 
 
+def get_date_range(sessions: list[Session]) -> tuple[datetime | None, datetime | None]:
+    """Get the date range of sessions."""
+    if not sessions:
+        return None, None
+
+    starts = [s.started_at for s in sessions if s.started_at]
+    ends = [s.last_activity_at for s in sessions if s.last_activity_at]
+
+    return (min(starts) if starts else None, max(ends) if ends else None)
+
+
 def get_session_messages(db: OrmSession, session_id: str) -> list[Message]:
     """Get all messages for a session ordered by time."""
     return (
@@ -122,6 +168,7 @@ def process_session(
     messages: list[Message],
     mem0,
     dry_run: bool = True,
+    verbose: bool = False,
 ) -> dict:
     """
     Process a session's messages to extract graph relations.
@@ -143,10 +190,6 @@ def process_session(
     }
 
     if dry_run:
-        logger.info(
-            f"  [DRY RUN] Would process {len(chunks)} chunks "
-            f"({len(messages)} messages)"
-        )
         return stats
 
     for i, chunk in enumerate(chunks):
@@ -171,7 +214,8 @@ def process_session(
         except Exception as e:
             error_msg = f"Chunk {i}: {str(e)}"
             stats["errors"].append(error_msg)
-            logger.warning(f"  Error processing chunk {i}: {e}")
+            if verbose:
+                logger.warning(f"    ⚠ Error in chunk {i}: {e}")
 
     return stats
 
@@ -205,20 +249,32 @@ def main():
         action="store_true",
         help="Clear progress file and start fresh",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed progress for each chunk",
+    )
     args = parser.parse_args()
 
     dry_run = not args.apply
 
+    logger.info("=" * 60)
+    logger.info("Graph Memory Backfill")
+    logger.info("=" * 60)
+
     # Check if graph memory is enabled
+    logger.info("Initializing mem0...")
     from config.mem0 import ENABLE_GRAPH_MEMORY, MEM0
 
     if not ENABLE_GRAPH_MEMORY:
-        logger.error("Graph memory is not enabled. Set ENABLE_GRAPH_MEMORY=true")
+        logger.error("✗ Graph memory is not enabled. Set ENABLE_GRAPH_MEMORY=true")
         sys.exit(1)
 
     if MEM0 is None:
-        logger.error("mem0 failed to initialize. Check your configuration.")
+        logger.error("✗ mem0 failed to initialize. Check your configuration.")
         sys.exit(1)
+
+    logger.info("✓ mem0 initialized with graph memory enabled")
 
     # Handle progress
     progress = {}
@@ -226,14 +282,16 @@ def main():
 
     if args.clear_progress and PROGRESS_FILE.exists():
         PROGRESS_FILE.unlink()
-        logger.info("Cleared progress file")
+        logger.info("✓ Cleared progress file")
 
     if args.resume:
         progress = load_progress()
         processed_ids = set(progress.get("processed_session_ids", []))
-        logger.info(f"Resuming from progress: {len(processed_ids)} sessions already processed")
+        if processed_ids:
+            logger.info(f"✓ Resuming: {len(processed_ids)} sessions already processed")
 
     # Get sessions to process
+    logger.info("Querying database for sessions...")
     db = SessionLocal()
     try:
         sessions = get_sessions_to_process(
@@ -244,13 +302,31 @@ def main():
         )
 
         total_sessions = len(sessions)
-        logger.info(f"Found {total_sessions} sessions to process")
+
+        if total_sessions == 0:
+            logger.info("No sessions to process.")
+            return
+
+        # Get date range for context
+        date_start, date_end = get_date_range(sessions)
+
+        logger.info("")
+        logger.info(f"Sessions to process: {total_sessions}")
+        if date_start and date_end:
+            logger.info(f"Date range: {format_date(date_start)} → {format_date(date_end)}")
+            logger.info(f"Time span: {format_duration(date_start, date_end)}")
+
+        if args.user:
+            logger.info(f"Filtered to user: {args.user}")
+
+        logger.info("")
 
         if dry_run:
-            logger.info("=" * 60)
-            logger.info("DRY RUN - No changes will be made")
-            logger.info("Run with --apply to actually process")
-            logger.info("=" * 60)
+            logger.info("┌" + "─" * 58 + "┐")
+            logger.info("│" + " DRY RUN - No changes will be made".center(58) + "│")
+            logger.info("│" + " Run with --apply to actually process".center(58) + "│")
+            logger.info("└" + "─" * 58 + "┘")
+            logger.info("")
 
         # Summary stats
         total_stats = {
@@ -262,19 +338,39 @@ def main():
             "errors": 0,
         }
 
+        # Track current date for grouping output
+        current_date = None
+        start_time = datetime.now()
+
         for i, session in enumerate(sessions):
             messages = get_session_messages(db, session.id)
 
             if not messages:
-                logger.debug(f"Session {session.id}: No messages, skipping")
                 continue
 
-            logger.info(
-                f"[{i + 1}/{total_sessions}] Session {session.id[:8]}... "
-                f"(user={session.user_id}, msgs={len(messages)})"
-            )
+            # Show date header when date changes
+            session_date = session.started_at.date() if session.started_at else None
+            if session_date and session_date != current_date:
+                current_date = session_date
+                logger.info("")
+                logger.info(f"─── {current_date.strftime('%A, %B %d, %Y')} ───")
 
-            stats = process_session(session, messages, MEM0, dry_run=dry_run)
+            # Calculate progress percentage
+            pct = ((i + 1) / total_sessions) * 100
+
+            # Get session time info
+            session_time = format_date(session.started_at) if session.started_at else "unknown"
+
+            # Truncate user_id for display
+            user_display = session.user_id
+            if len(user_display) > 25:
+                user_display = user_display[:22] + "..."
+
+            stats = process_session(
+                session, messages, MEM0,
+                dry_run=dry_run,
+                verbose=args.verbose
+            )
 
             # Update totals
             total_stats["sessions_processed"] += 1
@@ -284,6 +380,28 @@ def main():
             total_stats["memories_added"] += stats["memories_added"]
             total_stats["errors"] += len(stats["errors"])
 
+            # Status line
+            if dry_run:
+                logger.info(
+                    f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                    f"{session_time[11:16]} │ "
+                    f"{stats['message_count']:3} msgs, {stats['chunk_count']:2} chunks │ "
+                    f"{user_display}"
+                )
+            else:
+                # Show what was extracted
+                graph_icon = "🔗" if stats["graph_entities_added"] > 0 else "  "
+                mem_icon = "💾" if stats["memories_added"] > 0 else "  "
+                err_icon = "⚠" if stats["errors"] else " "
+
+                logger.info(
+                    f"  [{i + 1:3}/{total_sessions}] {pct:5.1f}% │ "
+                    f"{session_time[11:16]} │ "
+                    f"{graph_icon} +{stats['graph_entities_added']:2} "
+                    f"{mem_icon} +{stats['memories_added']:2} "
+                    f"{err_icon}│ {user_display}"
+                )
+
             # Save progress after each session (if not dry run)
             if not dry_run:
                 processed_ids.add(session.id)
@@ -292,20 +410,29 @@ def main():
                 progress["stats"] = total_stats
                 save_progress(progress)
 
+        # Calculate elapsed time
+        elapsed = datetime.now() - start_time
+        elapsed_str = format_duration(start_time, datetime.now())
+
         # Print summary
+        logger.info("")
         logger.info("=" * 60)
         logger.info("SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"Sessions processed: {total_stats['sessions_processed']}")
-        logger.info(f"Messages processed: {total_stats['messages_processed']}")
-        logger.info(f"Chunks processed: {total_stats['chunks_processed']}")
-        logger.info(f"Graph entities added: {total_stats['graph_entities_added']}")
-        logger.info(f"Memories added: {total_stats['memories_added']}")
-        logger.info(f"Errors: {total_stats['errors']}")
+        logger.info(f"  Sessions processed:    {total_stats['sessions_processed']:,}")
+        logger.info(f"  Messages processed:    {total_stats['messages_processed']:,}")
+        logger.info(f"  Chunks processed:      {total_stats['chunks_processed']:,}")
+        logger.info(f"  Graph entities added:  {total_stats['graph_entities_added']:,}")
+        logger.info(f"  Memories added:        {total_stats['memories_added']:,}")
+        logger.info(f"  Errors:                {total_stats['errors']:,}")
+        logger.info(f"  Time elapsed:          {elapsed_str}")
 
         if dry_run:
             logger.info("")
             logger.info("This was a DRY RUN. Run with --apply to actually process.")
+        else:
+            logger.info("")
+            logger.info(f"✓ Progress saved to {PROGRESS_FILE.name}")
 
     finally:
         db.close()
