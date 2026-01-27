@@ -1,8 +1,8 @@
 # Discord Bot Dockerfile for MyPalClara
 # For local development with docker-compose
 
-# Stage 1: Build Rust MCP server
-FROM rust:1.85-slim AS mcp-builder
+# Stage 1: Build Rust MCP server (using nightly for edition2024 support)
+FROM rustlang/rust:nightly-slim AS mcp-builder
 
 WORKDIR /build
 
