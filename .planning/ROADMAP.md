@@ -189,7 +189,12 @@ Plans:
 
 **Dependencies:** Phase 3 (requires complete system)
 
-**Plans:** (created by /gsd:plan-phase)
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Add dependencies (tenacity, structlog), implement rate limiting and structured logging
+- [ ] 04-02-PLAN.md — Health check endpoints, graceful shutdown, provider restart with backoff
+- [ ] 04-03-PLAN.md — Load testing validation, resource limits, documentation updates
 
 **Requirements Coverage:**
 - All validated requirements continue working (mem0, MCP plugins, sandbox, hooks, streaming, etc.)
@@ -223,16 +228,18 @@ Plans:
 - MODIFIED: `gateway/providers/__init__.py` - Add restart logic to ProviderManager
 - MODIFIED: `gateway/main.py` - Add health check endpoint, graceful shutdown
 - MODIFIED: `gateway/server.py` - Rate limiting middleware
-- NEW: `gateway/monitoring.py` - Health check logic
+- NEW: `gateway/health.py` - Health check endpoints
+- NEW: `gateway/rate_limiter.py` - Token bucket rate limiting
 - NEW: `tests/gateway/test_load.py` - Load testing scenarios
-- MODIFIED: `config/logging.py` - Add provider context to logs
+- MODIFIED: `config/logging.py` - Add structlog integration
+- MODIFIED: `CLAUDE.md` - Production configuration documentation
 
 **Technical Notes:**
-- Use aiotools for graceful shutdown coordination
-- Provider restarts use exponential backoff (1s, 2s, 4s, 8s, max 60s)
+- Use tenacity for provider restart with exponential backoff (1s, 2s, 4s, 8s, max 60s)
 - Rate limiting: token bucket per (user_id, channel_id)
-- Health checks: gateway alive + each provider connection status
-- Load test: Locust or custom asyncio script
+- Health checks: /health (liveness), /ready (readiness), /status (detailed)
+- Structured logging via structlog with JSON output in production
+- Load test: custom asyncio script (100 clients, 60 seconds)
 
 ---
 
@@ -243,7 +250,7 @@ Plans:
 | 1 - Provider Foundation | Planned | — | — | 3 plans in 3 waves |
 | 2 - Gateway Integration & Email | Pending | — | — | Full pipeline + EmailProvider |
 | 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
-| 4 - Production Hardening | Pending | — | — | Monitoring + load validation |
+| 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
 **Overall Progress:** 0/4 phases complete (0%)
 
@@ -331,4 +338,5 @@ Phase 4 (Production Hardening)
 *Roadmap created: 2026-01-27*
 *Phase 1 planned: 2026-01-27*
 *Phase 3 planned: 2026-01-27*
+*Phase 4 planned: 2026-01-27*
 *Next step: Execute Phase 1 with `/gsd:execute-phase 1`*
