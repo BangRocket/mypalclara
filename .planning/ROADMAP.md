@@ -3,7 +3,7 @@
 **Project:** MyPalClara Gateway Architecture Consolidation
 **Milestone:** Gateway Unification v1
 **Created:** 2026-01-27
-**Status:** Planning Complete
+**Status:** Phase 1 Planned
 
 ---
 
@@ -25,6 +25,13 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 **Goal:** Establish provider abstraction layer and migrate Discord to run inside gateway process.
 
 **Dependencies:** None (starting phase)
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Core infrastructure: Provider ABC, ProviderManager, protocol versioning
+- [ ] 01-02-PLAN.md — DiscordProvider wrapping ClaraDiscordBot (Strangler Fig)
+- [ ] 01-03-PLAN.md — Gateway integration: wire ProviderManager into startup
 
 **Requirements Coverage:**
 - Gateway daemon runs all providers from single process
@@ -72,6 +79,8 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 **Goal:** Integrate DiscordProvider with gateway core and extract email monitoring as EmailProvider.
 
 **Dependencies:** Phase 1 (requires Provider abstraction)
+
+**Plans:** (created by /gsd:plan-phase)
 
 **Requirements Coverage:**
 - Email provider integrated into gateway
@@ -121,17 +130,17 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 
 **Dependencies:** Phase 2 (requires working providers)
 
-**Requirements Coverage:**
-- CLI client connects to gateway via WebSocket
-- `python -m gateway` is the only entry point needed
-- `discord_bot.py` deleted (code merged into gateway)
-
 **Plans:** 3 plans
 
 Plans:
 - [ ] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
 - [ ] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe
 - [ ] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation
+
+**Requirements Coverage:**
+- CLI client connects to gateway via WebSocket
+- `python -m gateway` is the only entry point needed
+- `discord_bot.py` deleted (code merged into gateway)
 
 **Deliverables:**
 1. CLI client refactored to connect via WebSocket (not direct MemoryManager)
@@ -179,6 +188,8 @@ Plans:
 **Goal:** Add monitoring, error recovery, and load validation to ensure production readiness.
 
 **Dependencies:** Phase 3 (requires complete system)
+
+**Plans:** (created by /gsd:plan-phase)
 
 **Requirements Coverage:**
 - All validated requirements continue working (mem0, MCP plugins, sandbox, hooks, streaming, etc.)
@@ -229,7 +240,7 @@ Plans:
 
 | Phase | Status | Started | Completed | Notes |
 |-------|--------|---------|-----------|-------|
-| 1 - Provider Foundation | Pending | — | — | Provider abstraction + Discord wrapper |
+| 1 - Provider Foundation | Planned | — | — | 3 plans in 3 waves |
 | 2 - Gateway Integration & Email | Pending | — | — | Full pipeline + EmailProvider |
 | 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
 | 4 - Production Hardening | Pending | — | — | Monitoring + load validation |
@@ -318,5 +329,6 @@ Phase 4 (Production Hardening)
 ---
 
 *Roadmap created: 2026-01-27*
+*Phase 1 planned: 2026-01-27*
 *Phase 3 planned: 2026-01-27*
-*Next step: Complete Phases 1-2 before executing Phase 3*
+*Next step: Execute Phase 1 with `/gsd:execute-phase 1`*
