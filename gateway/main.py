@@ -12,6 +12,7 @@ Environment variables:
     CLARA_HOOKS_DIR - Directory containing hooks.yaml (default: ./hooks)
     CLARA_SCHEDULER_DIR - Directory containing scheduler.yaml (default: .)
     CLARA_GATEWAY_DISCORD - Enable Discord provider (default: false)
+    CLARA_GATEWAY_EMAIL - Enable Email provider (default: false)
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from config.logging import get_logger, init_logging
 from gateway.events import Event, EventType, emit, get_event_emitter
 from gateway.hooks import get_hook_manager
 from gateway.processor import MessageProcessor
-from gateway.providers import DiscordProvider, get_provider_manager
+from gateway.providers import DiscordProvider, EmailProvider, get_provider_manager
 from gateway.scheduler import get_scheduler
 from gateway.server import GatewayServer
 
@@ -43,7 +44,8 @@ logger = get_logger("gateway")
 
 
 async def main(
-    host: str, port: int, hooks_dir: str, scheduler_dir: str, enable_discord: bool
+    host: str, port: int, hooks_dir: str, scheduler_dir: str,
+    enable_discord: bool, enable_email: bool
 ) -> None:
     """Run the gateway server.
 
@@ -53,6 +55,7 @@ async def main(
         hooks_dir: Directory containing hooks.yaml
         scheduler_dir: Directory containing scheduler.yaml
         enable_discord: Whether to start the Discord provider
+        enable_email: Whether to start the Email provider
     """
     # Initialize hooks system
     hook_manager = get_hook_manager()
@@ -74,6 +77,12 @@ async def main(
         discord_provider = DiscordProvider()
         provider_manager.register(discord_provider)
         logger.info("Discord provider registered")
+
+    # Register Email provider if enabled
+    if enable_email:
+        email_provider = EmailProvider()
+        provider_manager.register(email_provider)
+        logger.info("Email provider registered")
 
     # Create server and processor
     server = GatewayServer(host=host, port=port)
@@ -180,6 +189,12 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("CLARA_GATEWAY_DISCORD", "false").lower() == "true",
         help="Enable Discord provider (default: $CLARA_GATEWAY_DISCORD or false)",
     )
+    parser.add_argument(
+        "--enable-email",
+        action="store_true",
+        default=os.getenv("CLARA_GATEWAY_EMAIL", "false").lower() == "true",
+        help="Enable Email provider (default: $CLARA_GATEWAY_EMAIL or false)",
+    )
 
     return parser.parse_args()
 
@@ -195,6 +210,7 @@ if __name__ == "__main__":
                 args.hooks_dir,
                 args.scheduler_dir,
                 args.enable_discord,
+                args.enable_email,
             )
         )
     except KeyboardInterrupt:
