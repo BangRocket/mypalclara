@@ -29,6 +29,7 @@ import logging
 from typing import ClassVar
 
 from gateway.providers.base import PlatformMessage, Provider
+from gateway.providers.discord import DiscordProvider
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +307,7 @@ def get_provider_manager() -> ProviderManager:
 
 
 __all__ = [
+    "DiscordProvider",
     "PlatformMessage",
     "Provider",
     "ProviderManager",
