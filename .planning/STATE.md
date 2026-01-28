@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-27)
 
 ## Current Position
 
-Phase: 2 of 4 (Gateway Integration & Email)
-Plan: 3 of 3 in Phase 2 (12 plans total)
-Status: Phase 2 complete
-Last activity: 2026-01-28 - Completed 02-03-PLAN.md (Discord Behavioral Tests)
+Phase: 3 of 4 (CLI Client & Retirement)
+Plan: 1 of 3 in Phase 3 (12 plans total)
+Status: In progress
+Last activity: 2026-01-28 - Completed 03-01-PLAN.md (CLI Migration Wrapper)
 
-Progress: [██████░░░░] 50%
+Progress: [███████░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 4.2 minutes
-- Total execution time: 0.42 hours
+- Total plans completed: 7
+- Average duration: 4.0 minutes
+- Total execution time: 0.47 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [██████░░░░] 50%
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
 | 2 - Gateway Integration & Email | 3 | 13 min | 4.3 min |
-| 3 - CLI Client & Retirement | 0 | 0 | N/A |
+| 3 - CLI Client & Retirement | 1 | 3 min | 3.0 min |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (6 min), 02-01 (6 min), 02-02 (4 min), 02-03 (3 min)
+- Last 5 plans: 02-01 (6 min), 02-02 (4 min), 02-03 (3 min), 03-01 (3 min)
 - Trend: Improving
 
 *Updated after each plan completion*
@@ -79,6 +79,10 @@ Recent decisions affecting current work:
 - D02-03-01: Use numbered tests (test_1_, test_2_) for behavioral documentation
 - D02-03-02: Tests validate existing implementation rather than driving new code
 
+**From 03-01:**
+- D03-01-01: Deprecation notice shown before run() - ensures visibility
+- D03-01-02: Keep docstring with commands - users see help before migration notice
+
 ### Pending Todos
 
 None yet.
@@ -90,7 +94,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 02-03-PLAN.md (Discord Behavioral Tests) - Phase 2 complete
+Stopped at: Completed 03-01-PLAN.md (CLI Migration Wrapper)
 Resume file: None
 
-**Next step:** Execute Phase 3 with `/gsd:execute-phase 3`
+**Next step:** Continue Phase 3 with 03-02-PLAN.md (CLI-Gateway Integration)
