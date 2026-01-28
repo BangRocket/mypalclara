@@ -3,7 +3,7 @@
 **Project:** MyPalClara Gateway Architecture Consolidation
 **Milestone:** Gateway Unification v1
 **Created:** 2026-01-27
-**Status:** Phase 2 Planned
+**Status:** Phase 3 Partial (deletions blocked)
 
 ---
 
@@ -140,9 +140,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
-- [ ] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe
-- [ ] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation
+- [x] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
+- [x] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe (BLOCKERS FOUND)
+- [x] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation (PARTIAL)
 
 **Requirements Coverage:**
 - CLI client connects to gateway via WebSocket
@@ -159,14 +159,14 @@ Plans:
 7. Docker Compose updated to single gateway service
 
 **Success Criteria:**
-- [ ] CLI client connects to gateway WebSocket server
-- [ ] CLI messages flow through gateway processor with full tool support
-- [ ] `discord_bot.py` deleted from repository (git rm)
-- [ ] `email_monitor.py` deleted from repository (git rm)
-- [ ] `python -m gateway` starts Discord, Email, and CLI providers
-- [ ] No import errors or broken references after deletion
-- [ ] docker-compose.yml runs single gateway container
-- [ ] All integration tests pass
+- [x] CLI client connects to gateway WebSocket server
+- [x] CLI messages flow through gateway processor with full tool support
+- [ ] `discord_bot.py` deleted from repository (BLOCKED: DiscordProvider wraps it)
+- [ ] `email_monitor.py` deleted from repository (BLOCKED: external imports)
+- [~] `python -m gateway` starts Discord, Email, and CLI providers (Discord only - Email not integrated)
+- [x] No import errors or broken references after deletion
+- [x] docker-compose.yml runs single gateway container
+- [x] All integration tests pass (71 tests)
 
 **Key Risks Mitigated:**
 - Incomplete Code Retirement: Explicit deletion phase with completion criteria
@@ -256,10 +256,10 @@ Plans:
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 2 - Gateway Integration & Email | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
-| 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
+| 3 - CLI Client & Retirement | Partial | 2026-01-28 | 2026-01-28 | 3 plans, 8 min - deletions blocked |
 | 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
-**Overall Progress:** 2/4 phases complete (50%)
+**Overall Progress:** 2.5/4 phases complete (62.5%) - Phase 3 partial due to strangler fig pattern
 
 ---
 
@@ -334,11 +334,12 @@ Phase 4 (Production Hardening)
 |----------|-----------|--------|
 | Providers run inside gateway process | Lower latency, simpler deployment | Decided |
 | Strangler Fig pattern for Discord | Reduces risk, enables incremental migration | Decided |
-| Delete discord_bot.py completely | Clean break over indefinite dual-write | Decided |
+| ~~Delete discord_bot.py completely~~ | ~~Clean break over indefinite dual-write~~ | **Revised** - Keep wrapped |
 | Protocol versioning from Phase 1 | Prevents future breaking changes | Decided |
 | Behavioral test suite before extraction | Catches lost features early | Decided |
 | CLI as WebSocket client | Consistent interface for remote/local | Decided |
 | Load testing in Phase 4 | Validates assumptions before production | Decided |
+| Keep strangler fig files | DiscordProvider wraps discord_bot.py; email_monitor has external imports | **New** - Phase 3 |
 
 ---
 
