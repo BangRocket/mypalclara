@@ -3,7 +3,7 @@
 **Project:** MyPalClara Gateway Architecture Consolidation
 **Milestone:** Gateway Unification v1
 **Created:** 2026-01-27
-**Status:** Phase 1 Planned
+**Status:** Phase 2 Planned
 
 ---
 
@@ -80,7 +80,12 @@ Plans:
 
 **Dependencies:** Phase 1 (requires Provider abstraction)
 
-**Plans:** (created by /gsd:plan-phase)
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Integrate DiscordGatewayClient with MessageProcessor pipeline
+- [ ] 02-02-PLAN.md — Extract EmailProvider from email_monitor.py with event-based alerting
+- [ ] 02-03-PLAN.md — Create 20+ behavioral tests for Discord parity validation
 
 **Requirements Coverage:**
 - Email provider integrated into gateway
@@ -109,18 +114,20 @@ Plans:
 - Monitoring Blindness: Structured logging + alerts implemented
 
 **Files Changed:**
-- MODIFIED: `gateway/providers/discord.py` - Connect to MessageProcessor
-- NEW: `gateway/providers/email.py` - EmailProvider wrapping email_monitor.py
-- MODIFIED: `gateway/processor.py` - Add provider callback hooks
-- MODIFIED: `gateway/main.py` - Start both Discord and Email providers
-- NEW: `tests/gateway/test_discord_provider.py` - Behavioral tests
-- MODIFIED: `email_monitor.py` - Refactor for Provider wrapper (temporary, deleted in Phase 3)
+- MODIFIED: `adapters/discord/gateway_client.py` - Wire response callbacks, add tier extraction
+- NEW: `adapters/email/__init__.py` - Email adapter module exports
+- NEW: `adapters/email/provider.py` - EmailProvider wrapping email_monitor.py
+- NEW: `adapters/email/monitor.py` - Extracted EmailMonitor with async wrappers
+- MODIFIED: `adapters/discord/main.py` - Discord adapter startup with gateway connection
+- NEW: `tests/adapters/test_discord_gateway.py` - Integration tests
+- NEW: `tests/adapters/test_email_provider.py` - EmailProvider unit tests
+- NEW: `tests/adapters/test_discord_behavioral.py` - 20+ behavioral parity tests
 
 **Technical Notes:**
-- MessageProcessor gets provider_callbacks parameter for response streaming
+- DiscordGatewayClient already implements response callbacks - need wiring fixes
 - EmailProvider uses gateway event system to trigger Discord alerts
-- Connection pooling for database/mem0 queries
 - ThreadPoolExecutor for blocking I/O (email IMAP)
+- Behavioral tests document expected behaviors for regression detection
 
 ---
 
@@ -248,7 +255,7 @@ Plans:
 | Phase | Status | Started | Completed | Notes |
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Planned | — | — | 3 plans in 3 waves |
-| 2 - Gateway Integration & Email | Pending | — | — | Full pipeline + EmailProvider |
+| 2 - Gateway Integration & Email | Planned | — | — | 3 plans in 2 waves |
 | 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
 | 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
@@ -337,6 +344,7 @@ Phase 4 (Production Hardening)
 
 *Roadmap created: 2026-01-27*
 *Phase 1 planned: 2026-01-27*
+*Phase 2 planned: 2026-01-27*
 *Phase 3 planned: 2026-01-27*
 *Phase 4 planned: 2026-01-27*
 *Next step: Execute Phase 1 with `/gsd:execute-phase 1`*
