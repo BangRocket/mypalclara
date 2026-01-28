@@ -1153,6 +1153,10 @@ class ClaraDiscordBot(discord_commands.Bot):
             self._adapter = DiscordAdapter(self)
             logger.info("Discord adapter enabled via USE_DISCORD_ADAPTER")
 
+        # Provider mode: indicates bot is being managed by a Provider wrapper
+        # When True, lifecycle is controlled externally via start_for_provider/stop_for_provider
+        self._provider_mode: bool = False
+
     def _sync_llm(self, messages: list[dict]) -> str:
         """Synchronous LLM call for MemoryManager."""
         llm = make_llm()
@@ -3632,6 +3636,54 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
 
         finally:
             db.close()
+
+    # ============== Provider Integration Methods ==============
+    # These methods allow the bot to be controlled by a Provider wrapper
+    # (e.g., DiscordProvider in gateway/providers/discord.py)
+
+    async def start_for_provider(self, token: str) -> None:
+        """Start the bot for use by a Provider wrapper.
+
+        This is the entry point for Provider-managed lifecycle. The Provider
+        calls this method in a background task and waits for is_ready_for_provider()
+        to return True.
+
+        Args:
+            token: Discord bot token for authentication
+        """
+        self._provider_mode = True
+        logger.info("Starting Discord bot in provider mode")
+        await self.start(token)
+
+    async def stop_for_provider(self) -> None:
+        """Stop the bot gracefully when managed by a Provider.
+
+        Ensures all cleanup happens (MCP shutdown, log messages, etc.)
+        before the bot closes.
+        """
+        logger.info("Stopping Discord bot (provider mode)")
+
+        # Shutdown MCP servers gracefully
+        global _mcp_initialized
+        if _mcp_initialized:
+            try:
+                await shutdown_mcp()
+                logger.info("MCP servers shut down")
+            except Exception as e:
+                logger.warning(f"Error shutting down MCP servers: {e}")
+
+        # Close the bot connection
+        await self.close()
+        self._provider_mode = False
+        logger.info("Discord bot stopped")
+
+    def is_ready_for_provider(self) -> bool:
+        """Check if the bot is ready for use by a Provider.
+
+        Returns:
+            True if the bot is connected and ready to handle messages
+        """
+        return self.is_ready()
 
 
 # ============== FastAPI Monitor Dashboard ==============
