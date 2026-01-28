@@ -100,13 +100,13 @@ Plans:
 6. Behavioral test suite validating Discord parity (20+ tests)
 
 **Success Criteria:**
-- [ ] Discord message -> Gateway processor -> LLM -> Response flows end-to-end
-- [ ] DiscordProvider receives response callbacks and streams to Discord channels
-- [ ] Tier-based model selection works (!high, !mid, !low prefixes)
-- [ ] Image/vision support functional through DiscordProvider
-- [ ] EmailProvider polls accounts and sends alerts via Discord provider
-- [ ] All 20+ behavioral tests pass (message dedup, queue batching, emotional context)
-- [ ] mem0 databases untouched and functional
+- [x] Discord message -> Gateway processor -> LLM -> Response flows end-to-end
+- [x] DiscordProvider receives response callbacks and streams to Discord channels
+- [x] Tier-based model selection works (!high, !mid, !low prefixes)
+- [x] Image/vision support functional through DiscordProvider
+- [x] EmailProvider polls accounts and sends alerts via Discord provider
+- [x] All 20+ behavioral tests pass (message dedup, queue batching, emotional context)
+- [x] mem0 databases untouched and functional
 
 **Key Risks Mitigated:**
 - Gateway Bottleneck: Stateless design with session state in PostgreSQL
@@ -255,11 +255,11 @@ Plans:
 | Phase | Status | Started | Completed | Notes |
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
-| 2 - Gateway Integration & Email | Planned | — | — | 3 plans in 2 waves |
+| 2 - Gateway Integration & Email | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
 | 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
-**Overall Progress:** 1/4 phases complete (25%)
+**Overall Progress:** 2/4 phases complete (50%)
 
 ---
 
