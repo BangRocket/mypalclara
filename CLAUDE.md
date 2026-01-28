@@ -178,6 +178,7 @@ WebSocket-based gateway - the primary entry point for all Clara providers:
 poetry run python -m gateway                     # Start with default settings
 poetry run python -m gateway --enable-discord    # Enable Discord provider
 poetry run python -m gateway --host 0.0.0.0 --port 18789  # Custom bind
+# Health checks available at http://localhost:18790/health
 ```
 
 **Connect CLI client:**
@@ -466,6 +467,68 @@ async def on_session_start(event: Event):
 async def hourly_cleanup():
     # Cleanup logic
     pass
+```
+
+### Gateway Production Configuration
+
+The gateway includes production hardening features for rate limiting, health checks, graceful shutdown, and resource limits.
+
+**Rate Limiting:**
+- `RATE_LIMIT_BURST` - Maximum burst capacity (default: 10 messages)
+- `RATE_LIMIT_PER_SEC` - Sustained rate per second (default: 2.0 messages/sec)
+
+Rate limiting uses token bucket algorithm per (channel_id, user_id). Burst capacity allows quick successive messages, while sustained rate limits long-term throughput. Rate-limited requests receive error with `retry_after` timing.
+
+**Health Checks:**
+- `HEALTH_PORT` - Port for health check HTTP server (default: 18790)
+- `GET /health` - Liveness probe (process running)
+- `GET /ready` - Readiness probe (dependencies healthy)
+- `GET /status` - Detailed gateway statistics
+
+Health checks are available on a separate port for Kubernetes/container orchestration probes.
+
+**Graceful Shutdown:**
+- `SHUTDOWN_GRACE_PERIOD` - Seconds to wait for pending requests before forced shutdown (default: 30)
+
+On SIGTERM/SIGINT, the gateway:
+1. Stops accepting new connections
+2. Waits for pending requests to complete (up to grace period)
+3. Cancels remaining tasks
+4. Exits cleanly
+
+**WebSocket Resource Limits:**
+- `WS_MAX_MESSAGE_SIZE` - Maximum message size in bytes (default: 65536 = 64KB)
+- `WS_MAX_QUEUE` - Maximum queued messages per connection (default: 16)
+- `WS_READ_LIMIT` - Read buffer limit in bytes (default: 65536)
+- `WS_WRITE_LIMIT` - Write buffer limit in bytes (default: 65536)
+
+These limits prevent memory exhaustion from large messages or slow clients.
+
+**Structured Logging:**
+- `LOG_FORMAT` - Set to "json" for JSON output (production), omit for pretty console (development)
+- `ENV` - Set to "production" for automatic JSON logging
+
+Logs include context fields: `request_id`, `user_id`, `channel_id`, `platform` for filtering and debugging.
+
+**Example Production Configuration:**
+```bash
+# Rate limiting
+RATE_LIMIT_BURST=10
+RATE_LIMIT_PER_SEC=2.0
+
+# Health checks
+HEALTH_PORT=18790
+
+# Graceful shutdown
+SHUTDOWN_GRACE_PERIOD=30
+
+# Logging
+LOG_FORMAT=json
+ENV=production
+
+# Resource limits (optional, defaults are reasonable)
+WS_MAX_MESSAGE_SIZE=65536
+WS_MAX_QUEUE=16
 ```
 
 ### Tool Calling LLM
