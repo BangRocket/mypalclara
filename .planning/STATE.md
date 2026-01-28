@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-27)
 ## Current Position
 
 Phase: 4 of 4 (Production Hardening) - IN PROGRESS
-Plan: 2 of 3 in Phase 4
-Status: Plan 04-02 complete (Health Checks and Graceful Shutdown)
-Last activity: 2026-01-28 - Completed 04-02-PLAN.md
+Plan: 2 of 3 in Phase 4 (04-01 and 04-02 complete)
+Status: Plans 04-01 and 04-02 complete
+Last activity: 2026-01-28 - Completed 04-01-PLAN.md (Rate Limiting and Structured Logging)
 
 Progress: [██████████░░░░░░░░░░] 67% Phase 4 (2/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 3.3 minutes
-- Total execution time: 0.66 hours
+- Total plans completed: 13
+- Average duration: 3.4 minutes
+- Total execution time: 0.74 hours
 
 **By Phase:**
 
@@ -30,7 +30,7 @@ Progress: [██████████░░░░░░░░░░] 67% Pha
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
 | 2 - Gateway Integration & Email | 3 | 13 min | 4.3 min |
 | 3 - CLI Client & Retirement | 5 | 12 min | 2.4 min |
-| 4 - Production Hardening | 1 | 3 min | 3.3 min |
+| 4 - Production Hardening | 2 | 8 min | 4.0 min |
 
 **Recent Trend:**
 - Last 5 plans: 03-03 (2 min), 03-04 (2 min), 03-05 (2.5 min), 04-02 (3.3 min)
@@ -101,6 +101,11 @@ Recent decisions affecting current work:
 **From 03-05:**
 - D03-05-01: EmailProvider re-exported from gateway/providers for API consistency
 
+**From 04-01:**
+- D04-01-01: Rate limit key is channel_id:user_id - per-user per-channel granularity
+- D04-01-02: Structlog configured alongside existing logging - backward compatible
+- D04-01-03: JSON output for ENV=production or LOG_FORMAT=json, console otherwise
+
 **From 04-02:**
 - D04-02-01: Health server runs in daemon thread on separate port (default 8080)
 - D04-02-02: Grace period defaults to 30s for pending request completion
@@ -110,7 +115,7 @@ Recent decisions affecting current work:
 
 **Phase 4 Status: 2/3 plans complete**
 
-1. ~~04-01: Rate limiting~~ - Skipped (out of scope for current wave)
+1. ~~04-01: Rate limiting and structured logging~~ - COMPLETE
 2. ~~04-02: Health checks and graceful shutdown~~ - COMPLETE
 3. 04-03: Metrics and monitoring - PENDING
 
@@ -125,8 +130,8 @@ Legacy files status:
 
 ## Session Continuity
 
-Last session: 2026-01-28T16:47:46Z
-Stopped at: Completed 04-02-PLAN.md (Health Checks and Graceful Shutdown)
+Last session: 2026-01-28T16:49:08Z
+Stopped at: Completed 04-01-PLAN.md (Rate Limiting and Structured Logging)
 Resume file: None
 
-**Next step:** Execute 04-03-PLAN.md (Metrics and Monitoring) or verify phase completion.
+**Next step:** Execute 04-03-PLAN.md (Metrics and Monitoring) to complete Phase 4.
