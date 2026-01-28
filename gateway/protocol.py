@@ -2,15 +2,23 @@
 
 Defines the message types exchanged between adapters and the gateway using Pydantic.
 All messages are JSON-serializable for WebSocket transport.
+
+Protocol versioning is included in all messages for backward-compatible evolution.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+# Protocol version constant - increment when making breaking changes
+PROTOCOL_VERSION = "1.0.0"
 
 
 class MessageType(str, Enum):
@@ -94,6 +102,10 @@ class RegisterMessage(BaseModel):
     """Adapter -> Gateway: Register a new adapter node."""
 
     type: Literal[MessageType.REGISTER] = MessageType.REGISTER
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     node_id: str = Field(..., description="Unique identifier for this adapter instance")
     platform: str = Field(..., description="Platform name (discord, cli, slack)")
     capabilities: list[str] = Field(
@@ -110,6 +122,10 @@ class RegisteredMessage(BaseModel):
     """Gateway -> Adapter: Confirm registration."""
 
     type: Literal[MessageType.REGISTERED] = MessageType.REGISTERED
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     node_id: str = Field(..., description="Confirmed node ID")
     session_id: str = Field(..., description="Gateway session ID for reconnection")
     server_time: datetime = Field(default_factory=datetime.now)
@@ -124,6 +140,10 @@ class PingMessage(BaseModel):
     """Bidirectional heartbeat ping."""
 
     type: Literal[MessageType.PING] = MessageType.PING
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
@@ -131,6 +151,10 @@ class PongMessage(BaseModel):
     """Bidirectional heartbeat pong."""
 
     type: Literal[MessageType.PONG] = MessageType.PONG
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
@@ -143,6 +167,10 @@ class MessageRequest(BaseModel):
     """Adapter -> Gateway: Process a user message."""
 
     type: Literal[MessageType.MESSAGE] = MessageType.MESSAGE
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     id: str = Field(..., description="Unique message ID for tracking")
     user: UserInfo = Field(..., description="User information")
     channel: ChannelInfo = Field(..., description="Channel information")
@@ -166,6 +194,10 @@ class ResponseStart(BaseModel):
     """Gateway -> Adapter: Response generation started."""
 
     type: Literal[MessageType.RESPONSE_START] = MessageType.RESPONSE_START
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     id: str = Field(..., description="Response ID (correlates with message ID)")
     request_id: str = Field(..., description="Original request message ID")
     model_tier: str | None = Field(None, description="Model tier being used")
@@ -175,6 +207,10 @@ class ResponseChunk(BaseModel):
     """Gateway -> Adapter: Streaming response chunk."""
 
     type: Literal[MessageType.RESPONSE_CHUNK] = MessageType.RESPONSE_CHUNK
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     id: str = Field(..., description="Response ID")
     chunk: str = Field(..., description="Text chunk")
     accumulated: str | None = Field(None, description="Full accumulated text so far")
@@ -184,6 +220,10 @@ class ResponseEnd(BaseModel):
     """Gateway -> Adapter: Response generation complete."""
 
     type: Literal[MessageType.RESPONSE_END] = MessageType.RESPONSE_END
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     id: str = Field(..., description="Response ID")
     full_text: str = Field(..., description="Complete response text")
     files: list[str] = Field(default_factory=list, description="File paths to attach")
@@ -200,22 +240,15 @@ class ToolStart(BaseModel):
     """Gateway -> Adapter: Tool execution started."""
 
     type: Literal[MessageType.TOOL_START] = MessageType.TOOL_START
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     id: str = Field(..., description="Response ID")
     tool_name: str = Field(..., description="Name of the tool being executed")
     step: int = Field(..., description="Tool step number (1-indexed)")
     description: str | None = Field(None, description="Human-readable description")
-    emoji: str = Field("⚙️", description="Emoji for this tool")
-
-
-class ToolResult(BaseModel):
-    """Gateway -> Adapter: Tool execution completed."""
-
-    type: Literal[MessageType.TOOL_RESULT] = MessageType.TOOL_RESULT
-    id: str = Field(..., description="Response ID")
-    tool_name: str = Field(..., description="Name of the tool")
-    success: bool = Field(..., description="Whether execution succeeded")
-    output_preview: str | None = Field(None, description="Truncated output preview")
-    duration_ms: int | None = Field(None, description="Execution time in ms")
+    emoji: str = Field("", description="Emoji for this tool")
 
 
 # ============================================================================
@@ -223,10 +256,29 @@ class ToolResult(BaseModel):
 # ============================================================================
 
 
+class ToolResult(BaseModel):
+    """Gateway -> Adapter: Tool execution completed."""
+
+    type: Literal[MessageType.TOOL_RESULT] = MessageType.TOOL_RESULT
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
+    id: str = Field(..., description="Response ID")
+    tool_name: str = Field(..., description="Name of the tool")
+    success: bool = Field(..., description="Whether execution succeeded")
+    output_preview: str | None = Field(None, description="Truncated output preview")
+    duration_ms: int | None = Field(None, description="Execution time in ms")
+
+
 class CancelMessage(BaseModel):
     """Adapter -> Gateway: Cancel in-flight request."""
 
     type: Literal[MessageType.CANCEL] = MessageType.CANCEL
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     request_id: str = Field(..., description="ID of request to cancel")
     reason: str | None = Field(None, description="Reason for cancellation")
 
@@ -235,6 +287,10 @@ class CancelledMessage(BaseModel):
     """Gateway -> Adapter: Request was cancelled."""
 
     type: Literal[MessageType.CANCELLED] = MessageType.CANCELLED
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     request_id: str = Field(..., description="ID of cancelled request")
 
 
@@ -242,6 +298,10 @@ class ErrorMessage(BaseModel):
     """Gateway -> Adapter: Error occurred."""
 
     type: Literal[MessageType.ERROR] = MessageType.ERROR
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     request_id: str | None = Field(None, description="Related request ID if applicable")
     code: str = Field(..., description="Error code")
     message: str = Field(..., description="Error message")
@@ -252,6 +312,10 @@ class StatusMessage(BaseModel):
     """Bidirectional status information."""
 
     type: Literal[MessageType.STATUS] = MessageType.STATUS
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     node_id: str | None = Field(None, description="Node ID if from adapter")
     active_requests: int = Field(0, description="Number of requests being processed")
     queue_length: int = Field(0, description="Number of queued requests")
@@ -267,6 +331,10 @@ class ProactiveMessage(BaseModel):
     """Gateway -> Adapter: Proactive message from ORS."""
 
     type: Literal[MessageType.PROACTIVE_MESSAGE] = MessageType.PROACTIVE_MESSAGE
+    protocol_version: str = Field(
+        default=PROTOCOL_VERSION,
+        description="Protocol version for compatibility checking",
+    )
     user: UserInfo = Field(..., description="Target user")
     channel: ChannelInfo = Field(..., description="Target channel")
     content: str = Field(..., description="Message content")
@@ -296,8 +364,31 @@ GatewayMessage = (
 )
 
 
+def _check_protocol_version(data: dict[str, Any], direction: str) -> None:
+    """Check and log protocol version compatibility.
+
+    Args:
+        data: Message data dict
+        direction: "adapter" or "gateway" for logging
+    """
+    version = data.get("protocol_version")
+    if version is None:
+        logger.debug(
+            f"[Protocol] Message from {direction} missing protocol_version, "
+            f"assuming {PROTOCOL_VERSION}"
+        )
+    elif version != PROTOCOL_VERSION:
+        logger.warning(
+            f"[Protocol] Version mismatch from {direction}: "
+            f"got {version}, expected {PROTOCOL_VERSION}"
+        )
+
+
 def parse_adapter_message(data: dict[str, Any]) -> AdapterMessage:
     """Parse a message from an adapter based on its type field.
+
+    Logs a warning if protocol_version is missing or mismatched,
+    but still parses the message for backward compatibility.
 
     Args:
         data: Dict parsed from JSON
@@ -311,6 +402,8 @@ def parse_adapter_message(data: dict[str, Any]) -> AdapterMessage:
     msg_type = data.get("type")
     if not msg_type:
         raise ValueError("Message missing 'type' field")
+
+    _check_protocol_version(data, "adapter")
 
     parsers = {
         MessageType.REGISTER: RegisterMessage,
@@ -330,6 +423,9 @@ def parse_adapter_message(data: dict[str, Any]) -> AdapterMessage:
 def parse_gateway_message(data: dict[str, Any]) -> GatewayMessage:
     """Parse a message from the gateway based on its type field.
 
+    Logs a warning if protocol_version is missing or mismatched,
+    but still parses the message for backward compatibility.
+
     Args:
         data: Dict parsed from JSON
 
@@ -342,6 +438,8 @@ def parse_gateway_message(data: dict[str, Any]) -> GatewayMessage:
     msg_type = data.get("type")
     if not msg_type:
         raise ValueError("Message missing 'type' field")
+
+    _check_protocol_version(data, "gateway")
 
     parsers = {
         MessageType.REGISTERED: RegisteredMessage,
