@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-27)
 
 **Core value:** Single daemon, multiple providers
-**Current focus:** Phase 4 - Production Hardening (Phase 3 partial complete)
+**Current focus:** Phase 3 gap closure - email migration complete
 
 ## Current Position
 
-Phase: 3 of 4 (CLI Client & Retirement) - PARTIAL COMPLETE
-Plan: 3 of 3 in Phase 3 (12 plans total)
-Status: Phase 3 partial - documentation complete, deletions blocked
-Last activity: 2026-01-28 - Completed 03-03-PLAN.md (Documentation and Cleanup - partial)
+Phase: 3 of 4 (CLI Client & Retirement) - Gap Closure
+Plan: 4 of 5 in Phase 3 (Gap closure plans)
+Status: Gap 2 closed - email_monitor imports migrated
+Last activity: 2026-01-28 - Completed 03-04-PLAN.md (Email Import Migration)
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 3.7 minutes
-- Total execution time: 0.55 hours
+- Total plans completed: 10
+- Average duration: 3.5 minutes
+- Total execution time: 0.58 hours
 
 **By Phase:**
 
@@ -29,12 +29,12 @@ Progress: [████████░░] 75%
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
 | 2 - Gateway Integration & Email | 3 | 13 min | 4.3 min |
-| 3 - CLI Client & Retirement | 3 | 8 min | 2.7 min |
+| 3 - CLI Client & Retirement | 4 | 10 min | 2.5 min |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (3 min), 03-01 (3 min), 03-02 (3 min), 03-03 (2 min)
-- Trend: Stable at ~3 min/plan
+- Last 5 plans: 03-01 (3 min), 03-02 (3 min), 03-03 (2 min), 03-04 (2 min)
+- Trend: Stable at ~2.5 min/plan
 
 *Updated after each plan completion*
 
@@ -93,13 +93,19 @@ Recent decisions affecting current work:
 - D03-03-02: discord-bot service marked deprecated but RETAINED
 - D03-03-03: Gateway documented as primary entry point with clara-cli
 
+**From 03-04:**
+- D03-04-01: Copy full tool definitions from email_monitor.py rather than importing
+- D03-04-02: Keep execute_email_tool as alias for backward compatibility
+- D03-04-03: Move LLM email evaluation functions to tools.py alongside handlers
+
 ### Pending Todos
 
-**Phase 2 Gaps (blocking Phase 3 completion):**
+**Phase 3 Gap Closure Status:**
 
-1. **Migrate email_monitor imports:**
-   - Update `discord_bot.py` to use `adapters.email` instead of `email_monitor`
-   - Update `clara_core/tools.py` to use `adapters.email` instead of `email_monitor`
+1. **~~Migrate email_monitor imports~~** - COMPLETE (03-04)
+   - discord_bot.py now imports from adapters.email
+   - clara_core/tools.py now imports from adapters.email
+   - email_monitor.py has zero external imports
 
 2. **Integrate EmailProvider into gateway:**
    - Add EmailProvider to `gateway/providers/__init__.py` exports
@@ -112,19 +118,19 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-**RESOLVED (with adjusted scope):** Phase 3 Plan 03 executed with documentation-only approach.
+**RESOLVED:** Gap 2 from 03-VERIFICATION.md is closed. email_monitor.py can now be deleted.
 
-Legacy files RETAINED:
-- `discord_bot.py` - Wrapped by DiscordProvider (strangler fig)
-- `email_monitor.py` - External imports not yet migrated
-- `discord_monitor.py` - Still in use for monitoring
+Legacy files status:
+- `discord_bot.py` - Wrapped by DiscordProvider (strangler fig) - KEEP
+- `email_monitor.py` - **CAN NOW BE DELETED** - all imports migrated to adapters.email
+- `discord_monitor.py` - Still in use for monitoring - KEEP
 
-**Impact:** Phase 3 is PARTIAL COMPLETE. The gateway architecture is documented and functional, but legacy files remain. This is acceptable for Phase 4 (Production Hardening) to proceed.
+**Next:** 03-05-PLAN.md should delete email_monitor.py
 
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-03-PLAN.md (Documentation and Cleanup - partial)
+Stopped at: Completed 03-04-PLAN.md (Email Import Migration)
 Resume file: None
 
-**Next step:** Begin Phase 4 - Production Hardening (04-01-PLAN.md if created)
+**Next step:** Execute 03-05-PLAN.md to delete email_monitor.py
