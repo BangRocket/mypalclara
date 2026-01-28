@@ -129,6 +129,21 @@ poetry run python scripts/migrate.py reset
 - `clara_core/mcp/models.py` - MCPServer SQLAlchemy model for configuration storage
 - `tools/mcp_management.py` - User-facing management tools (mcp_install, mcp_list, etc.)
 
+### Gateway System
+WebSocket-based gateway for platform adapters (in development):
+- `gateway/server.py` - WebSocket server accepting adapter connections
+- `gateway/processor.py` - Message processing and context building
+- `gateway/llm_orchestrator.py` - Streaming LLM responses with tool detection
+- `gateway/tool_executor.py` - Tool execution wrapper
+- `gateway/events.py` - Event system for gateway lifecycle and message events
+- `gateway/hooks.py` - Hook registration and execution (shell commands or Python callables)
+- `gateway/scheduler.py` - Task scheduler (one-shot, interval, cron)
+
+**Run the gateway:**
+```bash
+poetry run python -m gateway --host 127.0.0.1 --port 18789
+```
+
 ### Memory System
 - **User memories**: Persistent facts/preferences per user (stored in mem0, searched via `_fetch_mem0_context`)
 - **Project memories**: Topic-specific context per project (filtered by project_id in mem0)
@@ -342,6 +357,75 @@ docker-compose up -d                # Start API service
 
 **Web Search:**
 - `TAVILY_API_KEY` - Tavily API key for web search (Docker sandbox only)
+
+### Gateway (WebSocket Server)
+
+The gateway provides a central message processing hub for platform adapters. Run separately from the Discord bot.
+
+**Environment Variables:**
+- `CLARA_GATEWAY_HOST` - Bind address (default: 127.0.0.1)
+- `CLARA_GATEWAY_PORT` - Port to listen on (default: 18789)
+- `CLARA_GATEWAY_SECRET` - Shared secret for authentication (optional)
+- `CLARA_HOOKS_DIR` - Directory containing hooks.yaml (default: ./hooks)
+- `CLARA_SCHEDULER_DIR` - Directory containing scheduler.yaml (default: .)
+
+**Hooks System:**
+Hooks are automations triggered by gateway events. Configure in `hooks/hooks.yaml`:
+
+```yaml
+hooks:
+  - name: log-startup
+    event: gateway:startup
+    command: echo "Gateway started at ${CLARA_TIMESTAMP}"
+
+  - name: notify-errors
+    event: tool:error
+    command: curl -X POST https://webhook.example.com/notify -d "${CLARA_EVENT_DATA}"
+    timeout: 10
+```
+
+Event types: `gateway:startup`, `gateway:shutdown`, `adapter:connected`, `adapter:disconnected`, `session:start`, `session:end`, `session:timeout`, `message:received`, `message:sent`, `message:cancelled`, `tool:start`, `tool:end`, `tool:error`, `scheduler:task_run`, `scheduler:task_error`
+
+Environment variables available in hook commands:
+- `CLARA_EVENT_TYPE`, `CLARA_TIMESTAMP` - Event metadata
+- `CLARA_NODE_ID`, `CLARA_PLATFORM` - Adapter info
+- `CLARA_USER_ID`, `CLARA_CHANNEL_ID`, `CLARA_REQUEST_ID` - Context
+- `CLARA_EVENT_DATA` - Full event data as JSON
+
+**Scheduler System:**
+Schedule tasks with one-shot, interval, or cron expressions. Configure in `scheduler.yaml`:
+
+```yaml
+tasks:
+  - name: cleanup-sessions
+    type: interval
+    interval: 3600  # Every hour
+    command: poetry run python -m scripts.cleanup_sessions
+
+  - name: daily-backup
+    type: cron
+    cron: "0 3 * * *"  # 3 AM daily
+    command: ./scripts/backup.sh
+    timeout: 1800
+```
+
+Task types: `one_shot` (run once), `interval` (every N seconds), `cron` (cron expression)
+
+**Python Decorators:**
+Register hooks and tasks programmatically:
+
+```python
+from gateway import hook, scheduled, EventType, TaskType, Event
+
+@hook(EventType.SESSION_START)
+async def on_session_start(event: Event):
+    print(f"Session started: {event.user_id}")
+
+@scheduled(type=TaskType.INTERVAL, interval=3600)
+async def hourly_cleanup():
+    # Cleanup logic
+    pass
+```
 
 ### Tool Calling LLM
 By default, tool calling uses the **same endpoint and model as your main chat LLM**. This means if you're using a custom endpoint (like clewdr), tool calls go through it too.
