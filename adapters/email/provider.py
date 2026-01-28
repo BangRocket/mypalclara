@@ -12,6 +12,7 @@ from typing import Any
 
 from config.logging import get_logger
 from gateway.events import Event, EventType, emit
+from gateway.providers.base import PlatformMessage, Provider
 
 from adapters.email.monitor import EmailInfo, EmailMonitor
 
@@ -22,11 +23,15 @@ CHECK_INTERVAL = int(os.getenv("CLARA_EMAIL_CHECK_INTERVAL", "60"))
 NOTIFY_USER_ID = os.getenv("CLARA_EMAIL_NOTIFY_USER", "").strip()
 
 
-class EmailProvider:
+class EmailProvider(Provider):
     """Provider that monitors email accounts and emits alert events.
 
     Uses the gateway event system to notify other providers (e.g., Discord)
     about new emails, rather than directly coupling to Discord.
+
+    Note: EmailProvider is asymmetric - it receives emails and emits events,
+    but doesn't send responses back to email. The send_response() method
+    raises NotImplementedError as email is a receive-only provider.
 
     Attributes:
         monitor: The underlying EmailMonitor instance
@@ -44,18 +49,27 @@ class EmailProvider:
             check_interval: Seconds between email checks
             notify_user_id: User ID to target for alerts (platform-prefixed)
         """
+        super().__init__()
         self.monitor = EmailMonitor()
         self.check_interval = check_interval
         self.notify_user_id = notify_user_id or (
             f"discord-{NOTIFY_USER_ID}" if NOTIFY_USER_ID else None
         )
 
-        self._running = False
         self._poll_task: asyncio.Task[None] | None = None
         self._started_at: datetime | None = None
         self._emails_processed = 0
         self._last_check: datetime | None = None
         self._last_error: str | None = None
+
+    @property
+    def name(self) -> str:
+        """Return provider identifier.
+
+        Returns:
+            The string "email"
+        """
+        return "email"
 
     async def start(self) -> None:
         """Start the email polling loop."""
@@ -168,7 +182,57 @@ class EmailProvider:
             "check_interval": self.check_interval,
         }
 
+    def normalize_message(self, platform_message: Any) -> PlatformMessage:
+        """Convert a platform-specific message to normalized format.
+
+        EmailProvider doesn't normalize incoming messages - it emits events
+        directly when new emails are detected. This method is required by
+        Provider ABC but not used by EmailProvider's architecture.
+
+        Args:
+            platform_message: Unused (EmailProvider emits events directly)
+
+        Raises:
+            NotImplementedError: EmailProvider emits events directly,
+                doesn't normalize incoming messages
+        """
+        raise NotImplementedError(
+            "EmailProvider emits events directly and doesn't normalize incoming messages. "
+            "Email alerts are sent via the gateway event system (EventType.MESSAGE_RECEIVED)."
+        )
+
+    async def send_response(
+        self,
+        context: dict[str, Any],
+        content: str,
+        files: list[str] | None = None,
+    ) -> None:
+        """Send a response back through the platform.
+
+        EmailProvider is receive-only and doesn't send responses back to email.
+        Responses are sent through other providers (like Discord) via the event system.
+
+        Args:
+            context: Unused (EmailProvider doesn't send responses)
+            content: Unused (EmailProvider doesn't send responses)
+            files: Unused (EmailProvider doesn't send responses)
+
+        Raises:
+            NotImplementedError: EmailProvider is receive-only and doesn't
+                send responses back to email accounts
+        """
+        raise NotImplementedError(
+            "EmailProvider is receive-only and doesn't send responses to email. "
+            "Responses are delivered through other providers (e.g., Discord) via the event system."
+        )
+
     @property
     def is_running(self) -> bool:
-        """Check if provider is running."""
+        """Check if provider is running.
+
+        Backward compatibility alias for Provider.running property.
+
+        Returns:
+            True if provider is running
+        """
         return self._running
