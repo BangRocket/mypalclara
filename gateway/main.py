@@ -3,6 +3,7 @@
 Usage:
     poetry run python -m gateway
     poetry run python -m gateway --host 0.0.0.0 --port 18789
+    poetry run python -m gateway --enable-discord
 
 Environment variables:
     CLARA_GATEWAY_HOST - Bind address (default: 127.0.0.1)
@@ -10,6 +11,7 @@ Environment variables:
     CLARA_GATEWAY_SECRET - Shared secret for authentication (optional)
     CLARA_HOOKS_DIR - Directory containing hooks.yaml (default: ./hooks)
     CLARA_SCHEDULER_DIR - Directory containing scheduler.yaml (default: .)
+    CLARA_GATEWAY_DISCORD - Enable Discord provider (default: false)
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from config.logging import get_logger, init_logging
 from gateway.events import Event, EventType, emit, get_event_emitter
 from gateway.hooks import get_hook_manager
 from gateway.processor import MessageProcessor
+from gateway.providers import DiscordProvider, get_provider_manager
 from gateway.scheduler import get_scheduler
 from gateway.server import GatewayServer
 
@@ -39,7 +42,9 @@ init_logging()
 logger = get_logger("gateway")
 
 
-async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None:
+async def main(
+    host: str, port: int, hooks_dir: str, scheduler_dir: str, enable_discord: bool
+) -> None:
     """Run the gateway server.
 
     Args:
@@ -47,6 +52,7 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
         port: Port to listen on
         hooks_dir: Directory containing hooks.yaml
         scheduler_dir: Directory containing scheduler.yaml
+        enable_discord: Whether to start the Discord provider
     """
     # Initialize hooks system
     hook_manager = get_hook_manager()
@@ -59,6 +65,15 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
     scheduler._config_dir = Path(scheduler_dir)
     tasks_loaded = scheduler.load_from_file()
     logger.info(f"Scheduler ready ({tasks_loaded} tasks loaded)")
+
+    # Initialize provider manager
+    provider_manager = get_provider_manager()
+
+    # Register Discord provider if enabled
+    if enable_discord:
+        discord_provider = DiscordProvider()
+        provider_manager.register(discord_provider)
+        logger.info("Discord provider registered")
 
     # Create server and processor
     server = GatewayServer(host=host, port=port)
@@ -75,6 +90,12 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
 
     # Start server
     await server.start()
+
+    # Start registered providers
+    if provider_manager.providers:
+        logger.info(f"Starting {len(provider_manager.providers)} provider(s)...")
+        await provider_manager.start_all()
+        logger.info("All providers started")
 
     # Emit startup event
     await emit(
@@ -116,6 +137,13 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
 
     # Cleanup
     logger.info("Shutting down gateway...")
+
+    # Stop providers first (graceful shutdown)
+    if provider_manager.providers:
+        logger.info("Stopping providers...")
+        await provider_manager.stop_all()
+        logger.info("All providers stopped")
+
     await scheduler.stop()
     await server.stop()
     logger.info("Gateway stopped")
@@ -146,6 +174,12 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("CLARA_SCHEDULER_DIR", "."),
         help="Directory containing scheduler.yaml (default: .)",
     )
+    parser.add_argument(
+        "--enable-discord",
+        action="store_true",
+        default=os.getenv("CLARA_GATEWAY_DISCORD", "false").lower() == "true",
+        help="Enable Discord provider (default: $CLARA_GATEWAY_DISCORD or false)",
+    )
 
     return parser.parse_args()
 
@@ -154,6 +188,14 @@ if __name__ == "__main__":
     args = parse_args()
 
     try:
-        asyncio.run(main(args.host, args.port, args.hooks_dir, args.scheduler_dir))
+        asyncio.run(
+            main(
+                args.host,
+                args.port,
+                args.hooks_dir,
+                args.scheduler_dir,
+                args.enable_discord,
+            )
+        )
     except KeyboardInterrupt:
         pass
