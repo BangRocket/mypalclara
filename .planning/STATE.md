@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-27)
 
 **Core value:** Single daemon, multiple providers
-**Current focus:** Phase 3 - CLI Client & Retirement
+**Current focus:** Phase 4 - Production Hardening (Phase 3 partial complete)
 
 ## Current Position
 
-Phase: 3 of 4 (CLI Client & Retirement)
-Plan: 2 of 3 in Phase 3 (12 plans total)
-Status: BLOCKED - Pre-deletion verification failed
-Last activity: 2026-01-28 - Completed 03-02-PLAN.md (Pre-Deletion Verification)
+Phase: 3 of 4 (CLI Client & Retirement) - PARTIAL COMPLETE
+Plan: 3 of 3 in Phase 3 (12 plans total)
+Status: Phase 3 partial - documentation complete, deletions blocked
+Last activity: 2026-01-28 - Completed 03-03-PLAN.md (Documentation and Cleanup - partial)
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 3.9 minutes
-- Total execution time: 0.52 hours
+- Total plans completed: 9
+- Average duration: 3.7 minutes
+- Total execution time: 0.55 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [███████░░░] 67%
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
 | 2 - Gateway Integration & Email | 3 | 13 min | 4.3 min |
-| 3 - CLI Client & Retirement | 2 | 6 min | 3.0 min |
+| 3 - CLI Client & Retirement | 3 | 8 min | 2.7 min |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (4 min), 02-03 (3 min), 03-01 (3 min), 03-02 (3 min)
+- Last 5 plans: 02-03 (3 min), 03-01 (3 min), 03-02 (3 min), 03-03 (2 min)
 - Trend: Stable at ~3 min/plan
 
 *Updated after each plan completion*
@@ -46,7 +46,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
 - Providers run inside gateway (not as WS clients): Reduces latency, simplifies deployment
-- Delete discord_bot.py completely: Clean break over strangler fig indefinitely
+- Delete discord_bot.py completely: **REVISED** - Keep wrapped by DiscordProvider indefinitely
 - CLI connects via WebSocket: Consistent client interface
 - Strangler Fig pattern for Discord: Wrap discord_bot.py without rewriting (Phase 1)
 - Protocol versioning from day one: Prevents future breaking changes
@@ -88,32 +88,43 @@ Recent decisions affecting current work:
 - D03-02-02: EmailProvider exists in adapters/email/ not gateway/providers/ - architectural deviation from plan
 - D03-02-03: DiscordProvider properly implemented and integrated with ProviderManager
 
+**From 03-03:**
+- D03-03-01: SKIP Task 1 - discord_bot.py and email_monitor.py cannot be deleted
+- D03-03-02: discord-bot service marked deprecated but RETAINED
+- D03-03-03: Gateway documented as primary entry point with clara-cli
+
 ### Pending Todos
 
-None yet.
+**Phase 2 Gaps (blocking Phase 3 completion):**
+
+1. **Migrate email_monitor imports:**
+   - Update `discord_bot.py` to use `adapters.email` instead of `email_monitor`
+   - Update `clara_core/tools.py` to use `adapters.email` instead of `email_monitor`
+
+2. **Integrate EmailProvider into gateway:**
+   - Add EmailProvider to `gateway/providers/__init__.py` exports
+   - Add `--enable-email` flag to `gateway/main.py`
+   - Wire EmailProvider into ProviderManager lifecycle
+
+3. **Make DiscordProvider standalone (optional):**
+   - Refactor DiscordProvider to not require discord_bot.py
+   - Lower priority - strangler fig pattern working
 
 ### Blockers/Concerns
 
-**BLOCKER: Phase 3 Plan 03 (Legacy File Deletion) cannot proceed**
+**RESOLVED (with adjusted scope):** Phase 3 Plan 03 executed with documentation-only approach.
 
-1. **email_monitor.py external imports:**
-   - `discord_bot.py` imports EMAIL_TOOLS from email_monitor
-   - `clara_core/tools.py` imports EMAIL_TOOLS and execute_email_tool from email_monitor
+Legacy files RETAINED:
+- `discord_bot.py` - Wrapped by DiscordProvider (strangler fig)
+- `email_monitor.py` - External imports not yet migrated
+- `discord_monitor.py` - Still in use for monitoring
 
-2. **EmailProvider not gateway-integrated:**
-   - EmailProvider exists in `adapters/email/provider.py`
-   - Not exported from `gateway/providers/__init__.py`
-   - Not registered in `gateway/main.py`
-
-**Resolution required before Plan 03-03:**
-- Migrate email_monitor imports to use adapters.email
-- Integrate EmailProvider into gateway lifecycle
-- OR revise Phase 3 scope to exclude email_monitor deletion
+**Impact:** Phase 3 is PARTIAL COMPLETE. The gateway architecture is documented and functional, but legacy files remain. This is acceptable for Phase 4 (Production Hardening) to proceed.
 
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-02-PLAN.md (Pre-Deletion Verification) - BLOCKED
+Stopped at: Completed 03-03-PLAN.md (Documentation and Cleanup - partial)
 Resume file: None
 
-**Next step:** Resolve blockers identified in 03-02-SUMMARY.md before proceeding to 03-03-PLAN.md
+**Next step:** Begin Phase 4 - Production Hardening (04-01-PLAN.md if created)
