@@ -11,6 +11,6 @@ if __name__ == "__main__":
 
     args = parse_args()
     try:
-        asyncio.run(main(args.host, args.port, args.hooks_dir, args.scheduler_dir, args.enable_discord))
+        asyncio.run(main(args.host, args.port, args.hooks_dir, args.scheduler_dir, args.enable_discord, args.enable_email))
     except KeyboardInterrupt:
         pass
