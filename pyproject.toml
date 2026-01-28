@@ -76,6 +76,10 @@ rich = "^14.0.0"
 # Gateway
 websockets = "^15.0"  # WebSocket server for gateway architecture
 
+# Production hardening
+tenacity = "^9.0.0"  # Retry with exponential backoff (asyncio-native)
+structlog = "^25.0.0"  # Structured JSON logging
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 pytest-asyncio = "^0.24.0"
