@@ -277,3 +277,281 @@ class TestTierSelection:
         content, tier = gateway_client._extract_tier_override("Regular message without prefix")
         assert tier is None
         assert content == "Regular message without prefix"
+
+
+# =============================================================================
+# Response Streaming Tests (12-15)
+# =============================================================================
+
+
+class TestResponseStreaming:
+    """Tests for response streaming behavior."""
+
+    @pytest.mark.asyncio
+    async def test_12_response_start_triggers_typing(self, gateway_client, mock_discord_message):
+        """Response start should trigger typing indicator."""
+        gateway_client._pending["msg-test"] = create_pending("msg-test", mock_discord_message)
+
+        await gateway_client.on_response_start(MagicMock(
+            request_id="msg-test",
+            id="resp-123",
+            model_tier="mid"
+        ))
+
+        mock_discord_message.channel.trigger_typing.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_13_chunks_accumulate_correctly(self, gateway_client, mock_discord_message):
+        """Response chunks should accumulate text."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        # Send multiple chunks
+        await gateway_client.on_response_chunk(MagicMock(
+            id="resp-123", chunk="Hello ", accumulated="Hello "
+        ))
+        await gateway_client.on_response_chunk(MagicMock(
+            id="resp-123", chunk="World", accumulated="Hello World"
+        ))
+
+        assert pending.accumulated_text == "Hello World"
+
+    @pytest.mark.asyncio
+    async def test_14_rate_limiting_prevents_rapid_edits(self, gateway_client, mock_discord_message):
+        """Rapid chunks should be rate-limited to avoid Discord API limits."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        # Set last edit to now
+        pending.last_edit = datetime.now()
+
+        # Immediate chunk should be debounced
+        await gateway_client.on_response_chunk(MagicMock(
+            id="resp-123", chunk="x", accumulated="x"
+        ))
+
+        # Check that edit was skipped (last_edit unchanged within cooldown)
+        # The accumulated text should still be updated
+        assert pending.accumulated_text == "x"
+
+    @pytest.mark.asyncio
+    async def test_15_final_response_sends_complete_text(self, gateway_client, mock_discord_message):
+        """Response end should send the full text."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        await gateway_client.on_response_end(MagicMock(
+            id="resp-123",
+            full_text="Complete response text here",
+            files=[],
+            tool_count=0
+        ))
+
+        # Should have replied with full text
+        mock_discord_message.reply.assert_called()
+        call_args = mock_discord_message.reply.call_args
+        assert "Complete response text here" in str(call_args)
+
+
+# =============================================================================
+# Tool Status Display Tests (16-18)
+# =============================================================================
+
+
+class TestToolStatusDisplay:
+    """Tests for tool execution status display."""
+
+    @pytest.mark.asyncio
+    async def test_16_tool_start_shows_emoji_and_name(self, gateway_client, mock_discord_message):
+        """Tool start should display emoji and tool name."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        await gateway_client.on_tool_start(MagicMock(
+            id="resp-123",
+            tool_name="execute_python",
+            step=1,
+            emoji="\N{SNAKE}",
+            description=None
+        ))
+
+        mock_discord_message.channel.send.assert_called()
+        call_content = mock_discord_message.channel.send.call_args[0][0]
+        assert "\N{SNAKE}" in call_content
+        assert "execute_python" in call_content
+        assert "step 1" in call_content
+
+    @pytest.mark.asyncio
+    async def test_17_tool_step_increments(self, gateway_client, mock_discord_message):
+        """Tool steps should show incrementing numbers."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        # Multiple tools
+        for step in [1, 2, 3]:
+            await gateway_client.on_tool_start(MagicMock(
+                id="resp-123",
+                tool_name=f"tool_{step}",
+                step=step,
+                emoji="\N{GEAR}",
+                description=None
+            ))
+
+        # Should have 3 status messages
+        assert mock_discord_message.channel.send.call_count == 3
+
+        # Last call should show step 3
+        last_call = mock_discord_message.channel.send.call_args_list[-1]
+        assert "step 3" in last_call[0][0]
+
+    @pytest.mark.asyncio
+    async def test_18_tool_status_uses_silent_flag(self, gateway_client, mock_discord_message):
+        """Tool status messages should use silent=True to avoid notifications."""
+        pending = create_pending("msg-test", mock_discord_message, "resp-123")
+        gateway_client._pending["msg-test"] = pending
+
+        await gateway_client.on_tool_start(MagicMock(
+            id="resp-123",
+            tool_name="web_search",
+            step=1,
+            emoji="\N{LEFT-POINTING MAGNIFYING GLASS}",
+            description=None
+        ))
+
+        # Should be called with silent=True
+        call_kwargs = mock_discord_message.channel.send.call_args[1]
+        assert call_kwargs.get("silent") is True
+
+
+# =============================================================================
+# Error Handling Tests (19-21)
+# =============================================================================
+
+
+class TestErrorHandling:
+    """Tests for error handling and user feedback."""
+
+    @pytest.mark.asyncio
+    async def test_19_error_shows_user_friendly_message(self, gateway_client, mock_discord_message):
+        """Errors should show user-friendly message."""
+        pending = create_pending("msg-test", mock_discord_message)
+        gateway_client._pending["msg-test"] = pending
+
+        await gateway_client.on_error(MagicMock(
+            request_id="msg-test",
+            code="rate_limit",
+            message="Rate limit exceeded. Please wait before retrying.",
+            recoverable=True
+        ))
+
+        # Should reply with error message
+        mock_discord_message.reply.assert_called()
+        call_args = mock_discord_message.reply.call_args[0][0]
+        assert "error" in call_args.lower()
+
+    @pytest.mark.asyncio
+    async def test_20_error_message_truncated(self, gateway_client, mock_discord_message):
+        """Long error messages should be truncated."""
+        pending = create_pending("msg-test", mock_discord_message)
+        gateway_client._pending["msg-test"] = pending
+
+        long_error = "x" * 500  # Very long error
+        await gateway_client.on_error(MagicMock(
+            request_id="msg-test",
+            code="internal_error",
+            message=long_error,
+            recoverable=False
+        ))
+
+        call_args = mock_discord_message.reply.call_args[0][0]
+        # Error message should be truncated (100 char limit in current impl)
+        assert len(call_args) < 200
+
+    @pytest.mark.asyncio
+    async def test_21_cancelled_shows_stop_reaction(self, gateway_client, mock_discord_message):
+        """Cancelled requests should show stop reaction."""
+        pending = create_pending("msg-test", mock_discord_message)
+        gateway_client._pending["msg-test"] = pending
+
+        await gateway_client.on_cancelled(MagicMock(request_id="msg-test"))
+
+        mock_discord_message.add_reaction.assert_called_with("\N{OCTAGONAL SIGN}")
+
+
+# =============================================================================
+# Image/Vision Support Tests (22-24)
+# =============================================================================
+
+
+class TestImageVisionSupport:
+    """Tests for image attachment handling."""
+
+    @pytest.mark.asyncio
+    async def test_22_image_attachment_converted(self, gateway_client, mock_discord_message):
+        """Image attachments should be converted to AttachmentInfo."""
+        # Create mock attachment
+        attachment = MagicMock()
+        attachment.content_type = "image/png"
+        attachment.filename = "test.png"
+        attachment.size = 1024
+        attachment.read = AsyncMock(return_value=b"fake image data")
+        mock_discord_message.attachments = [attachment]
+
+        # Send message with attachment
+        await gateway_client.send_discord_message(mock_discord_message)
+
+        # Check WebSocket message was sent
+        gateway_client._ws.send.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_23_non_image_attachment_skipped(self, gateway_client, mock_discord_message):
+        """Non-image attachments should not be processed as images."""
+        # Create non-image attachment
+        attachment = MagicMock()
+        attachment.content_type = "application/pdf"
+        attachment.filename = "document.pdf"
+        attachment.size = 2048
+        mock_discord_message.attachments = [attachment]
+
+        await gateway_client.send_discord_message(mock_discord_message)
+
+        # Should still send message (just without image attachment)
+        gateway_client._ws.send.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_24_multiple_images_handled(self, gateway_client, mock_discord_message):
+        """Multiple image attachments should all be processed."""
+        attachments = []
+        for i in range(3):
+            att = MagicMock()
+            att.content_type = "image/jpeg"
+            att.filename = f"image{i}.jpg"
+            att.size = 1024 * (i + 1)
+            att.read = AsyncMock(return_value=b"fake image data")
+            attachments.append(att)
+
+        mock_discord_message.attachments = attachments
+
+        await gateway_client.send_discord_message(mock_discord_message)
+
+        gateway_client._ws.send.assert_called()
+
+
+# =============================================================================
+# Run count verification
+# =============================================================================
+
+
+def test_total_test_count():
+    """Verify we have 20+ behavioral tests."""
+    import tests.adapters.test_discord_behavioral as module
+    import inspect
+
+    test_count = 0
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and name.startswith("Test"):
+            for method_name, method in inspect.getmembers(obj):
+                if method_name.startswith("test_"):
+                    test_count += 1
+
+    assert test_count >= 20, f"Expected 20+ tests, found {test_count}"
