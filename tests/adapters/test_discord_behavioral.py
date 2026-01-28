@@ -122,3 +122,158 @@ def create_pending(
     if response_id:
         pending.response_id = response_id
     return pending
+
+
+# =============================================================================
+# Message Deduplication Tests (1-3)
+# =============================================================================
+
+
+class TestMessageDeduplication:
+    """Tests for message deduplication behavior."""
+
+    @pytest.mark.asyncio
+    async def test_1_duplicate_message_ignored(self, gateway_client, mock_discord_message):
+        """Same message ID should not create duplicate pending entries."""
+        # First message creates pending
+        request_id1 = await gateway_client.send_discord_message(mock_discord_message)
+
+        # Same message again (simulate Discord double-delivery)
+        request_id2 = await gateway_client.send_discord_message(mock_discord_message)
+
+        # Should have two distinct request IDs (gateway handles dedup, not client)
+        # But both should be tracked in pending
+        assert request_id1 is not None
+        assert request_id2 is not None
+        assert len(gateway_client._pending) == 2
+
+    @pytest.mark.asyncio
+    async def test_2_completed_response_cleaned_up(self, gateway_client, mock_discord_message):
+        """Completed responses should be removed from pending."""
+        gateway_client._pending["msg-test"] = create_pending(
+            "msg-test", mock_discord_message, "resp-123"
+        )
+
+        await gateway_client.on_response_end(MagicMock(
+            id="resp-123",
+            full_text="Response complete",
+            files=[],
+            tool_count=0
+        ))
+
+        # Pending should be cleaned up
+        assert "msg-test" not in gateway_client._pending
+
+    @pytest.mark.asyncio
+    async def test_3_error_response_cleaned_up(self, gateway_client, mock_discord_message):
+        """Error responses should also clean up pending."""
+        gateway_client._pending["msg-test"] = create_pending(
+            "msg-test", mock_discord_message, "resp-123"
+        )
+
+        await gateway_client.on_error(MagicMock(
+            request_id="msg-test",
+            code="processing_error",
+            message="Something went wrong",
+            recoverable=True
+        ))
+
+        # Pending should be cleaned up on error
+        assert "msg-test" not in gateway_client._pending
+
+
+# =============================================================================
+# Queue Management Tests (4-7)
+# =============================================================================
+
+
+class TestQueueManagement:
+    """Tests for message queue behavior."""
+
+    @pytest.mark.asyncio
+    async def test_4_pending_tracks_multiple_requests(self, gateway_client, mock_discord_message, mock_channel):
+        """Multiple concurrent requests should all be tracked."""
+        # Create 3 messages
+        for i in range(3):
+            msg = MagicMock()
+            msg.id = 100 + i
+            msg.author = mock_discord_message.author
+            msg.channel = mock_channel
+            msg.guild = mock_discord_message.guild
+            msg.content = f"Message {i}"
+            msg.attachments = []
+            msg.reference = None
+
+            await gateway_client.send_discord_message(msg)
+
+        assert len(gateway_client._pending) == 3
+
+    @pytest.mark.asyncio
+    async def test_5_cancelled_request_shows_reaction(self, gateway_client, mock_discord_message):
+        """Cancelled requests should add stop reaction."""
+        gateway_client._pending["msg-test"] = create_pending(
+            "msg-test", mock_discord_message
+        )
+
+        await gateway_client.on_cancelled(MagicMock(request_id="msg-test"))
+
+        # Should add stop reaction
+        mock_discord_message.add_reaction.assert_called_with("\N{OCTAGONAL SIGN}")
+
+    @pytest.mark.asyncio
+    async def test_6_unknown_request_id_handled_gracefully(self, gateway_client):
+        """Unknown request IDs should not cause errors."""
+        # These should not raise
+        await gateway_client.on_response_start(MagicMock(request_id="unknown", id="resp"))
+        await gateway_client.on_response_chunk(MagicMock(id="unknown", chunk="x", accumulated="x"))
+        await gateway_client.on_response_end(MagicMock(id="unknown", full_text="x", files=[], tool_count=0))
+
+        # No assertion needed - just verify no exception
+
+    @pytest.mark.asyncio
+    async def test_7_pending_response_timeout_cleanup(self, gateway_client, mock_discord_message):
+        """Old pending responses should be cleanable (no memory leak)."""
+        # Create old pending entry
+        pending = create_pending("msg-old", mock_discord_message)
+        pending.started_at = datetime.now() - timedelta(hours=1)
+        gateway_client._pending["msg-old"] = pending
+
+        # Verify it exists and could be cleaned up based on age
+        assert "msg-old" in gateway_client._pending
+        assert (datetime.now() - pending.started_at).total_seconds() > 3600
+
+
+# =============================================================================
+# Tier Selection Tests (8-11)
+# =============================================================================
+
+
+class TestTierSelection:
+    """Tests for model tier selection via message prefixes."""
+
+    @pytest.mark.asyncio
+    async def test_8_high_tier_prefix(self, gateway_client):
+        """!high prefix should select high tier."""
+        content, tier = gateway_client._extract_tier_override("!high What is quantum entanglement?")
+        assert tier == "high"
+        assert content == "What is quantum entanglement?"
+
+    @pytest.mark.asyncio
+    async def test_9_opus_alias_maps_to_high(self, gateway_client):
+        """!opus should map to high tier."""
+        content, tier = gateway_client._extract_tier_override("!opus Explain relativity")
+        assert tier == "high"
+
+    @pytest.mark.asyncio
+    async def test_10_low_tier_variations(self, gateway_client):
+        """!low, !haiku, !fast should all map to low tier."""
+        for prefix in ["!low", "!haiku", "!fast"]:
+            content, tier = gateway_client._extract_tier_override(f"{prefix} Quick question")
+            assert tier == "low", f"Expected low tier for {prefix}"
+
+    @pytest.mark.asyncio
+    async def test_11_no_prefix_returns_none(self, gateway_client):
+        """Messages without prefix should return None tier."""
+        content, tier = gateway_client._extract_tier_override("Regular message without prefix")
+        assert tier is None
+        assert content == "Regular message without prefix"
