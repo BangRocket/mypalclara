@@ -80,6 +80,9 @@ class DiscordGatewayClient(GatewayClient):
     def _extract_tier_override(self, content: str) -> tuple[str, str | None]:
         """Extract tier prefix from content.
 
+        Prefix must be followed by whitespace or end of string to be valid.
+        E.g., "!high test" matches but "!highway" does not.
+
         Args:
             content: Message content
 
@@ -101,8 +104,11 @@ class DiscordGatewayClient(GatewayClient):
 
         for prefix, tier in tier_prefixes.items():
             if content_lower.startswith(prefix):
-                # Return content after prefix, preserving original case
-                return content_stripped[len(prefix) :].strip(), tier
+                # Check that prefix is followed by whitespace or end of string
+                after_prefix = content_stripped[len(prefix) :]
+                if not after_prefix or after_prefix[0].isspace():
+                    # Return content after prefix, preserving original case
+                    return after_prefix.strip(), tier
 
         return content_stripped, None
 
