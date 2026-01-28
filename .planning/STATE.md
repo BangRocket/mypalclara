@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-27)
 
 **Core value:** Single daemon, multiple providers
-**Current focus:** Phase 3 gap closure - email migration complete
+**Current focus:** Phase 3 COMPLETE - Ready for Phase 4
 
 ## Current Position
 
-Phase: 3 of 4 (CLI Client & Retirement) - Gap Closure
-Plan: 4 of 5 in Phase 3 (Gap closure plans)
-Status: Gap 2 closed - email_monitor imports migrated
-Last activity: 2026-01-28 - Completed 03-04-PLAN.md (Email Import Migration)
+Phase: 3 of 4 (CLI Client & Retirement) - COMPLETE
+Plan: 5 of 5 in Phase 3
+Status: Phase 3 complete - all gap closure done
+Last activity: 2026-01-28 - Completed 03-05-PLAN.md (Email Provider Gateway Integration)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100% Phase 3
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 3.5 minutes
-- Total execution time: 0.58 hours
+- Total plans completed: 11
+- Average duration: 3.3 minutes
+- Total execution time: 0.61 hours
 
 **By Phase:**
 
@@ -29,12 +29,12 @@ Progress: [████████░░] 80%
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
 | 2 - Gateway Integration & Email | 3 | 13 min | 4.3 min |
-| 3 - CLI Client & Retirement | 4 | 10 min | 2.5 min |
+| 3 - CLI Client & Retirement | 5 | 12 min | 2.4 min |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (3 min), 03-02 (3 min), 03-03 (2 min), 03-04 (2 min)
-- Trend: Stable at ~2.5 min/plan
+- Last 5 plans: 03-02 (3 min), 03-03 (2 min), 03-04 (2 min), 03-05 (2.5 min)
+- Trend: Stable at ~2.4 min/plan
 
 *Updated after each plan completion*
 
@@ -98,39 +98,34 @@ Recent decisions affecting current work:
 - D03-04-02: Keep execute_email_tool as alias for backward compatibility
 - D03-04-03: Move LLM email evaluation functions to tools.py alongside handlers
 
+**From 03-05:**
+- D03-05-01: EmailProvider re-exported from gateway/providers for API consistency
+
 ### Pending Todos
 
-**Phase 3 Gap Closure Status:**
+**Phase 3 Gap Closure Status: ALL COMPLETE**
 
-1. **~~Migrate email_monitor imports~~** - COMPLETE (03-04)
-   - discord_bot.py now imports from adapters.email
-   - clara_core/tools.py now imports from adapters.email
-   - email_monitor.py has zero external imports
+1. ~~Migrate email_monitor imports~~ - COMPLETE (03-04)
+2. ~~Integrate EmailProvider into gateway~~ - COMPLETE (03-05)
+3. ~~Delete email_monitor.py~~ - COMPLETE (03-05)
 
-2. **Integrate EmailProvider into gateway:**
-   - Add EmailProvider to `gateway/providers/__init__.py` exports
-   - Add `--enable-email` flag to `gateway/main.py`
-   - Wire EmailProvider into ProviderManager lifecycle
-
-3. **Make DiscordProvider standalone (optional):**
-   - Refactor DiscordProvider to not require discord_bot.py
-   - Lower priority - strangler fig pattern working
+**Phase 4 Planning Required:**
+- Production hardening plans needed
+- Focus areas: health checks, graceful shutdown, monitoring, deployment
 
 ### Blockers/Concerns
 
-**RESOLVED:** Gap 2 from 03-VERIFICATION.md is closed. email_monitor.py can now be deleted.
+None. Phase 3 complete with all gaps closed.
 
 Legacy files status:
 - `discord_bot.py` - Wrapped by DiscordProvider (strangler fig) - KEEP
-- `email_monitor.py` - **CAN NOW BE DELETED** - all imports migrated to adapters.email
+- `email_monitor.py` - **DELETED** in 03-05 (803 lines removed)
 - `discord_monitor.py` - Still in use for monitoring - KEEP
-
-**Next:** 03-05-PLAN.md should delete email_monitor.py
 
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 03-04-PLAN.md (Email Import Migration)
+Stopped at: Completed 03-05-PLAN.md (Email Provider Gateway Integration)
 Resume file: None
 
-**Next step:** Execute 03-05-PLAN.md to delete email_monitor.py
+**Next step:** Phase 3 complete. Plan Phase 4 (Production Hardening) or verify phase completion.
