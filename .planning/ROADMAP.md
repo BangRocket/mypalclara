@@ -47,12 +47,12 @@ Plans:
 6. Protocol versioning (v1.0) in all WebSocket messages
 
 **Success Criteria:**
-- [ ] Provider base class defines clear interface (start, stop, normalize_message, send_response)
-- [ ] DiscordProvider wraps discord_bot.py code without rewriting core logic
-- [ ] Gateway can start/stop DiscordProvider programmatically
-- [ ] Discord messages flow through Provider.normalize_message() to PlatformMessage
-- [ ] Protocol version field present in all gateway messages
-- [ ] No behavioral regression: Discord bot responds identically to before
+- [x] Provider base class defines clear interface (start, stop, normalize_message, send_response)
+- [x] DiscordProvider wraps discord_bot.py code without rewriting core logic
+- [x] Gateway can start/stop DiscordProvider programmatically
+- [x] Discord messages flow through Provider.normalize_message() to PlatformMessage
+- [x] Protocol version field present in all gateway messages
+- [x] No behavioral regression: Discord bot responds identically to before
 
 **Key Risks Mitigated:**
 - Lost Stateful Features: Wrapping (not rewriting) preserves all Discord bot behaviors
@@ -254,12 +254,12 @@ Plans:
 
 | Phase | Status | Started | Completed | Notes |
 |-------|--------|---------|-----------|-------|
-| 1 - Provider Foundation | Planned | — | — | 3 plans in 3 waves |
+| 1 - Provider Foundation | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 2 - Gateway Integration & Email | Planned | — | — | 3 plans in 2 waves |
 | 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
 | 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
-**Overall Progress:** 0/4 phases complete (0%)
+**Overall Progress:** 1/4 phases complete (25%)
 
 ---
 
