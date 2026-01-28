@@ -30,6 +30,7 @@ from gateway.hooks import (
 from gateway.llm_orchestrator import LLMOrchestrator
 from gateway.processor import MessageProcessor
 from gateway.protocol import (
+    PROTOCOL_VERSION,
     GatewayMessage,
     MessageRequest,
     MessageType,
@@ -41,6 +42,12 @@ from gateway.protocol import (
     ResponseStart,
     ToolResult,
     ToolStart,
+)
+from gateway.providers import (
+    PlatformMessage,
+    Provider,
+    ProviderManager,
+    get_provider_manager,
 )
 from gateway.router import MessageRouter
 from gateway.scheduler import (
@@ -81,6 +88,7 @@ __all__ = [
     "get_scheduler",
     "scheduled",
     # Protocol
+    "PROTOCOL_VERSION",
     "GatewayMessage",
     "MessageType",
     "RegisterMessage",
@@ -92,6 +100,11 @@ __all__ = [
     "ToolResult",
     "ResponseEnd",
     "NodeInfo",
+    # Providers
+    "PlatformMessage",
+    "Provider",
+    "ProviderManager",
+    "get_provider_manager",
     # Server
     "GatewayServer",
     # Session
