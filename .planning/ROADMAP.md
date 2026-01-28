@@ -3,7 +3,7 @@
 **Project:** MyPalClara Gateway Architecture Consolidation
 **Milestone:** Gateway Unification v1
 **Created:** 2026-01-27
-**Status:** Phase 3 Partial (deletions blocked)
+**Status:** Phase 3 Gap Closure (2 plans added)
 
 ---
 
@@ -29,9 +29,9 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 **Plans:** 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Core infrastructure: Provider ABC, ProviderManager, protocol versioning
-- [ ] 01-02-PLAN.md — DiscordProvider wrapping ClaraDiscordBot (Strangler Fig)
-- [ ] 01-03-PLAN.md — Gateway integration: wire ProviderManager into startup
+- [x] 01-01-PLAN.md — Core infrastructure: Provider ABC, ProviderManager, protocol versioning
+- [x] 01-02-PLAN.md — DiscordProvider wrapping ClaraDiscordBot (Strangler Fig)
+- [x] 01-03-PLAN.md — Gateway integration: wire ProviderManager into startup
 
 **Requirements Coverage:**
 - Gateway daemon runs all providers from single process
@@ -83,9 +83,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Integrate DiscordGatewayClient with MessageProcessor pipeline
-- [ ] 02-02-PLAN.md — Extract EmailProvider from email_monitor.py with event-based alerting
-- [ ] 02-03-PLAN.md — Create 20+ behavioral tests for Discord parity validation
+- [x] 02-01-PLAN.md — Integrate DiscordGatewayClient with MessageProcessor pipeline
+- [x] 02-02-PLAN.md — Extract EmailProvider from email_monitor.py with event-based alerting
+- [x] 02-03-PLAN.md — Create 20+ behavioral tests for Discord parity validation
 
 **Requirements Coverage:**
 - Email provider integrated into gateway
@@ -137,33 +137,36 @@ Plans:
 
 **Dependencies:** Phase 2 (requires working providers)
 
-**Plans:** 3 plans
+**Plans:** 5 plans (3 original + 2 gap closure)
 
 Plans:
 - [x] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
 - [x] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe (BLOCKERS FOUND)
 - [x] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation (PARTIAL)
+- [ ] 03-04-PLAN.md — Migrate email_monitor imports to adapters.email (GAP CLOSURE)
+- [ ] 03-05-PLAN.md — Integrate EmailProvider into gateway, delete email_monitor.py (GAP CLOSURE)
 
 **Requirements Coverage:**
 - CLI client connects to gateway via WebSocket
 - `python -m gateway` is the only entry point needed
-- `discord_bot.py` deleted (code merged into gateway)
+- ~~`discord_bot.py` deleted (code merged into gateway)~~ REVISED: Keep wrapped by DiscordProvider
+- `email_monitor.py` deleted (imports migrated to adapters.email)
 
 **Deliverables:**
 1. CLI client refactored to connect via WebSocket (not direct MemoryManager)
 2. `cli_bot.py` entry point calls gateway CLI client
-3. `discord_bot.py` deleted (all code moved to gateway/providers/discord.py)
-4. `email_monitor.py` deleted (all code moved to gateway/providers/email.py)
-5. `poetry run python -m gateway` starts all providers
+3. ~~`discord_bot.py` deleted~~ REVISED: Remains wrapped by DiscordProvider (strangler fig)
+4. `email_monitor.py` deleted (all code moved to adapters/email/)
+5. `poetry run python -m gateway` starts Discord and Email providers
 6. Documentation updated (CLAUDE.md, README.md)
 7. Docker Compose updated to single gateway service
 
 **Success Criteria:**
 - [x] CLI client connects to gateway WebSocket server
 - [x] CLI messages flow through gateway processor with full tool support
-- [ ] `discord_bot.py` deleted from repository (BLOCKED: DiscordProvider wraps it)
-- [ ] `email_monitor.py` deleted from repository (BLOCKED: external imports)
-- [~] `python -m gateway` starts Discord, Email, and CLI providers (Discord only - Email not integrated)
+- [x] DiscordProvider wraps discord_bot.py (strangler fig pattern - permanent)
+- [ ] `email_monitor.py` deleted from repository
+- [ ] `python -m gateway --enable-email` starts EmailProvider
 - [x] No import errors or broken references after deletion
 - [x] docker-compose.yml runs single gateway container
 - [x] All integration tests pass (71 tests)
@@ -175,9 +178,9 @@ Plans:
 **Files Changed:**
 - MODIFIED: `cli_bot.py` - Use WebSocket client instead of direct calls
 - NEW: `gateway/providers/cli.py` - CLI provider for local terminal
-- DELETED: `discord_bot.py` - 4384 lines moved to gateway/providers/discord.py
-- DELETED: `email_monitor.py` - Logic moved to gateway/providers/email.py
-- MODIFIED: `gateway/main.py` - Start all three providers
+- RETAINED: `discord_bot.py` - Wrapped by DiscordProvider (strangler fig pattern)
+- DELETED: `email_monitor.py` - Logic moved to adapters/email/
+- MODIFIED: `gateway/main.py` - Start Discord and Email providers
 - MODIFIED: `docker-compose.yml` - Single gateway service
 - MODIFIED: `CLAUDE.md` - Update deployment instructions
 - MODIFIED: `README.md` - Update architecture documentation
@@ -187,6 +190,7 @@ Plans:
 - CLI WebSocket client used only when connecting to remote gateway
 - Gateway determines local vs remote CLI based on connection source
 - Auto-migration runs on gateway startup (same as before)
+- discord_bot.py RETAINED: Strangler fig pattern is intentional architecture
 
 ---
 
@@ -256,10 +260,10 @@ Plans:
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 2 - Gateway Integration & Email | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
-| 3 - CLI Client & Retirement | Partial | 2026-01-28 | 2026-01-28 | 3 plans, 8 min - deletions blocked |
+| 3 - CLI Client & Retirement | In Progress | 2026-01-28 | — | 5 plans (3 done, 2 gap closure pending) |
 | 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
 
-**Overall Progress:** 2.5/4 phases complete (62.5%) - Phase 3 partial due to strangler fig pattern
+**Overall Progress:** 2.5/4 phases complete (62.5%) - Phase 3 gap closure in progress
 
 ---
 
@@ -277,6 +281,7 @@ Plans:
 - **OpenTelemetry Tracing:** Basic structured logging sufficient for MVP
 - **Circuit Breaker Patterns:** Add when scaling issues appear in production
 - **Proactive Messages (ORS):** Requires separate planning phase
+- **DiscordProvider Standalone Refactor:** Strangler fig pattern is permanent architecture
 
 ---
 
@@ -323,7 +328,8 @@ Phase 4 (Production Hardening)
 - mem0 databases untouched and functional
 - Discord bot feature parity maintained
 - Single entry point (`python -m gateway`)
-- Clean deletion of discord_bot.py
+- ~~Clean deletion of discord_bot.py~~ REVISED: Wrapped by DiscordProvider
+- Clean deletion of email_monitor.py
 - Load test validates 100+ user capacity
 
 ---
@@ -334,12 +340,13 @@ Phase 4 (Production Hardening)
 |----------|-----------|--------|
 | Providers run inside gateway process | Lower latency, simpler deployment | Decided |
 | Strangler Fig pattern for Discord | Reduces risk, enables incremental migration | Decided |
-| ~~Delete discord_bot.py completely~~ | ~~Clean break over indefinite dual-write~~ | **Revised** - Keep wrapped |
+| ~~Delete discord_bot.py completely~~ | ~~Clean break over indefinite dual-write~~ | **Revised** - Keep wrapped permanently |
+| Delete email_monitor.py | Imports migrated to adapters.email | Decided |
 | Protocol versioning from Phase 1 | Prevents future breaking changes | Decided |
 | Behavioral test suite before extraction | Catches lost features early | Decided |
 | CLI as WebSocket client | Consistent interface for remote/local | Decided |
 | Load testing in Phase 4 | Validates assumptions before production | Decided |
-| Keep strangler fig files | DiscordProvider wraps discord_bot.py; email_monitor has external imports | **New** - Phase 3 |
+| Keep discord_bot.py wrapped | DiscordProvider strangler fig is permanent architecture | **New** - Phase 3 |
 
 ---
 
@@ -347,5 +354,6 @@ Phase 4 (Production Hardening)
 *Phase 1 planned: 2026-01-27*
 *Phase 2 planned: 2026-01-27*
 *Phase 3 planned: 2026-01-27*
+*Phase 3 gap closure: 2026-01-28*
 *Phase 4 planned: 2026-01-27*
-*Next step: Execute Phase 1 with `/gsd:execute-phase 1`*
+*Next step: Execute Phase 3 gap closure with `/gsd:execute-phase 3`*
