@@ -1,10 +1,18 @@
 """
 Logging configuration with console and PostgreSQL database handlers.
 
-Usage:
-    from logging_config import get_logger
+Supports both traditional logging and structured logging via structlog.
+
+Usage (traditional):
+    from config.logging import get_logger
     logger = get_logger("api")
     logger.info("Server started", extra={"user_id": "123"})
+
+Usage (structured - for gateway):
+    from config.logging import get_structured_logger
+    logger = get_structured_logger("gateway.processor")
+    log = logger.bind(request_id="abc123", user_id="user1")
+    log.info("message_received", content_length=100)
 """
 
 from __future__ import annotations
@@ -18,6 +26,8 @@ import traceback
 from datetime import datetime, timezone
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session as DBSession
@@ -480,7 +490,41 @@ def init_logging(session_factory=None, console_level: int | None = None):
     if session_factory:
         _db_handler.set_session_factory(session_factory)
 
+    # Configure structlog for structured logging
+    configure_structlog()
+
     _initialized = True
+
+
+def configure_structlog() -> None:
+    """Configure structlog for production JSON logging or dev console.
+
+    In production (ENV=production or LOG_FORMAT=json), outputs JSON.
+    In development, outputs pretty-printed console logs.
+    """
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+
+    # Production: JSON output
+    if os.getenv("ENV") == "production" or os.getenv("LOG_FORMAT") == "json":
+        processors.append(structlog.processors.dict_tracebacks)
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        # Development: Pretty console
+        processors.append(structlog.dev.ConsoleRenderer())
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
 
 
 def set_db_session_factory(session_factory):
@@ -524,10 +568,32 @@ def get_discord_handler() -> DiscordLogHandler | None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get a logger with the given name."""
+    """Get a logger with the given name.
+
+    Returns a standard library logger for backward compatibility.
+    Use get_structured_logger() for new gateway code.
+    """
     if not _initialized:
         init_logging()
     return logging.getLogger(name)
+
+
+def get_structured_logger(name: str) -> structlog.stdlib.BoundLogger:
+    """Get a structlog logger with the given name.
+
+    Returns a structlog BoundLogger that supports context binding:
+        log = logger.bind(request_id="abc", user_id="user1")
+        log.info("event_name", key="value")
+
+    Args:
+        name: Logger name (e.g., "gateway.processor")
+
+    Returns:
+        A structlog BoundLogger instance
+    """
+    if not _initialized:
+        init_logging()
+    return structlog.get_logger(name)
 
 
 def shutdown_logging():

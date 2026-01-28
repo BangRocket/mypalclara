@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import websockets
 from websockets.server import WebSocketServerProtocol, serve
 
-from config.logging import get_logger
+from config.logging import get_structured_logger
 from gateway.rate_limiter import RateLimiter
 from gateway.protocol import (
     CancelledMessage,
@@ -36,7 +36,7 @@ from gateway.session import NodeRegistry, SessionManager
 if TYPE_CHECKING:
     pass
 
-logger = get_logger("gateway.server")
+logger = get_structured_logger("gateway.server")
 
 
 class GatewayServer:
@@ -236,10 +236,16 @@ class GatewayServer:
             user_id=msg.user.id,
         )
 
+        # Log message request with context
+        logger.info(
+            "message_request",
+            request_id=msg.id,
+            user_id=msg.user.id,
+            channel_id=msg.channel.id,
+            rate_limited=not allowed,
+        )
+
         if not allowed:
-            logger.info(
-                f"Rate limited: user={msg.user.id} channel={msg.channel.id} retry_after={retry_after:.1f}s"
-            )
             await self._send_error(
                 websocket,
                 msg.id,

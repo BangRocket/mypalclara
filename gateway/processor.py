@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
-from config.logging import get_logger
+from config.logging import get_structured_logger
 from gateway.llm_orchestrator import LLMOrchestrator
 from gateway.protocol import (
     MessageRequest,
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
 
     from gateway.server import GatewayServer
 
-logger = get_logger("gateway.processor")
+logger = get_structured_logger("gateway.processor")
 
 # Thread pool for blocking operations
 BLOCKING_EXECUTOR = ThreadPoolExecutor(
@@ -104,9 +105,18 @@ class MessageProcessor:
             websocket: WebSocket to send responses to
             server: The gateway server instance
         """
+        start_time = time.time()
         response_id = f"resp-{uuid.uuid4().hex[:8]}"
 
-        logger.info(f"Processing message {request.id} from {request.user.id}: " f"{request.content[:50]}...")
+        # Bind context for structured logging
+        log = logger.bind(
+            request_id=request.id,
+            user_id=request.user.id,
+            channel_id=request.channel.id,
+            platform=request.metadata.get("platform", "unknown"),
+        )
+
+        log.info("message_received", content_length=len(request.content))
 
         # Send response start
         await self._send(
@@ -191,13 +201,19 @@ class MessageProcessor:
                 ),
             )
 
-            logger.info(f"Completed response {response_id} ({len(full_text)} chars, {tool_count} tools)")
+            duration_ms = int((time.time() - start_time) * 1000)
+            log.info(
+                "message_complete",
+                response_length=len(full_text),
+                tool_count=tool_count,
+                duration_ms=duration_ms,
+            )
 
         except asyncio.CancelledError:
-            logger.info(f"Processing cancelled for {request.id}")
+            log.info("processing_cancelled")
             raise
         except Exception as e:
-            logger.exception(f"Error processing {request.id}: {e}")
+            log.exception("processing_error", error=str(e))
             raise
 
     async def _build_context(self, request: MessageRequest) -> dict[str, Any]:
