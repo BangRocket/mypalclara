@@ -59,7 +59,10 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Clara Gateway (WebSocket server for adapters)
+  # Clara Gateway - Primary entry point for all providers (Discord, Email, CLI)
+  # The gateway runs providers in-process for reduced latency and unified lifecycle.
+  # Discord provider wraps discord_bot.py (strangler fig pattern)
+  # Email provider wraps email_monitor.py (migration in progress)
   gateway:
     image: ${REGISTRY:-}mypalclara-gateway:latest
     build:
@@ -113,6 +116,17 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       # MCP Plugin System
       - MCP_SERVERS_DIR=/app/mcp_servers
+      # Discord (run Discord provider via --enable-discord)
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-}
+      - DISCORD_ALLOWED_SERVERS=${DISCORD_ALLOWED_SERVERS:-}
+      - DISCORD_ALLOWED_CHANNELS=${DISCORD_ALLOWED_CHANNELS:-}
+      - DISCORD_ALLOWED_ROLES=${DISCORD_ALLOWED_ROLES:-}
+      - DISCORD_MAX_MESSAGES=${DISCORD_MAX_MESSAGES:-25}
+      # Email monitoring (run Email provider via --enable-email, when implemented)
+      - EMAIL_MONITORING_ENABLED=${EMAIL_MONITORING_ENABLED:-false}
+      - EMAIL_ENCRYPTION_KEY=${EMAIL_ENCRYPTION_KEY:-}
+      - EMAIL_DEFAULT_POLL_INTERVAL=${EMAIL_DEFAULT_POLL_INTERVAL:-5}
       # General
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
@@ -127,7 +141,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Discord bot
+  # DEPRECATED: Use gateway service with --enable-discord instead
+  # This service is retained for backward compatibility while gateway migration completes.
+  # The DiscordProvider in gateway wraps this bot using the strangler fig pattern.
+  # Will be removed when DiscordProvider becomes standalone.
   discord-bot:
     image: ${REGISTRY:-}mypalclara-discord:latest
     build:
