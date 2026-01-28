@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 import websockets
+from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 
@@ -219,7 +220,7 @@ async def simulate_client(
     conn_start = time.perf_counter()
 
     try:
-        async with websockets.connect(
+        async with connect(
             uri,
             ping_interval=30,
             ping_timeout=10,

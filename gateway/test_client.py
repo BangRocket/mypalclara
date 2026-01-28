@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import websockets
+from websockets.asyncio.client import connect
 
 from gateway.protocol import (
     ChannelInfo,
@@ -42,7 +43,7 @@ async def main(url: str, message: str) -> None:
 
     print(f"Connecting to {url}...")
 
-    async with websockets.connect(url) as ws:
+    async with connect(url) as ws:
         # Register
         register = RegisterMessage(
             node_id=node_id,
