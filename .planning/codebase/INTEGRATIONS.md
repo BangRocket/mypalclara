@@ -1,319 +1,291 @@
 # External Integrations
 
-**Analysis Date:** 2026-01-24
+**Analysis Date:** 2026-01-27
 
 ## APIs & External Services
 
-**LLM Chat Providers:**
-- **OpenRouter** - Multi-provider LLM routing
-  - SDK/Client: `openai` package (OpenAI-compatible API)
-  - Config: `LLM_PROVIDER=openrouter`
+**Chat LLM Providers:**
+- OpenRouter - LLM routing service (default)
+  - SDK/Client: `openai` package (OpenAI-compatible)
   - Auth: `OPENROUTER_API_KEY`
-  - Endpoint: `https://openrouter.ai/api/v1`
-  - Models: Can use any model via `OPENROUTER_MODEL` (default: `anthropic/claude-sonnet-4`)
-  - Headers: `OPENROUTER_SITE` and `OPENROUTER_TITLE` for tracking
+  - Models: Configurable via `OPENROUTER_MODEL` (default: anthropic/claude-sonnet-4)
+  - Headers: `OPENROUTER_SITE`, `OPENROUTER_TITLE`
 
-- **Anthropic (Native)** - Direct Claude API with native tool calling
-  - SDK/Client: `anthropic` package (native SDK)
-  - Config: `LLM_PROVIDER=anthropic`
+- Anthropic - Direct Claude API (native SDK)
+  - SDK/Client: `anthropic` package (native)
   - Auth: `ANTHROPIC_API_KEY`
-  - Models: `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5` (tier-based)
-  - Base URL: `ANTHROPIC_BASE_URL` for proxies like clewdr
-  - Location: `clara_core/llm.py` (lines 160-180)
+  - Proxy support: `ANTHROPIC_BASE_URL` (for clewdr, internal proxies)
+  - Models: `ANTHROPIC_MODEL`, `ANTHROPIC_MODEL_HIGH`, `ANTHROPIC_MODEL_MID`, `ANTHROPIC_MODEL_LOW`
+  - Native tool calling (no format conversion needed)
 
-- **NanoGPT** - OpenAI-compatible API
-  - SDK/Client: `openai` package
-  - Config: `LLM_PROVIDER=nanogpt`
+- NanoGPT - Alternative LLM provider
+  - SDK/Client: `openai` package (OpenAI-compatible)
   - Auth: `NANOGPT_API_KEY`
-  - Endpoint: `https://nano-gpt.com/api/v1`
-  - Model: `NANOGPT_MODEL` (default: `moonshotai/Kimi-K2-Instruct-0905`)
+  - Models: Configurable via `NANOGPT_MODEL`
 
-- **Custom OpenAI-Compatible** - Generic OpenAI API endpoint
+- Custom OpenAI-compatible - Flexible endpoint
   - SDK/Client: `openai` package
-  - Config: `LLM_PROVIDER=openai`
   - Auth: `CUSTOM_OPENAI_API_KEY`
-  - Endpoint: `CUSTOM_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
-  - Model: `CUSTOM_OPENAI_MODEL` (default: `gpt-4o`)
+  - Endpoint: `CUSTOM_OPENAI_BASE_URL`
+  - Models: Tier-based (`CUSTOM_OPENAI_MODEL_HIGH`, `CUSTOM_OPENAI_MODEL_MID`, `CUSTOM_OPENAI_MODEL_LOW`)
+  - Cloudflare Access: `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` (for cloudflared endpoints)
 
-**Memory Extraction (Independent):**
-- **Mem0 Provider** - Uses different LLM than chat for memory extraction
-  - Providers: openrouter, nanogpt, openai, anthropic (independent selection)
+**Memory & Embeddings:**
+- OpenAI - Embeddings only (always required)
+  - API: text-embedding-3-small (hardcoded in mem0)
+  - Auth: `OPENAI_API_KEY` (separate from chat LLM)
+  - Used by: mem0 for semantic memory extraction
+
+- Mem0 Provider (independent from chat LLM) - Configurable
+  - Options: openrouter, nanogpt, openai, anthropic
   - Config: `MEM0_PROVIDER`, `MEM0_MODEL`, `MEM0_API_KEY`, `MEM0_BASE_URL`
-  - Default: OpenRouter with `openai/gpt-4o-mini`
-  - Location: `vendor/mem0/` (vendored with `anthropic_base_url` fix)
+  - Can use different endpoint than chat LLM
 
 **Web Search:**
-- **Tavily** - Web search API
-  - SDK/Client: Direct HTTP via `httpx`
+- Tavily - Web search API
   - Auth: `TAVILY_API_KEY`
-  - Integration: `clara_core/tools.py` (search tool)
-
-**Discord:**
-- **Discord Bot API** - Discord bot integration
-  - SDK/Client: `py-cord` 2.6.1
-  - Auth: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`
-  - Features: Slash commands, message context, reactions, embeds
-  - Config: `DISCORD_MAX_MESSAGES`, `DISCORD_SUMMARY_AGE_MINUTES`, `DISCORD_CHANNEL_HISTORY_LIMIT`
-  - Whitelist: `DISCORD_ALLOWED_SERVERS`, `DISCORD_ALLOWED_CHANNELS`, `DISCORD_ALLOWED_ROLES`
-  - Location: `discord_bot.py` (main entry point)
+  - Integration: Optional, triggers if key is present
+  - Used by: Docker sandbox code execution for web search capability
 
 ## Data Storage
 
 **Databases:**
 
-**Primary Relational (Sessions, Projects, Messages):**
-- **SQLite** (Development)
-  - Default: `assistant.db` local file
-  - Used when `DATABASE_URL` not set
-  - SQLAlchemy ORM: `db/models.py`
+**Primary - Session and Model Storage:**
+- PostgreSQL 13+ (production) or SQLite 3 (development)
+  - Connection: `DATABASE_URL`
+  - Client: SQLAlchemy 2.0+
+  - Migration tool: Alembic
+  - Models: `db/models.py` - Project, Session, Message, ChannelSummary, MCPServer, EmailAccount, EmailRule, EmailAlert
 
-- **PostgreSQL** (Production)
-  - Connection: `DATABASE_URL` (e.g., `postgresql://user:pass@host:5432/dbname`)
-  - Client: `sqlalchemy` ORM with `psycopg2-binary` driver
-  - Tables: `projects`, `sessions`, `messages`, `channel_summaries`, `channel_configs`, `log_entries`
-  - Docker: Service `postgres` in `docker-compose.yml` (port 5442)
-
-**Memory Vectors (mem0):**
-- **Qdrant** (Development, local)
-  - Default: In-memory or local file-based
-  - Used when `MEM0_DATABASE_URL` not set
-  - Client: `qdrant-client` 1.7.0+
-
-- **PostgreSQL + pgvector** (Production)
+**Memory - Vector Storage:**
+- PostgreSQL + pgvector (production) or Qdrant (local dev)
   - Connection: `MEM0_DATABASE_URL`
-  - Extension: `pgvector` for vector similarity search
-  - Client: `pgvector` adapter with SQLAlchemy
-  - Docker: Service `postgres-vectors` in `docker-compose.yml` (port 5443)
-  - Stores: Embedding vectors, memory nodes, relationships
+  - Client: qdrant-client 1.7+, pgvector 0.3+
+  - Storage: Vector embeddings from OpenAI text-embedding-3-small
+  - Located: `vendor/mem0/` (locally vendored with Anthropic base_url fixes)
 
-**Graph Database (Optional):**
-- **Neo4j** - Relationship and context graphs
+**Graph Memory - Optional Relationship Storage:**
+- Neo4j 5+ (default if enabled)
   - Connection: `NEO4J_URL`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`
-  - Client: `neo4j` Python driver
-  - Enabled: `ENABLE_GRAPH_MEMORY=true`
-  - Use case: Optional relationship tracking (disabled by default)
+  - Client: neo4j 5.0+
+  - Enable: Set `ENABLE_GRAPH_MEMORY=true` and `GRAPH_STORE_PROVIDER=neo4j`
+  - Docker host: `bolt://neo4j:7687` (when using docker-compose)
 
-- **Kuzu** - Embedded graph alternative
-  - Enabled: `ENABLE_GRAPH_MEMORY=true` with `GRAPH_STORE_PROVIDER=kuzu`
-  - Client: `kuzu` package
-  - No external server needed (embedded)
+- Kuzu (embedded alternative)
+  - No external connection needed
+  - Enable: `ENABLE_GRAPH_MEMORY=true`, `GRAPH_STORE_PROVIDER=kuzu`
+  - Storage: Local filesystem (config/kuzu_data)
+  - Lighter weight than Neo4j
 
 **File Storage:**
-- **Local Filesystem**
-  - Location: `CLARA_FILES_DIR` (default: `./clara_files`)
-  - Uses: User file persistence, Discord attachment saves
-  - Manager: `storage/local_files.py`
-  - Max file size: `CLARA_MAX_FILE_SIZE` (default: 50MB)
+- Local filesystem (default)
+  - Directory: `CLARA_FILES_DIR` (default: `./clara_files`)
+  - Per-user storage: Files organized by user_id
+  - Max size: `CLARA_MAX_FILE_SIZE` (default: 50MB)
 
-- **S3-Compatible Storage** (Optional)
-  - Services: Wasabi, AWS S3, DigitalOcean Spaces
-  - Client: `boto3` 1.35.0+
+- S3-compatible storage (optional)
+  - Providers: Wasabi, AWS S3, MinIO
+  - Enable: `S3_ENABLED=true`
   - Config: `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`
-  - Use case: Remote file backup and scaling
+  - Client: boto3 1.35+
+  - Used for: Persistent file storage, backup service integration
 
 **Caching:**
-- None explicitly configured (in-memory LRU caches via `functools.lru_cache` in code)
+- Redis (optional, for Cortex system)
+  - Host: `CORTEX_REDIS_HOST`
+  - Port: `CORTEX_REDIS_PORT`
+  - Auth: `CORTEX_REDIS_PASSWORD`
+  - Used by: Proactive organic response (ORS) system
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- **Custom-built with OAuth 2.0** (planned integration)
-  - Google OAuth support for Workspace integration
-  - Config: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-  - Tokens: Stored in database (encrypted per-user)
+- Custom (Discord user IDs are primary identifiers)
+  - User context: Extracted from Discord messages or CLI input
+  - Per-user storage: Email connections, OAuth tokens, file storage
 
-**Discord Authentication:**
-- Discord bot token: `DISCORD_BOT_TOKEN`
-- OAuth not needed (bot operates on token directly)
+**Discord Identity:**
+- Discord bot token for server authentication
+- User roles for permission checks: `CLARA_ADMIN_ROLE`, configurable roles
+- Server/channel/role whitelisting: `DISCORD_ALLOWED_SERVERS`, `DISCORD_ALLOWED_CHANNELS`, `DISCORD_ALLOWED_ROLES`
 
-**Email Authentication (IMAP):**
-- Email provider accounts (Gmail, iCloud, Outlook)
-- IMAP credentials: Encrypted with Fernet (`EMAIL_ENCRYPTION_KEY`)
-- Client: `imap-tools` 1.11.0+
-- Location: `email_service/` and `email_monitor.py`
+**Google OAuth (Optional):**
+- Provider: Google Cloud
+  - Client ID: `GOOGLE_CLIENT_ID`
+  - Client Secret: `GOOGLE_CLIENT_SECRET`
+  - Redirect URI: `GOOGLE_REDIRECT_URI` (e.g., https://your-api.up.railway.app/oauth/google/callback)
+  - Tokens stored per-user in database
+  - OAuth implementation: `api_service/` directory
+  - Access: Google Sheets, Drive, Docs, Calendar, Gmail
+
+## Platform Integrations
+
+**Discord Bot:**
+- Platform: Discord
+  - Token: `DISCORD_BOT_TOKEN`
+  - Client ID: `DISCORD_CLIENT_ID` (for invite link generation)
+  - Framework: py-cord 2.6.1
+  - Features:
+    - Multi-user support (per Discord user_id)
+    - Reply chains (thread context)
+    - Streaming responses
+    - Image/vision support (Discord attachments, auto-resized)
+    - Slash commands
+    - Monitor dashboard on port 8001 (HTTP)
+    - Console log mirroring to Discord channel: `DISCORD_LOG_CHANNEL_ID`
+
+**GitHub Integration (Optional):**
+- Provider: GitHub
+  - Auth: `GITHUB_TOKEN` (Personal Access Token)
+  - MCP Server: `@modelcontextprotocol/server-github` (official npm package)
+  - Features: Repo search, issues, PRs, commits, file operations
+  - Activation: Automatically installed if `GITHUB_TOKEN` is set
+
+**Sandbox Code Execution:**
+
+**Docker (Local):**
+- Image: `DOCKER_SANDBOX_IMAGE` (default: python:3.12-slim)
+- Connection: Docker daemon socket or `DOCKER_HOST`
+- Config: `DOCKER_SANDBOX_TIMEOUT` (900s), `DOCKER_SANDBOX_MEMORY` (512m), `DOCKER_SANDBOX_CPU` (1.0)
+- Web search: Enabled if `TAVILY_API_KEY` is set
+
+**Incus (Local Lightweight):**
+- Mode: `SANDBOX_MODE=incus` (containers) or `incus-vm` (VMs)
+- Config: `INCUS_SANDBOX_IMAGE`, `INCUS_SANDBOX_TIMEOUT`, `INCUS_SANDBOX_MEMORY`, `INCUS_SANDBOX_CPU`
+- Remote: `INCUS_REMOTE` (default: local)
+
+**Remote Sandbox (VPS):**
+- Endpoint: `SANDBOX_API_URL`
+- Auth: `SANDBOX_API_KEY`
+- Selection: `SANDBOX_MODE=remote` or `auto` (tries remote first, falls back to local)
+- Timeout: `SANDBOX_TIMEOUT` (60s)
+- Service: Self-hosted at `sandbox_service/` (Docker-based)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None detected (no Sentry, Rollbar, or equivalent)
+- None detected (PostHog handles telemetry, not errors)
 
 **Logs:**
-- Console logging with rotating file handlers
-- Config: `config/logging.py`
-- Levels: `LOG_LEVEL` environment variable
-- Discord mirroring: Optional `DISCORD_LOG_CHANNEL_ID` (logs sent to Discord channel)
+- Console output (stdout/stderr)
+- File logging: Optional `logfile` parameter when daemonizing
+- Discord channel mirroring: `DISCORD_LOG_CHANNEL_ID` receives all console logs
+- Log level: `LOG_LEVEL` env var (default: INFO)
+- Logging config: `config/logging.py`
 
 **Telemetry:**
-- PostHog - Analytics and feature tracking
-  - Client: `posthog` 3.0.0+
-  - Used for: Feature usage, performance metrics
-  - Config: Via environment variables in docker-compose
-
-**Monitoring Dashboard:**
-- **Discord Monitor** - Real-time Discord bot status
-  - Port: `DISCORD_MONITOR_PORT` (default: 8001)
-  - Enabled: `DISCORD_MONITOR_ENABLED` (default: true)
-  - Framework: FastAPI (embedded in `discord_bot.py`)
-  - Features: Bot status, message logs, user stats
-  - Location: `discord_bot.py` (FastAPI app setup)
+- PostHog 3.0+ (optional)
+  - Used for: Usage metrics, feature tracking
+  - Can be disabled (it's optional)
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- **Railway.app** (primary deployment target)
-  - Config: `.env.railway`, `railway.toml`
-  - Services: Discord bot, PostgreSQL databases
-  - Auto-version: Git hooks bump version in CalVer format (YYYY.WW.N)
-  - Dockerfile: `Dockerfile.discord`
+- Primary: Railway (with PostgreSQL managed databases)
+- Fallback: Docker Compose (local or self-hosted)
+- Alternative: VPS with Docker/Incus
 
-- **Docker Compose** (local development and self-hosted)
-  - Orchestrates: PostgreSQL, pgvector, Discord bot
-  - Profiles: discord, postgres for selective startup
-  - Location: `docker-compose.yml`
+**CI Pipeline:**
+- GitHub Actions (repository configured at `.github/workflows/`)
+- Deploy workflows: Promote from stage to main branch
+- Release dashboard: Separate service for deployment management (`release_dashboard/`)
 
-**Git Hooks:**
-- `.githooks/` directory contains version bumping hooks
-- Setup: `git config core.hooksPath .githooks`
-- Script: `scripts/bump_version.py`
+**Deployment Services:**
+- api_service/ - OAuth callback API for Google/GitHub
+- release_dashboard/ - Deployment UI and workflow trigger
+- backup_service/ - Automated PostgreSQL backups to S3
 
-**Version Management:**
-- Format: CalVer `YYYY.WW.N` (Year.Week.Build)
-- Storage: `VERSION` file (synced to `pyproject.toml`)
-- Auto-bump: After each commit (skip with `[skip-version]` tag)
+## Webhooks & Callbacks
+
+**Incoming:**
+- Discord bot - Accepts messages via Discord WebSocket
+- Gateway - WebSocket server at port 18789 for adapter connections
+  - Auth: Optional shared secret `CLARA_GATEWAY_SECRET`
+  - Protocol: Binary WebSocket with adapter registration
+  - Message types: Register, MessageRequest, Status, Ping/Pong
+
+- Email monitoring - IMAP polling for incoming emails
+  - Accounts: Per-user Gmail (via Google OAuth) or IMAP (encrypted password storage)
+  - Poll interval: `EMAIL_DEFAULT_POLL_INTERVAL` (default: 5 minutes)
+  - Alerts: Configurable rules, Discord notification
+
+**Outgoing:**
+- Gateway processor - Streams LLM responses back to adapter connections
+- Discord - Message and embed responses, status updates
+- Hooks system - Custom webhook triggers on gateway events
+  - Events: gateway:startup, adapter:connected, session:start, tool:start, etc.
+  - Execution: Shell commands or Python callables
+  - Config file: `hooks/hooks.yaml`
+
+**Scheduler - Task Automation:**
+- One-shot tasks
+- Interval-based tasks (every N seconds)
+- Cron-based tasks
+- Config file: `scheduler.yaml`
+
+## MCP Plugin System
+
+**Model Context Protocol (MCP):**
+- Official SDK: mcp 1.0+
+- Directory: `MCP_SERVERS_DIR` (default: `.mcp_servers/`)
+- Installation sources:
+  - Smithery registry (local or hosted with OAuth)
+  - npm packages
+  - GitHub repositories (cloned)
+  - Docker images
+  - Local paths
+
+**Official MCP Servers (Auto-installed if env vars present):**
+- GitHub - `@modelcontextprotocol/server-github` (requires `GITHUB_TOKEN`)
+- Playwright - `@playwright/mcp` (browser automation)
+- Tavily - `tavily-mcp` (web search, requires `TAVILY_API_KEY`)
+- Filesystem - `@modelcontextprotocol/server-filesystem` (file operations)
+
+**Smithery Registry:**
+- API: registry.smithery.ai
+- Auth: `SMITHERY_API_TOKEN` or `SMITHERY_API_KEY`
+- Local servers: Run stdio transport via @smithery/cli
+- Hosted servers: Connect via HTTP with OAuth support
 
 ## Environment Configuration
 
-**Required env vars (Critical):**
-- `OPENAI_API_KEY` - Always needed for mem0 embeddings (text-embedding-3-small)
-- `LLM_PROVIDER` - Chat provider selection (openrouter, nanogpt, openai, anthropic)
+**Required env vars:**
 - `DISCORD_BOT_TOKEN` - Discord bot authentication
+- `OPENAI_API_KEY` - Embeddings (mem0 always uses this)
+- `LLM_PROVIDER` - Chat LLM selection (openrouter, nanogpt, openai, anthropic)
 
-**Provider-Specific Keys:**
+**Provider-specific (one required based on LLM_PROVIDER):**
 - OpenRouter: `OPENROUTER_API_KEY`
 - Anthropic: `ANTHROPIC_API_KEY`
 - NanoGPT: `NANOGPT_API_KEY`
 - Custom OpenAI: `CUSTOM_OPENAI_API_KEY`
 
-**Database:**
-- `DATABASE_URL` - PostgreSQL connection (optional, defaults to SQLite)
-- `MEM0_DATABASE_URL` - Vector database (optional, defaults to Qdrant)
-
-**Optional Keys:**
-- `TAVILY_API_KEY` - Web search
-- `GITHUB_TOKEN` - GitHub integration
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` - Google Workspace
-- `AZURE_DEVOPS_ORG`, `AZURE_DEVOPS_PAT` - Azure DevOps
-- `SANDBOX_API_URL`, `SANDBOX_API_KEY` - Remote code sandbox
-
 **Secrets location:**
-- Development: `.env` file (git-ignored)
-- Production: Railway.app environment variables
-- Encrypted storage: Email passwords (Fernet encryption with `EMAIL_ENCRYPTION_KEY`)
+- `.env` file in project root (dev)
+- Railway environment variables (production)
+- Docker Compose secrets via `.env` file
+- Encrypted storage: Email IMAP passwords use Fernet encryption (`EMAIL_ENCRYPTION_KEY`)
 
-## Webhooks & Callbacks
+## Third-Party Services
 
-**Incoming Webhooks:**
-- None detected in core application
+**Backup Service:**
+- S3-compatible storage (Wasabi default)
+- Auto-backup: Daily at 3 AM UTC (Railway cron)
+- Retention: `BACKUP_RETENTION_DAYS` (default: 7)
+- Respawn protection: `RESPAWN_PROTECTION_HOURS` (default: 23)
 
-**Outgoing Webhooks:**
-- Discord message responses (via bot token)
-- Organic Response System can trigger proactive Discord messages
-- Location: `organic_response_system.py`
+**Email Monitoring Service (Optional):**
+- Gmail via Google OAuth (reuses Google integration)
+- IMAP for other providers (iCloud, Outlook, etc.)
+- Encryption key: `EMAIL_ENCRYPTION_KEY` (Fernet)
+- Alert channel: Discord (configurable per user)
 
-**OAuth Callbacks:**
-- Google OAuth redirect: Planned integration point
-- MCP OAuth: Hosted Smithery servers use OAuth (handled in `clara_core/mcp/oauth.py`)
-
-## MCP Plugin System
-
-**Smithery Registry Integration:**
-- **Search:** `smithery_search` tool
-- **Install Sources:**
-  - Smithery local (stdio transport): `smithery:e2b`
-  - Smithery hosted (HTTP + OAuth): `smithery-hosted:@smithery/notion`
-  - npm packages: `@modelcontextprotocol/server-everything`
-  - GitHub repos: `github.com/user/mcp-server`
-  - Docker images: `ghcr.io/user/mcp-server:latest`
-  - Local paths: `/path/to/mcp-server`
-
-- **Auth:** `SMITHERY_API_TOKEN` or `SMITHERY_API_KEY` for Smithery registry access
-
-**MCP Server Management:**
-- Location: `clara_core/mcp/manager.py` (MCPServerManager singleton)
-- Config storage: `.mcp_servers/` directory (JSON configs)
-- Types: Local (stdio) and Remote (HTTP)
-- Tools: Namespaced as `{server_name}__{tool_name}`
-- Features: Hot-reload, OAuth support, auto-restart
-
-## Code Execution Sandbox
-
-**Local Docker Sandbox:**
-- Client: `docker` 7.0.0+ package
-- Image: `DOCKER_SANDBOX_IMAGE` (default: `python:3.12-slim`)
-- Config: `DOCKER_SANDBOX_TIMEOUT`, `DOCKER_SANDBOX_MEMORY`, `DOCKER_SANDBOX_CPU`
-- Location: `sandbox/docker.py`
-
-**Remote Sandbox (VPS):**
-- Client: Custom HTTP client in `sandbox/remote_client.py`
-- Auth: `SANDBOX_API_KEY`
-- Endpoint: `SANDBOX_API_URL`
-- Timeout: `SANDBOX_TIMEOUT`
-- Mode selection: `SANDBOX_MODE` (local, remote, auto)
-
-**Unified Manager:**
-- Location: `sandbox/manager.py` (auto-selects backend)
-- Selection: Remote if configured, falls back to local Docker
-
-## Claude Code Integration
-
-**SDK:**
-- Package: `claude-agent-sdk` 0.1.18+
-- Authentication: CLI login or `ANTHROPIC_API_KEY`
-- Working directory: `CLAUDE_CODE_WORKDIR` (configurable)
-- Max turns: `CLAUDE_CODE_MAX_TURNS` (default: 10)
-- Tools: `claude_code`, `claude_code_status`, `claude_code_set_workdir`
-- Location: `discord_bot.py` (tool integration)
-
-## Email Integration
-
-**Providers:**
-- **Gmail** - Via Google OAuth (when Workspace integration complete)
-- **IMAP** - Generic IMAP servers (iCloud, Outlook, etc.)
-  - Client: `imap-tools` 1.11.0+
-  - Encryption: Fernet-encrypted credentials
-
-**Monitoring:**
-- Location: `email_service/monitor.py` and `email_monitor.py`
-- Credentials: `email_service/credentials.py`
-- Rules engine: `email_service/rules_engine.py`
-- Presets: `email_service/presets.py`
-- Configuration: `EMAIL_MONITORING_ENABLED`, `EMAIL_ENCRYPTION_KEY`
-
-**Discord Integration:**
-- Alert channel: `DISCORD_LOG_CHANNEL_ID` for alerts
-- Notifications: Per-user or channel-wide
-
-## Graph Memory (Optional)
-
-**Neo4j:**
-- Connection: `NEO4J_URL`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`
-- Driver: `neo4j` 5.0+ Python driver
-- Use: Relationship tracking between entities
-- Enable: `ENABLE_GRAPH_MEMORY=true`
-
-**Kuzu:**
-- Type: Embedded graph database
-- No external server required
-- Enable: `ENABLE_GRAPH_MEMORY=true` with `GRAPH_STORE_PROVIDER=kuzu`
-
-## Cloudflare Access
-
-**Service Tokens (for cloudflared tunnels):**
-- Client ID: `CF_ACCESS_CLIENT_ID`
-- Client Secret: `CF_ACCESS_CLIENT_SECRET`
-- Used for: Endpoints behind Cloudflare Access
-- Implementation: `clara_core/llm.py` (_get_cf_access_headers)
+**Browser Automation:**
+- Playwright 1.49+ - Accessibility tree access
+- Supports: Chrome, Firefox, WebKit, Microsoft Edge
+- Via MCP server: `@playwright/mcp`
 
 ---
 
-*Integration audit: 2026-01-24*
+*Integration audit: 2026-01-27*

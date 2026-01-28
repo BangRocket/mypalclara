@@ -1,211 +1,216 @@
 # Architecture
 
-**Analysis Date:** 2026-01-24
+**Analysis Date:** 2026-01-27
 
 ## Pattern Overview
 
-**Overall:** Multi-platform AI assistant with modular platform adapters, unified tool registry, and pluggable memory system.
+**Overall:** Layered hexagonal (ports and adapters) architecture with a central Clara Core providing unified platform abstractions. Multiple entry points (Discord bot, CLI, Email monitor, Gateway server) delegate to core services.
 
 **Key Characteristics:**
-- Platform-agnostic core (`PlatformAdapter` abstraction) supporting Discord, API, and future platforms
-- Singleton pattern for global state: `MemoryManager`, `ToolRegistry`, `MCPServerManager`
-- LLM provider abstraction supporting multiple backends (OpenRouter, NanoGPT, Custom OpenAI, Anthropic native)
-- Pluggable MCP (Model Context Protocol) system for extensible tool support
-- Session-based conversation management with optional mem0 semantic memory integration
-- Async-first architecture using Python's asyncio
+- Platform-agnostic core (`clara_core`) with implementations for Discord, CLI, web, and gateway adapters
+- Strangler fig pattern used in Discord adapter (wraps existing bot while providing new PlatformAdapter interface)
+- Singleton pattern for key managers (MemoryManager, ToolRegistry, MCPServerManager)
+- Event-driven hooks system in the gateway for extensibility
+- Layered data access: Session/Message storage → mem0 semantic memory → graph memory (optional)
 
 ## Layers
 
-**Platform Layer:**
-- Purpose: Abstract communication platform details (Discord, API, Slack, Telegram)
-- Location: `clara_core/platform.py`, `clara_core/discord/`
-- Contains: `PlatformAdapter` base class, `PlatformMessage`, `PlatformContext`, Discord-specific implementation
-- Depends on: Core message types, no external platform dependencies until instantiation
-- Used by: Main entry point (`discord_bot.py`), message dispatch logic
+**Platform Adapters Layer:**
+- Purpose: Receive messages from external platforms, convert to platform-agnostic format, route to processing
+- Location: `adapters/discord/`, `adapters/cli/`, `adapters/web/`
+- Contains: Platform-specific implementation code (Discord event handlers, CLI interface, web routes)
+- Depends on: `clara_core.platform`, `gateway` (WebSocket communication)
+- Used by: External platforms (Discord servers, terminal, web clients)
 
-**Presentation/Discord Layer:**
-- Purpose: Discord bot implementation with commands, slash commands, message handling, and UI elements
-- Location: `discord_bot.py`, `clara_core/discord/`
-- Contains: Discord bot event handlers, message parsing, streaming responses, embeds, slash commands
-- Depends on: `MemoryManager`, `ToolRegistry`, LLM backends, platform layer
-- Used by: Users via Discord, triggered by incoming messages and commands
+**Gateway Layer (Message Router & Processor):**
+- Purpose: Central hub for message routing and processing orchestration
+- Location: `gateway/`
+- Contains: WebSocket server (`server.py`), message processor (`processor.py`), LLM orchestrator (`llm_orchestrator.py`), tool executor (`tool_executor.py`), session/node management, event hooks, task scheduler
+- Depends on: `clara_core` (MemoryManager, LLM, tools), database models
+- Used by: Platform adapters via WebSocket connections
 
-**Memory/Persistence Layer:**
-- Purpose: Session management, conversation history, and semantic memory via mem0
-- Location: `clara_core/memory.py`, `db/models.py`, `config/mem0.py`
-- Contains: `MemoryManager` singleton, SQLAlchemy models (Project, Session, Message, ChannelSummary), mem0 integration
-- Depends on: SQLAlchemy ORM, mem0 library, LLM for extraction (via MemoryManager callback)
-- Used by: All platform adapters for context retrieval and message storage
+**Clara Core Layer (Business Logic):**
+- Purpose: Platform-independent business logic for memory, LLM, tools, configuration
+- Location: `clara_core/`
+- Contains: MemoryManager, LLM backends, ToolRegistry, MCP integration, platform abstractions
+- Depends on: `config/`, `db/`, `storage/`, `sandbox/`, vendor libraries
+- Used by: Gateway processor, Discord bot, CLI bot, email monitor, scripts
 
-**Tool/Capability Layer:**
-- Purpose: Central registry and execution of all Clara tools (code execution, file I/O, API calls, MCP tools)
-- Location: `clara_core/tools.py`, `tools/`, `clara_core/core_tools/`
-- Contains: `ToolRegistry` singleton, tool definitions, handlers for built-in tools
-- Depends on: Sandbox system, storage system, external APIs (GitHub, Google, etc.)
-- Used by: LLM backends when executing tool calls, Discord handlers for tool commands
+**Data Access Layer:**
+- Purpose: Persistence and memory retrieval
+- Location: `db/` (session/message models), `config/mem0.py` (mem0 configuration), `storage/local_files.py` (file storage)
+- Contains: SQLAlchemy models (Project, Session, Message, ChannelSummary, ChannelConfig), mem0 integration, local/S3 file storage
+- Depends on: SQLAlchemy ORM, mem0 (vendored), boto3 for S3
+- Used by: MemoryManager, Gateway processor, Discord bot
 
-**LLM Backend Layer:**
-- Purpose: Unified abstraction over multiple LLM providers with tier-based model selection
-- Location: `clara_core/llm.py`
-- Contains: Provider clients (OpenAI SDK for OpenRouter/NanoGPT, Anthropic native SDK), model tiers (high/mid/low), tool format conversion
-- Depends on: OpenAI and Anthropic Python SDKs, environment configuration
-- Used by: `MemoryManager` (for prompt building and memory extraction), Discord handlers (for LLM chat calls), Tool system (for descriptions)
-
-**MCP Plugin System:**
-- Purpose: Dynamic loading and management of MCP servers that extend Clara's capabilities
-- Location: `clara_core/mcp/`
-- Contains: `MCPServerManager` singleton, MCP client/server implementations, Smithery installer, OAuth support
-- Depends on: `mcp` SDK, git, external HTTP, file system
-- Used by: `ToolRegistry` for tool registration, admin tools for server lifecycle management
-
-**Sandbox/Code Execution Layer:**
-- Purpose: Safe execution of user code via local Docker or remote sandbox API
-- Location: `sandbox/`
-- Contains: Docker manager, remote sandbox client, unified manager interface
-- Depends on: Docker SDK, HTTP for remote API, environment configuration
-- Used by: Tool registry when executing code_execution tool
-
-**Storage Layer:**
-- Purpose: Persistent file storage for user-uploaded and generated files
-- Location: `storage/local_files.py`
-- Contains: Local filesystem manager with per-user directories
-- Depends on: File system, pathlib
-- Used by: Tool handlers for file persistence and retrieval
-
-**Configuration Layer:**
-- Purpose: Centralized config management and initialization
-- Location: `clara_core/config.py`, `config/`
-- Contains: `ClaraConfig` dataclass, environment variable loading, logging setup, mem0 configuration
-- Depends on: Environment variables, dotenv, Python logging
-- Used by: All layers during initialization
+**Infrastructure Layer:**
+- Purpose: Code execution, external service integration, system utilities
+- Location: `sandbox/`, `email_service/`, `clara_core/mcp/`, scripts
+- Contains: Docker/Incus sandbox managers, email monitoring, MCP server management
+- Depends on: Docker SDK, email libraries, MCP SDK
+- Used by: Tool execution, background services
 
 ## Data Flow
 
-**Chat Request → Response Flow (Discord):**
+**Discord Message to Response:**
 
-1. **Message Arrives**: Discord event triggers `on_message` handler in `discord_bot.py`
-2. **Platform Abstraction**: Message converted to `PlatformMessage` object (user_id, content, attachments, etc.)
-3. **Context Retrieval**: `MemoryManager.get_instance()` fetches recent session messages and mem0 semantic memories
-4. **Prompt Building**: `MemoryManager` builds full prompt with Clara's persona, user profile, context, and recent memories
-5. **LLM Call**: `make_llm_with_tools()` (or `make_llm_with_tools_anthropic()` for Anthropic) invokes LLM with:
-   - System prompt (Clara's personality + instructions)
-   - Chat history
-   - Available tools definitions (from `ToolRegistry`)
-   - Image attachments (if present, resized to 1568px)
-6. **Tool Execution Loop**:
-   - If LLM requests tool call: `ToolRegistry.execute()` runs handler (async)
-   - Tool result fed back to LLM
-   - LLM may request more tools or provide final response
-7. **Response Streaming**: Response streamed to Discord in chunks, with typing indicator
-8. **Persistence**: Message stored to database via `MemoryManager.add_message()`
-9. **Memory Update**: New message context may trigger mem0 memory extraction (via `MemoryManager` callback)
+1. Discord user sends message → `discord_bot.py` event handler
+2. Handler builds context (session history, mem0 memories, emotional state)
+3. MemoryManager.get_context() fetches last 15 messages + key memories
+4. LLM backend (`make_llm_with_tools()`) generates response with tool support
+5. Tool execution via UnifiedSandboxManager or ToolRegistry
+6. Response streamed back to Discord channel
+7. Message stored in database, emotional state tracked
+
+**Gateway Message to Response (Adapter-based):**
+
+1. Platform adapter connects to gateway via WebSocket → GatewayServer registers node
+2. Adapter sends MessageRequest with user_id, context, message content
+3. GatewayServer routes to MessageProcessor
+4. MessageProcessor initializes with MemoryManager, ToolExecutor, LLMOrchestrator
+5. Builds prompt with session context + mem0 memories
+6. LLMOrchestrator calls LLM with tools available
+7. ToolExecutor runs tools (detection via response parsing)
+8. Response streamed back in chunks to adapter via WebSocket
+9. Adapter displays in platform UI
 
 **State Management:**
-
-- **Session Context**: 15 recent messages loaded in memory per session (configurable `CONTEXT_MESSAGE_COUNT`)
-- **Semantic Memory**: mem0 stores key facts/preferences, searched every request via LLM-generated query
-- **Session Summary**: When session times out (30 min inactivity), LLM generates summary stored for next session continuity
-- **Channel Summary**: Rolling Discord channel summary (optional, older messages compressed)
-- **Model Tier**: Selected via message prefix (`!high`, `!mid`, `!low`) or auto-selected based on message complexity
-
-**Message Storage:**
-
-```
-Session (time-bounded conversation)
-  ├─ Messages (chat history)
-  │   ├─ user: "What is quantum computing?"
-  │   └─ assistant: "Quantum computing uses quantum mechanics..."
-  └─ Context snapshot (json: recent 10 messages from previous session)
-```
-
-**MCP Server Lifecycle:**
-
-1. **Install**: `mcp_install(source)` clones/downloads MCP server, stores config
-2. **Start**: `MCPServerManager` spawns process (stdio) or connects HTTP
-3. **Tool Registration**: Tools from server auto-registered in `ToolRegistry` with namespace prefix (`server_name__tool_name`)
-4. **Execution**: Tool calls routed through `MCPServerManager` to appropriate server
-5. **Hot Reload** (optional): File changes trigger restart automatically
+- Session state: Stored in database with message history, summaries on timeout (30 min idle)
+- Memory state: User facts/preferences in mem0 (vector store), filtered by project_id
+- Emotional continuity: Tracked via sentiment analysis, stored in mem0
+- Tool state: Maintained per-request (no cross-request state)
+- Graph memories: Optional Neo4j or embedded Kuzu for relationship tracking
 
 ## Key Abstractions
 
-**MemoryManager:**
-- Purpose: Orchestrates all memory operations - session retrieval, mem0 integration, prompt building
-- Examples: `clara_core/memory.py`
-- Pattern: Singleton with LLM callback for extraction. Provides `get_instance()`, `add_message()`, `fetch_memory_context()`, `get_session()`
+**MemoryManager (singleton):**
+- Purpose: Orchestrates all memory retrieval and session handling
+- Location: `clara_core/memory.py`
+- Pattern: Singleton with lazy initialization
+- Responsibilities: Fetch session history, search mem0, build context prompts, manage session lifecycle, track emotional state
+- Core methods:
+  - `get_context()` - Returns full prompt context for LLM
+  - `add_message()` - Stores user/assistant message to session and mem0
+  - `get_session()` - Retrieves or creates session for user/context
+  - `_fetch_mem0_context()` - Semantic search with BM25 ranking
 
-**ToolRegistry:**
-- Purpose: Centralized tool definitions and async execution with platform filtering
-- Examples: `clara_core/tools.py`
-- Pattern: Singleton with registration system. Tools define schemas, handlers are async callables. Built-in tools registered at init, MCP tools registered dynamically
+**ToolRegistry (singleton):**
+- Purpose: Central registration and execution of all tools
+- Location: `clara_core/tools.py`
+- Pattern: Singleton with platform filtering
+- Responsibilities: Register tools, provide OpenAI-formatted definitions, execute tools with handlers
+- Core methods:
+  - `register()` - Add new tool with handler
+  - `get_tools()` - Get tools filtered by platform
+  - `execute()` - Run tool handler and return result
 
-**PlatformAdapter:**
-- Purpose: Platform-specific implementation with unified interface
-- Examples: `clara_core/platform.py` (base), Discord handler in `discord_bot.py` (send_message, send_typing_indicator)
-- Pattern: Abstract base class with subclass per platform. Handles message formatting and platform-specific operations
+**LLM Backends:**
+- Purpose: Unified interface to multiple LLM providers
+- Location: `clara_core/llm.py`
+- Providers supported: OpenRouter, NanoGPT, Custom OpenAI, Anthropic (native SDK)
+- Key functions:
+  - `make_llm()` - Non-streaming completions
+  - `make_llm_streaming()` - Streaming completions
+  - `make_llm_with_tools()` - Tool calling (OpenAI format)
+  - `make_llm_with_tools_anthropic()` - Native Anthropic tool calling
+- Model tiers: "high" (Opus), "mid" (Sonnet, default), "low" (Haiku) with environment variable overrides per tier
 
-**LLM Backend:**
-- Purpose: Provider abstraction with model tier selection and tool format conversion
-- Examples: `clara_core/llm.py`
-- Pattern: Factory functions (`make_llm()`, `make_llm_with_tools()`) return configured client. Tier system maps (high/mid/low) to provider-specific models
+**MCPServerManager (singleton):**
+- Purpose: Install and manage external MCP (Model Context Protocol) servers
+- Location: `clara_core/mcp/manager.py`
+- Pattern: Singleton managing local and remote servers
+- Responsibilities: Install from Smithery/npm/GitHub, manage server connections, bridge tools to ToolRegistry
+- Supported sources: Smithery, npm packages, GitHub repos, Docker images, local paths
 
-**MCPServerManager:**
-- Purpose: Lifecycle management of local and remote MCP servers
-- Examples: `clara_core/mcp/manager.py`
-- Pattern: Singleton managing process/HTTP connections. Local servers use stdio transport (watchdog for hot reload), remote use HTTP
+**PlatformAdapter (abstract base):**
+- Purpose: Interface for platform-specific adapters to implement
+- Location: `clara_core/platform.py`
+- Methods: Convert platform messages to PlatformMessage, provide context, handle responses
+- Implementations: `adapters/discord/adapter.py` (Strangler fig wrapping), `adapters/cli/adapter.py`, future: `adapters/slack/adapter.py`
+
+**GatewayServer (singleton):**
+- Purpose: WebSocket server for platform adapters
+- Location: `gateway/server.py`
+- Responsibilities: Accept adapter connections, route messages, stream responses, maintain heartbeats
+- Related classes:
+  - `MessageRouter` - Routes messages to processor
+  - `SessionManager` - Tracks adapter sessions
+  - `NodeRegistry` - Tracks connected nodes/adapters
+
+**SandboxManager (unified interface):**
+- Purpose: Abstracts code execution backends
+- Location: `sandbox/manager.py`
+- Implementations: Docker, Incus (containers), Incus (VMs), Remote API
+- Auto-selection: Remote if configured, else Incus/Docker based on availability
 
 ## Entry Points
 
 **Discord Bot:**
-- Location: `discord_bot.py::main()` → `async_main()` → `run_bot()`
-- Triggers: Direct invocation (`poetry run python discord_bot.py`)
-- Responsibilities: Initialize platform, load config/env, setup Discord client, spawn bot and monitor server tasks, handle graceful shutdown
+- Location: `discord_bot.py` main, `adapters/discord/main.py` adapter
+- Triggers: `poetry run python discord_bot.py`
+- Responsibilities:
+  - Initialize Discord.py client
+  - Handle Discord events (on_message, on_ready, etc.)
+  - Manage message queuing and batching (active mode)
+  - Build session/memory context
+  - Stream LLM responses with tool execution
+  - Support model tier selection (!high, !mid, !low prefixes)
 
-**Monitor Dashboard (Web):**
-- Location: `discord_bot.py::run_monitor_server()`
-- Triggers: When `DISCORD_MONITOR_ENABLED=true`, runs alongside bot on port 8001
-- Responsibilities: FastAPI server providing bot status, activity logs, message history to web UI
+**CLI Bot:**
+- Location: `cli_bot.py`
+- Triggers: `poetry run python cli_bot.py`
+- Responsibilities: Interactive terminal interface, local file tools, session management
 
 **Email Monitor:**
-- Location: `email_monitor.py::email_check_loop()`
-- Triggers: Spawned as background task from Discord bot if `EMAIL_MONITORING_ENABLED=true`
-- Responsibilities: Periodic IMAP polling, rule evaluation, Discord alert dispatching
+- Location: `email_monitor.py`, `email_service/`
+- Triggers: Background service
+- Responsibilities: Poll email accounts (Gmail OAuth or IMAP), apply rules, send Discord alerts
 
-**Organic Response System (ORS):**
-- Location: `organic_response_system.py::ors_check_loop()`
-- Triggers: Optional background loop if `ORS_ENABLED=true`
-- Responsibilities: Assess user context, decide when to initiate proactive messages, schedule follow-ups
+**Gateway Server:**
+- Location: `gateway/main.py`, `gateway/__main__.py`
+- Triggers: `poetry run python -m gateway`
+- Responsibilities:
+  - Accept adapter WebSocket connections
+  - Route messages to processor
+  - Stream responses back
+  - Manage hooks and scheduled tasks
+  - Event emission for extensibility
+
+**API Service:**
+- Location: `api_service/main.py` (separate repo/service)
+- Triggers: Standalone FastAPI service
+- Responsibilities: OAuth callbacks (Google), health checks, admin endpoints
 
 ## Error Handling
 
-**Strategy:** Exception-based with graceful degradation. Errors logged at multiple levels, users informed via Discord when tools fail.
+**Strategy:** Layered approach with fallbacks and graceful degradation
 
 **Patterns:**
-- **Tool Failures**: Caught in tool execution, returned as tool result with error message shown to user
-- **LLM Call Failures**: Logged, user receives error message in Discord, retry logic in some cases
-- **Memory Failures**: Non-fatal - missing memories logged, bot continues with degraded context
-- **Database Failures**: Logged with traceback, attempts reconnect on next operation
-- **Sandbox Failures**: Falls back to local Docker if remote unavailable, disables code execution if Docker unavailable
+- Database errors: Migrations auto-fallback from Alembic to create_all()
+- LLM errors: Retry logic, tier downgrade on rate limits
+- Memory lookup: Graceful degradation if mem0 unavailable (session history only)
+- Tool execution: Errors caught and formatted, response continues with error context
+- Sandbox: Auto-select fallback (Docker → Incus → Remote)
+- Email: Individual rule failures don't stop entire monitoring loop
 
 ## Cross-Cutting Concerns
 
-**Logging:** Hierarchical logger system (`config/logging.py`) with named loggers per module. Can mirror to Discord channel via `DISCORD_LOG_CHANNEL_ID`. Database-backed for persistent audit trail via `LogEntry` model.
+**Logging:** Configured in `config/logging.py` with module-specific loggers. Discord log mirroring to channel optional. Multi-file output support.
 
-**Validation:**
-- Configuration validation via `ClaraConfig` dataclass (Pydantic v2)
-- Message size limits enforced: `DISCORD_MAX_CHARS`, `DISCORD_MAX_TOOL_RESULT_CHARS`
-- File size limits for uploads: `CLARA_MAX_FILE_SIZE`
-- Image dimension limits: `DISCORD_MAX_IMAGE_DIMENSION`
+**Validation:** Pydantic models in config, environment variable validation at startup, database schema validation via SQLAlchemy.
 
 **Authentication:**
-- Discord: Bot token in environment, per-channel/role access control via `ChannelConfig`
-- MCP OAuth: Handled by `clara_core/mcp/oauth.py` for hosted Smithery servers
-- External APIs: Per-API env vars (GitHub, Google, OpenRouter, etc.)
+- Discord: Token-based (DISCORD_BOT_TOKEN)
+- Google OAuth: Per-user connections stored in database with encrypted tokens
+- Gateway: Optional shared secret (CLARA_GATEWAY_SECRET)
+- LLM providers: API key-based or token-based per provider
 
-**Rate Limiting:**
-- Message queuing in channels: Active mode batching for high-volume channels, position notifications for mentions/DMs
-- MCP tool calls: Per-server rate limits (implementation in individual servers)
-- Sandbox execution: Container idle timeout and memory/CPU limits
+**Concurrency:**
+- Discord: Built on discord.py async/await
+- Gateway: asyncio-based WebSocket with concurrent message processing
+- Database: Connection pooling (QueuePool for PostgreSQL, SQLite automatic)
+- Thread pools: BLOCKING_EXECUTOR in gateway for I/O operations
 
 ---
 
-*Architecture analysis: 2026-01-24*
+*Architecture analysis: 2026-01-27*

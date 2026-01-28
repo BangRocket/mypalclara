@@ -1,283 +1,262 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-01-24
+**Analysis Date:** 2026-01-27
 
 ## Naming Patterns
 
 **Files:**
-- Snake_case for all Python files (e.g., `discord_bot.py`, `memory_manager.py`)
-- Underscore prefix for private/internal modules (e.g., `_base.py`, `_registry.py`, `_loader.py`)
-- Descriptive names reflecting purpose (e.g., `channel_config.py`, `emotional_context.py`)
+- Module files: `snake_case.py` (e.g., `discord_bot.py`, `memory_manager.py`, `llm.py`)
+- Test files: `test_*.py` (e.g., `test_events.py`, `test_scheduler.py`, `test_hooks.py`)
+- Package init: `__init__.py` - commonly used for re-exports and singleton access
+- Config files: Named by domain (e.g., `config/bot.py`, `config/logging.py`, `config/mem0.py`)
 
 **Functions:**
-- Snake_case for all functions (e.g., `get_logger()`, `make_llm()`, `_format_message_timestamp()`)
-- Underscore prefix for private/internal functions (e.g., `_get_openrouter_client()`, `_has_generated_memories()`)
-- Descriptive names indicating action/return (e.g., `execute_python()`, `compute_emotional_arc()`, `finalize_conversation_emotional_context()`)
+- Private helpers: Prefixed with `_` (e.g., `_load_personality()`, `_extract_name()`, `_worker()`)
+- Public functions: `snake_case` with descriptive names (e.g., `get_logger()`, `make_llm()`, `init_platform()`)
+- Async functions: Same `snake_case` convention, prefixed with `async def` (e.g., `async def emit()`, `async def execute()`)
+- Handler functions: Named `handler()` in closures or `{operation}_handler()` for specific operations (e.g., `_web_search_handler()`)
+- Setter/getter patterns: Use explicit names like `set_session_factory()`, `get_instance()`, `get_logger()`
+
+**Classes:**
+- `PascalCase` (e.g., `MemoryManager`, `ToolRegistry`, `EventEmitter`, `HookManager`)
+- Dataclasses: Explicit `@dataclass` decorator (e.g., `ToolDefinition`, `Event`, `ScheduledTask`)
+- Singletons: Include `_instance: ClassVar["ClassName | None"] = None` pattern with `get_instance()` and `initialize()` methods
+- Enums: `PascalCase` for enum class, UPPERCASE for values (e.g., `EventType.GATEWAY_STARTUP`, `TaskType.INTERVAL`)
 
 **Variables:**
-- Snake_case for local variables and parameters (e.g., `user_id`, `channel_id`, `message_content`)
-- UPPERCASE for module-level constants (e.g., `CONTEXT_MESSAGE_COUNT`, `DEFAULT_TIMEZONE`, `MIN_MESSAGES_FOR_ARC`)
-- Private module variables use underscore prefix (e.g., `_conversation_sentiments`, `_openrouter_client`)
+- `snake_case` for all module and function-level variables
+- Constants: UPPERCASE_WITH_UNDERSCORES (e.g., `DEFAULT_TIER`, `CONTEXT_MESSAGE_COUNT`, `MAX_SEARCH_QUERY_CHARS`)
+- Private module state: Prefixed with `_` (e.g., `_instance`, `_db_handler`, `_discord_handler`, `_initialized`)
+- Loop variables in comprehensions: Single letters acceptable (e.g., `for i in range(...)`)
 
-**Types:**
-- PascalCase for classes (e.g., `ToolDef`, `ToolContext`, `EmotionalSummary`, `ToolRegistry`)
-- Type hints with modern Python syntax (e.g., `dict[str, Any]`, `list[str] | None` instead of `Optional`)
-- Literal types for constants (e.g., `ModelTier = Literal["high", "mid", "low"]`)
+**Module-level loggers:**
+- Instantiated at module top with `logger = get_logger(__name__)` or module-specific name
+- Tag-based naming: `logger = get_logger("mem0")`, `logger = get_logger("thread")`, `logger = get_logger("discord")`
+- Examples: `config/logging.py` lines 16, 19-21; `clara_core/tools.py` line 16; `clara_core/llm.py` (implicit in modules)
 
 ## Code Style
 
 **Formatting:**
-- Line length: 120 characters (configured in `pyproject.toml`)
+- Line length: 120 characters (set in `pyproject.toml` `[tool.ruff] line-length = 120`)
 - Indentation: 4 spaces (Python standard)
-- Tool: Ruff for formatting and linting
+- Trailing commas: Used in multi-line structures (e.g., function signatures, lists, dicts)
+- Blank lines: 2 between top-level functions/classes, 1 between methods within a class
 
 **Linting:**
-- Ruff configuration in `pyproject.toml` with:
-  - `select = ["E", "F", "I"]` - Error, Pyflakes, Import checks
-  - `ignore = ["E501", "E402", "E741", "F401", "F841"]` - Length, import order, ambiguous names, unused imports/vars
-- Per-file ignores:
-  - `__init__.py` ignores F401 (unused imports - intentional re-exports)
-  - `tools/*.py` ignores E501 (line length for descriptive tool definitions)
-  - `sandbox/*.py` ignores E501 (line length for complex tool definitions)
+- Tool: `ruff` for both formatting and linting
+- Run formatting: `poetry run ruff format .`
+- Run lint checks: `poetry run ruff check .`
+- Configuration: `pyproject.toml [tool.ruff]` section (lines 88-110)
+  - Enabled rules: E (errors), F (PyFlakes), I (import sorting)
+  - Ignored rules: E501 (line too long), E402 (module imports not at top), E741 (ambiguous names), F401 (unused imports in `__init__.py`), F841 (unused variables)
+  - Per-file ignores: E501 ignored in `tools/*.py` and `sandbox/*.py` (long tool definitions allowed)
 
-**Code Format Example:**
+**Import Organization:**
+
+Order (observed across codebase):
+1. `from __future__ import annotations` (always first, enables PEP 563 for type hints)
+2. Standard library imports: `import os`, `from pathlib import Path`, `from typing import TYPE_CHECKING`
+3. TYPE_CHECKING block: `if TYPE_CHECKING: from some_module import SomeClass`
+4. Third-party imports: `from anthropic import Anthropic`, `from openai import OpenAI`, `import discord`
+5. Relative imports: `from clara_core import ...`, `from config.logging import ...`, `from db import ...`
+
+**Path Aliases:**
+- Used via relative imports with package structure
+- No explicit alias configuration in `pyproject.toml`
+- Imports resolve based on package names: `clara_core`, `config`, `db`, `gateway`, `sandbox`, `adapters`
+
+Example (from `discord_bot.py`):
 ```python
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session as OrmSession
+    from adapters.discord.adapter import DiscordAdapter
 
-logger = get_logger("module_name")
-
-# Module constants
-DEFAULT_TIMEOUT = 30
-MAX_RETRIES = 3
-
-def public_function(param: str) -> dict[str, Any]:
-    """Public function with docstring."""
-    return {"result": param}
-
-def _private_function() -> None:
-    """Private function with underscore prefix."""
-    pass
-```
-
-## Import Organization
-
-**Order:**
-1. `from __future__ import annotations` (at very top)
-2. Standard library imports (sorted alphabetically)
-3. Third-party imports (sorted alphabetically)
-4. Local/relative imports (sorted alphabetically)
-5. TYPE_CHECKING conditional imports (for type hints only)
-
-**Path Aliases:**
-- No path aliases configured - uses absolute imports from project root
-- Clara core modules imported as `from clara_core import ...`
-- Database models imported as `from db.models import ...`
-- Configuration imported as `from config.logging import ...`
-
-**Example Import Block:**
-```python
-from __future__ import annotations
+from dotenv import load_dotenv
+load_dotenv()
 
 import asyncio
 import json
-import os
-from collections import deque
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generator, Literal
-
-from anthropic import Anthropic
-from openai import OpenAI
-from PIL import Image
-
-from clara_core import MemoryManager, ToolRegistry
+# ... more imports
+from clara_core import MemoryManager, make_llm
 from config.logging import get_logger
-from db.models import Message, Session
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session as OrmSession
+from db import SessionLocal
 ```
 
 ## Error Handling
 
 **Patterns:**
-- Try-except blocks with specific exception types (avoid bare `except:`)
-- Log errors with `logger.error()` including `exc_info=True` for full traceback
-- Raise exceptions with descriptive messages when caller needs to know about failure
-- Fallback to defaults when safe (e.g., timezone handling, configuration loading)
+- Raise specific exceptions for known error cases: `ValueError`, `RuntimeError`, `ImportError`
+- Catch broad exceptions in critical paths with logging: `except Exception as e:` followed by `logger.error()`
+- Re-raise with context when needed: `raise RuntimeError("message")` with descriptive text
+- Silent catches for optional imports: `except ImportError: pass` (e.g., `tools.py` lines 304, 353, 395)
 
-**Pattern Example:**
-```python
-try:
-    result = some_risky_operation()
-except ValueError as e:
-    logger.error(f"Invalid value: {e}", exc_info=True)
-    return None
-except Exception as e:
-    logger.error(f"Unexpected error: {e}", exc_info=True)
-    raise RuntimeError(f"Operation failed: {e}") from e
-```
+Examples:
+- `tools.py:87-89`: Raise `RuntimeError` when singleton not initialized
+- `tools.py:129`: Raise `ValueError` for duplicate tool names
+- `logging.py:130`: Catch broad `Exception`, log to stderr, continue processing
+- `logging.py:175-178`: Try queue operation, drop on failure without exception
 
-**Common Practices:**
-- Validate inputs at function entry: `if not api_key: raise RuntimeError("API key required")`
-- Use try-finally for resource cleanup (database sessions, file handles)
-- Log warnings for degraded functionality (e.g., missing optional dependencies)
-- Wrap external service calls in try-except to prevent cascade failures
+**Logging errors:**
+- Use `logger.error()` with exception context: `logger.error(f"Error listing MCP servers: {e}")`
+- Include function/context in message: `[commands]`, `[logging]`, `[api]` tags in error messages
+- Never use bare `except` without intent to suppress
 
 ## Logging
 
-**Framework:** Python's built-in `logging` module via custom `get_logger()` from `config.logging`
+**Framework:** Python standard `logging` module
 
-**Patterns:**
-- Get logger at module level: `logger = get_logger("module_name")`
-- Module names are short tags: "api", "discord", "mem0", "llm", "email", "tools", "db", "sandbox", "organic"
-- Log levels: DEBUG (detailed), INFO (normal ops), WARNING (degraded), ERROR (failures), CRITICAL (fatal)
-- Include context with `extra` dict: `logger.info("Event", extra={"user_id": user_id, "session_id": session_id})`
-
-**Logging Patterns:**
+**Module logger pattern** (from `config/logging.py`):
 ```python
-logger = get_logger("module_name")
+from config.logging import get_logger
 
-logger.info("Operation started", extra={"user_id": user_id})
-logger.warning("Fallback used", extra={"reason": "primary_method_failed"})
-logger.error(f"Operation failed: {e}", exc_info=True)
-logger.debug("Internal state", extra={"state": state_dict})
+logger = get_logger("mem0")          # Module name as tag
+thread_logger = get_logger("thread") # Specialized loggers per domain
+memory_logger = get_logger("memory")
 ```
 
-**Special Features:**
-- Structured logging with ANSI colors in console output
-- Context tags automatically extracted from LogRecord attributes
-- Database persistence with async handler (non-blocking)
-- Discord integration: logs can be mirrored to `DISCORD_LOG_CHANNEL_ID` if set
+**Usage patterns:**
+- `logger.info("Server started", extra={"user_id": "123"})` - Info with context
+- `logger.error(f"Error: {e}")` - Errors with exceptions
+- `logger.warning(f"Warning message")` - Warnings for unusual but recoverable issues
+- `logger.debug(f"Debug info")` - Debug details (used sparingly in production)
+
+**Tag-based coloring** (console output):
+```python
+TAG_COLORS = {
+    "api": "\033[94m",      # Blue
+    "mem0": "\033[95m",     # Magenta
+    "thread": "\033[96m",   # Cyan
+    "discord": "\033[93m",  # Yellow
+    "db": "\033[92m",       # Green
+    "llm": "\033[91m",      # Red
+    "email": "\033[97m",    # White
+    "tools": "\033[36m",    # Cyan
+    "sandbox": "\033[35m",  # Magenta
+    "organic": "\033[33m",  # Yellow
+}
+```
+
+**Handlers:**
+- Console handler: Colored output with tags and extra context (user_id, session_id, channel_id)
+- Database handler: Async batching to PostgreSQL LogEntry table
+- Discord handler: Mirrors logs to Discord channel with rate limiting (5 messages / 5 seconds)
 
 ## Comments
 
 **When to Comment:**
-- Complex algorithm explanations (WHY, not WHAT)
-- Non-obvious design decisions or tradeoffs
-- References to external resources (RFC, issue links, design docs)
-- Workarounds for known issues/limitations with ticket numbers
-- Configuration context (e.g., "Railway and other hosts use postgres:// prefix")
+- Complex algorithms or non-obvious logic: Explain the "why", not the "what"
+- Configuration trade-offs: Why certain values were chosen
+- Workarounds: Document why a non-standard approach is necessary
+- Legal/licensing: File headers with project info
 
-**What NOT to comment:**
-- Obvious code that reads itself
-- What the next line does (code should be self-documenting)
-- Redundant comments that repeat the code
+**Avoid Comments For:**
+- Self-documenting code: Good function/variable names are preferred
+- Obvious operations: `x = x + 1` doesn't need explanation
+- Too much detail: Comments should be at higher abstraction level than code
 
-**JSDoc/TSDoc (Docstrings):**
-- Use for all public functions and classes
-- Format: Summary line, optional blank line, detailed description, Args/Returns sections
-- Include type information in docstrings (especially for complex types)
-
-**Docstring Pattern:**
+**Module Docstrings:**
+- Triple-quoted string at file top describing purpose and usage
+- Format: `"""Purpose. Usage: ... Features: ..."""`
+- Example (`discord_bot.py`):
 ```python
-def track_message_sentiment(
-    user_id: str,
-    channel_id: str,
-    message_content: str,
-) -> float:
-    """Track sentiment for a message in an active conversation.
+"""
+Discord bot for Clara - Multi-user AI assistant with memory.
 
-    Analyzes message text using VADER sentiment analyzer and stores
-    results in per-conversation tracking for arc computation.
+Inspired by llmcord's clean design, but integrates directly with Clara's
+MemoryManager for full mem0 memory support.
 
-    Args:
-        user_id: The user sending the message
-        channel_id: The channel/DM where the message was sent
-        message_content: The message text to analyze
-
-    Returns:
-        The compound sentiment score (-1.0 to +1.0)
-    """
+Usage:
+    poetry run python discord_bot.py [options]
+...
+"""
 ```
+
+**Function Docstrings:**
+- Triple-quoted docstrings on functions/classes with complex signatures
+- Format: Single line summary, then Args/Returns/Raises sections
+- Example (`config/logging.py` line 53-54):
+```python
+def _load_personality() -> str:
+    """Load personality from file or env var, or use default."""
+```
+
+**JSDoc/Type Hints:**
+- Use type hints in function signatures (e.g., `def register(self, name: str, handler: Callable[[dict, Any], Awaitable[str]]) -> None:`)
+- Return type hints always included: `-> str:`, `-> dict:`, `-> None:`
+- Generics used for complex types: `list[str]`, `dict[str, Any]`, `ClassVar["ClassName | None"]`
 
 ## Function Design
 
-**Size:** Prefer functions under 50 lines; break complex logic into helper functions
+**Size:** Most functions stay under 50 lines; longer functions (100+) are complex orchestrators documented with clear sections
 
 **Parameters:**
-- Use dataclasses for multiple related parameters (e.g., `ToolContext`, `EmotionalSummary`)
-- Avoid single-letter parameter names except in loops
-- Type hints required for all parameters and return values
+- Explicit over implicit: Function signatures clearly show what's needed
+- Type hints mandatory for public APIs
+- Default values for optional parameters: `session_factory=None`, `platform: str | None = None`
+- Position-only not used; keyword-only used when API clarity matters
 
 **Return Values:**
-- Use dataclass instances for complex returns (not tuples)
-- Return None explicitly for no-op functions
-- Use `tuple[type, type]` for multiple returns (rare, prefer dataclass instead)
-- Union types (e.g., `dict | None`) for optional returns
+- Explicit returns with type hints
+- None returns documented: `-> None:` for void operations
+- Union types when multiple return types: `-> str | None:`, `-> list[str]`, `-> dict | None`
+- Raise documented exceptions instead of returning error codes
 
-**Function Organization Example:**
-```python
-@dataclass
-class OperationResult:
-    """Result of an operation."""
-    success: bool
-    data: dict[str, Any] | None = None
-    error: str | None = None
-
-def perform_operation(config: Config, user_id: str) -> OperationResult:
-    """Perform operation with given configuration."""
-    try:
-        result = _do_work(config, user_id)
-        return OperationResult(success=True, data=result)
-    except ValueError as e:
-        return OperationResult(success=False, error=str(e))
-```
+**Async patterns:**
+- Async functions clearly marked: `async def ...`
+- Await all async calls: `result = await async_function()`
+- No fire-and-forget patterns without explicit `asyncio.create_task()`
 
 ## Module Design
 
 **Exports:**
-- Public API explicitly listed in module docstring
-- Use `__all__` to document public interface
-- Private functions/classes use underscore prefix
-- Singleton classes expose `.get_instance()` class method
-
-**Singleton Pattern:**
+- `__init__.py` files use `__all__` to declare public API (e.g., `clara_core/__init__.py` lines 49-78)
+- Selective imports/re-exports in `__init__.py` expose clean API while hiding internals
+- Example pattern:
 ```python
-class Singleton:
-    """Thread-safe singleton."""
-    _instance: ClassVar[Singleton | None] = None
-
-    @classmethod
-    def get_instance(cls) -> Singleton:
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    @classmethod
-    def reset(cls) -> None:
-        """Reset instance (for testing)."""
-        cls._instance = None
-```
-
-**Barrel Files:**
-- `__init__.py` files re-export public API with `__all__`
-- Include module docstring explaining package purpose
-- Import and expose singletons (e.g., `from .memory import MemoryManager`)
-
-**Barrel File Pattern:**
-```python
-"""Clara Core - Shared infrastructure for Clara platform."""
-
-from __future__ import annotations
-
+from clara_core.llm import make_llm, make_llm_streaming
 from clara_core.memory import MemoryManager
-from clara_core.tools import ToolRegistry
 
 __all__ = [
+    "make_llm",
+    "make_llm_streaming",
     "MemoryManager",
-    "ToolRegistry",
 ]
 ```
 
+**Barrel Files (re-export pattern):**
+- Used to flatten API: `from clara_core import MemoryManager` instead of `from clara_core.memory import MemoryManager`
+- Common in `__init__.py` files for public packages
+- Keeps internals hidden while allowing clean imports
+
+**Singletons:**
+- ClassVar pattern with `_instance` and `initialize()`/`get_instance()` methods
+- Example (`tools.py` lines 78-103):
+```python
+class ToolRegistry:
+    _instance: ClassVar["ToolRegistry | None"] = None
+
+    @classmethod
+    def get_instance(cls) -> "ToolRegistry":
+        if cls._instance is None:
+            raise RuntimeError("ToolRegistry not initialized...")
+        return cls._instance
+
+    @classmethod
+    def initialize(cls) -> "ToolRegistry":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+```
+
+**Module-level initialization:**
+- Call `init_*()` functions at application startup (e.g., `init_platform()`, `init_logging()`, `init_mcp()`)
+- Single responsibility per module: `memory.py` handles memory, `llm.py` handles LLM backends, etc.
+- Lazy initialization for optional features: Feature disabled by default, enabled by configuration or explicit call
+
 ---
 
-*Convention analysis: 2026-01-24*
+*Convention analysis: 2026-01-27*

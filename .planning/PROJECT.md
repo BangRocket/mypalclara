@@ -1,86 +1,70 @@
-# MyPalClara Platform Refactor
+# Clara Gateway Consolidation
 
 ## What This Is
 
-Refactoring MyPalClara to separate the core AI assistant functionality (memory, personality, LLM, tools, MCP) from platform-specific code (Discord), enabling multiple input interfaces. The first new interface is a CLI that provides a Claude Code-like terminal experience with Clara's personality and shared memory.
+Consolidating MyPalClara into a single gateway daemon architecture. The gateway becomes THE runtime — Discord, Email, and other providers run as internal components, while CLI and Web clients connect via WebSocket. This replaces the current dual-process model (discord_bot.py + gateway) with a unified `python -m gateway` entry point.
 
 ## Core Value
 
-Clara works identically across any interface — same personality, same memory, same capabilities — with platform-appropriate presentation.
+**Single daemon, multiple providers.** All Clara functionality runs from one process. Adding a new platform (Slack, Telegram) means creating one provider file — the gateway handles the rest.
 
 ## Requirements
 
 ### Validated
 
-*Existing capabilities from the current codebase:*
+<!-- Existing capabilities from current codebase that must continue working -->
 
-- ✓ LLM provider abstraction (OpenRouter, NanoGPT, OpenAI, Anthropic) — existing
-- ✓ Session-based conversation management — existing
-- ✓ mem0 semantic memory integration — existing
-- ✓ Tool registry with async execution — existing
-- ✓ MCP plugin system for extensible tools — existing
-- ✓ Discord bot with streaming responses — existing
-- ✓ Code sandbox execution (Docker/remote) — existing
-- ✓ File storage (local/S3) — existing
-- ✓ Personality and persona system — existing
-- ✓ Model tier selection (high/mid/low) — existing
-- ✓ Skills system — existing
+- ✓ Discord bot responds to messages with streaming LLM responses — existing
+- ✓ Memory system (mem0) provides context from past conversations — existing
+- ✓ MCP plugins extend Clara with external tools — existing
+- ✓ Code execution via Docker/Incus sandbox — existing
+- ✓ Email monitoring with rule-based alerts — existing
+- ✓ Hooks and scheduler trigger on events — existing
+- ✓ Multi-model tier support (!high, !mid, !low) — existing
+- ✓ Image/vision support in Discord — existing
 
 ### Active
 
-*New capabilities for this milestone:*
+<!-- What we're building in this milestone -->
 
-- [ ] Platform-agnostic core that any interface can use
-- [ ] Abstract "channel" concept (Discord channels, DMs, CLI sessions)
-- [ ] CLI interface with REPL-style chat
-- [ ] CLI streaming output (like Claude Code)
-- [ ] CLI file read/write tools
-- [ ] CLI shell command execution
-- [ ] CLI MCP server access
-- [ ] CLI Skills support
-- [ ] Shared user memory across all platforms
-- [ ] Separate conversation context per channel/session
+- [ ] Gateway daemon runs all providers from single process
+- [ ] Discord provider integrated into gateway (not separate process)
+- [ ] Email provider integrated into gateway
+- [ ] CLI client connects to gateway via WebSocket
+- [ ] `python -m gateway` is the only entry point needed
+- [ ] `discord_bot.py` deleted (code merged into gateway)
+- [ ] Provider architecture supports adding Slack/Telegram later
 
 ### Out of Scope
 
-- Web UI — future milestone, not this one
-- Slack integration — future milestone
-- Mobile app — no plans
-- Multi-user CLI — personal use only
-- Breaking Discord functionality — must remain fully operational
+- Slack provider implementation — architecture only, defer actual Slack to future milestone
+- Telegram provider implementation — same, architecture only
+- Web UI client — gateway supports it, but building UI is separate work
+- Changes to mem0 storage — databases must remain untouched
 
 ## Context
 
-**Current architecture has partial abstraction:**
-- `clara_core/` exists with `MemoryManager`, `ToolRegistry`, `PlatformAdapter`
-- `PlatformAdapter` base class exists but Discord implementation is tangled in 4,391-line `discord_bot.py`
-- Some tools are Discord-specific (send embeds, reactions) vs platform-agnostic
+**Current state:** Discord functionality lives in `discord_bot.py` (~3700 lines), duplicating logic that also exists in the gateway. The gateway was built for "future adapters" but Discord still runs separately.
 
-**The refactor challenge:**
-- Extract truly platform-agnostic core from `discord_bot.py`
-- Make `PlatformAdapter` a real abstraction that CLI can implement
-- Handle platform-specific tool variants (e.g., file sending works differently in CLI vs Discord)
+**Pain:** Two processes to run, code duplication, changes require updating both places.
 
-**CLI goals:**
-- Feel like Claude Code but with Clara's personality
-- File operations and shell commands for coding tasks
-- Same mem0 memories as Discord Clara
-- CLI sessions are just another "channel" in the system
+**Architecture inspiration:** Moltbot-style single daemon with providers managed internally.
+
+**Codebase mapping:** See `.planning/codebase/` for detailed analysis of existing code, conventions, and concerns.
 
 ## Constraints
 
-- **Backwards compatibility**: Discord bot must continue working throughout refactor
-- **Same codebase**: CLI and Discord share one repo, one core
-- **Personal use**: CLI is for owner only, no auth/multi-user complexity
-- **Python stack**: Continue using Python 3.11+, Poetry, existing dependencies
+- **Data preservation**: mem0 databases must not be modified or corrupted
+- **Deployment**: Bare metal via `poetry run` — no Docker/Railway dependencies
+- **Python**: Continue using py-cord for Discord, existing LLM backends
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| CLI as first new platform | Simplest to implement, immediate personal value | — Pending |
-| Shared memory, separate conversations | Matches current Discord channel behavior | — Pending |
-| Streaming output for CLI | Matches Claude Code UX, better experience | — Pending |
+| Providers run inside gateway (not as WS clients) | Reduces latency, simplifies deployment | — Pending |
+| Delete discord_bot.py completely | Clean break over strangler fig | — Pending |
+| CLI connects via WebSocket | Consistent client interface | — Pending |
 
 ---
-*Last updated: 2026-01-24 after initialization*
+*Last updated: 2026-01-27 after initialization*

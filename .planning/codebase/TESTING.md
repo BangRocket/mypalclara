@@ -1,377 +1,408 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-01-24
+**Analysis Date:** 2026-01-27
 
 ## Test Framework
 
 **Runner:**
-- pytest 8.0+ (configured in `pyproject.toml` as dev dependency)
-- Config file: Not detected (uses default pytest.ini discovery)
+- `pytest` 8.0+ (configured in `pyproject.toml`)
+- Configuration: `pyproject.toml [tool.pytest.ini_options]` (lines 112-116)
+
+**Async Support:**
+- `pytest-asyncio` 0.24+ for async test functions
+- Asyncio mode: `asyncio_mode = "auto"` (auto-detects and runs async fixtures/tests)
+- Fixture scope: `asyncio_default_fixture_loop_scope = "function"` (new loop per test)
 
 **Assertion Library:**
-- Python's built-in `assert` statements
+- Standard `assert` statements
+- No custom assertion helper library
 
 **Run Commands:**
 ```bash
-poetry run pytest                    # Run all tests
-poetry run pytest -v                 # Verbose output
-poetry run pytest tests/             # Run specific directory
-poetry run pytest --collect-only     # List test items without running
-poetry run pytest -x                 # Stop on first failure
-poetry run pytest -k "pattern"       # Run tests matching pattern
+pytest                 # Run all tests
+pytest tests/          # Run specific directory
+pytest -v              # Verbose output (show each test)
+pytest -s              # Show print statements (don't capture)
+pytest -k "pattern"    # Run tests matching pattern
+pytest --lf            # Run last failed
+pytest -x              # Stop on first failure
 ```
 
 ## Test File Organization
 
 **Location:**
-- Tests are co-located in `/Users/heidornj/Code/mypalclara/tests/` directory (separate from source)
-- Tests directory currently contains only `__pycache__` - no active test files present
-- Expected pattern for new tests: `tests/test_<module_name>.py`
+- Co-located with source: Tests in `tests/` directory mirroring source structure
+- Gateway tests: `tests/gateway/test_*.py` for modules in `gateway/`
+- Pattern: `tests/` at project root, subdirectories match `src/` structure
 
 **Naming:**
-- Test files: `test_*.py` or `*_test.py` prefix/suffix
-- Test functions: `test_<functionality>()` (e.g., `test_validate_tool_args()`)
-- Test classes: `Test<Component>` (e.g., `TestToolRegistry`)
+- Test modules: `test_*.py` (e.g., `test_events.py`, `test_scheduler.py`, `test_hooks.py`)
+- Test classes: `Test*` (e.g., `TestEvent`, `TestEventEmitter`, `TestScheduler`)
+- Test functions: `test_*` (e.g., `test_creation`, `test_handler`, `test_timeout`)
+- Fixture functions: `fixture_name` without `test_` prefix
 
-**Current State:**
-- **No active test coverage** - The codebase is not currently tested via pytest
-- `tests/` directory exists but contains no test files
-- Only cached pytest artifacts (`.pytest_cache/`, `__pycache__/`) present
-- This is a gap that should be addressed during quality improvements
+**Structure:**
+```
+tests/
+├── __init__.py
+├── gateway/
+│   ├── __init__.py
+│   ├── test_events.py       # Tests for gateway/events.py
+│   ├── test_scheduler.py    # Tests for gateway/scheduler.py
+│   └── test_hooks.py        # Tests for gateway/hooks.py
+```
 
 ## Test Structure
 
-**Recommended Pattern (when tests are added):**
+**Suite Organization:**
+
 ```python
+"""Tests for gateway event system."""
+
+import asyncio
+from datetime import datetime
+
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
 
-from clara_core.tools import ToolRegistry, ToolDef, ToolContext
-
-
-class TestToolRegistry:
-    """Test suite for ToolRegistry singleton."""
-
-    def setup_method(self):
-        """Set up test fixtures before each test."""
-        ToolRegistry.reset()
-        self.registry = ToolRegistry.get_instance()
-
-    def teardown_method(self):
-        """Clean up after each test."""
-        ToolRegistry.reset()
-
-    def test_get_instance_returns_singleton(self):
-        """ToolRegistry.get_instance() returns same instance."""
-        registry1 = ToolRegistry.get_instance()
-        registry2 = ToolRegistry.get_instance()
-        assert registry1 is registry2
-
-    def test_register_tool(self):
-        """register_tool() adds tool to registry."""
-        tool = self._make_tool("test_tool")
-        self.registry.register(tool)
-        assert self.registry.get("test_tool") is tool
-
-    def _make_tool(self, name: str) -> ToolDef:
-        """Helper to create test tool."""
-        async def handler(args, context):
-            return "result"
-        return ToolDef(
-            name=name,
-            description="Test tool",
-            parameters={},
-            handler=handler,
-        )
+from gateway.events import Event, EventEmitter, EventType
 
 
 @pytest.fixture
-def tool_registry():
-    """Fixture providing fresh registry for each test."""
-    ToolRegistry.reset()
-    yield ToolRegistry.get_instance()
-    ToolRegistry.reset()
+def emitter():
+    """Create a fresh event emitter."""
+    return EventEmitter()
 
 
-def test_validate_tool_args_with_fixture(tool_registry):
-    """Example test using fixture."""
-    args = {"param": "value"}
-    params = {"properties": {"param": {"type": "string"}}}
-    validated, warnings = validate_tool_args("test", args, params)
-    assert validated == args
-    assert warnings == []
+@pytest.fixture(autouse=True)
+def reset_global():
+    """Reset global emitter between tests."""
+    yield
+    reset_event_emitter()
+
+
+class TestEvent:
+    """Tests for Event dataclass."""
+
+    def test_event_creation(self):
+        event = Event(type=EventType.GATEWAY_STARTUP)
+        assert event.type == EventType.GATEWAY_STARTUP
+        assert isinstance(event.timestamp, datetime)
+        assert event.data == {}
 ```
 
 **Patterns:**
-- Setup/teardown methods for per-test initialization (`setup_method`, `teardown_method`)
-- Class-based tests for component suites (e.g., `TestToolRegistry`)
-- Fixtures for shared resources (decorators with `@pytest.fixture`)
-- Singletons reset between tests to prevent state leakage
+
+1. **Module docstring:** Describes what module is being tested
+2. **Imports:** Organized (standard lib, third-party, local)
+3. **Fixtures:** Define fresh instances and cleanup with `yield`
+4. **Reset fixture:** `autouse=True` for global state cleanup between tests
+5. **Test classes:** Group related tests with `Test*` class names
+6. **Individual tests:** Methods starting with `test_` describing specific behavior
+
+## Fixtures and Setup/Teardown
+
+**Fixtures Pattern:**
+
+```python
+@pytest.fixture
+def emitter():
+    """Create a fresh event emitter."""
+    return EventEmitter()
+
+
+@pytest.fixture(autouse=True)
+def reset_global():
+    """Reset global emitter between tests."""
+    yield  # Tests run here
+    reset_event_emitter()  # Cleanup after
+
+
+@pytest.fixture
+def manager(emitter):
+    """Create a fresh hook manager."""
+    return HookManager(emitter=emitter)
+```
+
+**Key characteristics:**
+- Fixtures are functions decorated with `@pytest.fixture`
+- Descriptive docstrings explain what they create
+- `autouse=True` for fixtures that should run for every test (global cleanup)
+- `yield` for setup/teardown: setup code runs, test runs, teardown after `yield`
+- Dependency injection: fixtures can depend on other fixtures by parameter name
+- Fresh instances per test: Each test gets its own emitter/manager/etc.
+
+**Cleanup strategy:**
+- Global singleton reset functions: `reset_event_emitter()`, `reset_scheduler()`, `reset_hook_manager()`
+- Called in `autouse=True` fixtures after `yield` for guaranteed cleanup
+- Prevents test pollution and cross-test dependencies
 
 ## Mocking
 
-**Framework:** `unittest.mock` (Python standard library)
+**Framework:** No external mocking library detected; uses Python builtins and manual mocks
 
 **Patterns:**
-```python
-from unittest.mock import Mock, MagicMock, patch, AsyncMock, call
 
-# Mocking dependencies
-@patch("clara_core.llm._get_openrouter_client")
-def test_llm_with_mocked_client(mock_client):
-    """Mock external LLM client."""
-    mock_client.return_value = Mock(
-        chat=Mock(
-            completions=Mock(
-                create=Mock(return_value=Mock(choices=[Mock(message=Mock(content="response"))]))
-            )
-        )
-    )
-    result = make_llm(tier="mid")
-    assert result is not None
-    mock_client.assert_called_once()
+1. **Direct instantiation:** Create real instances for testing (lightweight objects)
+   ```python
+   def test_event_creation(self):
+       event = Event(type=EventType.GATEWAY_STARTUP)
+       assert event.type == EventType.GATEWAY_STARTUP
+   ```
 
-# Mocking async functions
-@pytest.mark.asyncio
-async def test_async_tool_execution():
-    """Test async tool with mocked handler."""
-    mock_handler = AsyncMock(return_value="tool_result")
-    tool = ToolDef(
-        name="test",
-        description="Test",
-        parameters={},
-        handler=mock_handler,
-    )
-    context = ToolContext(user_id="test_user")
-    result = await tool.handler({}, context)
-    assert result == "tool_result"
-    mock_handler.assert_called_once()
+2. **Closure-based fake handlers:** Define test handlers inline
+   ```python
+   async def test_multiple_handlers(self, emitter):
+       results = []
 
-# Verifying calls
-mock_obj.assert_called_once()
-mock_obj.assert_called_once_with(arg1, arg2)
-mock_obj.assert_called_with(arg1, arg2)
-mock_obj.assert_not_called()
-assert mock_obj.call_count == 2
-assert call(arg1, arg2) in mock_obj.call_args_list
-```
+       async def handler1(event: Event):
+           results.append("handler1")
+
+       async def handler2(event: Event):
+           results.append("handler2")
+
+       emitter.on(EventType.GATEWAY_STARTUP, handler1)
+       emitter.on(EventType.GATEWAY_STARTUP, handler2)
+       await emitter.emit(Event(type=EventType.GATEWAY_STARTUP))
+       assert "handler1" in results
+   ```
+
+3. **Test double data structures:** Create minimal fake objects
+   ```python
+   def test_load_from_file(self, scheduler):
+       with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+           f.write("""
+tasks:
+  - name: test-task
+    type: interval
+    interval: 3600
+    command: echo loaded
+""")
+           count = scheduler.load_from_file(f.name)
+           assert count == 1
+   ```
 
 **What to Mock:**
-- External API clients (LLM providers, Discord API)
-- Database sessions/connections
-- File system operations
-- Long-running operations (for speed)
-- Non-deterministic functions (random, timestamps)
+- External APIs: File systems (use `tempfile`), network calls (when present, would mock HTTP)
+- Long-running operations: Replace with shortened versions (e.g., `interval=0.1` instead of 3600)
+- Side effects: Replace with in-memory lists/dicts to capture behavior
 
 **What NOT to Mock:**
-- Core business logic (memory management, tool execution)
-- Data validation functions
-- Utility functions
-- Pure functions (deterministic, no side effects)
+- Core business logic: Test real event emitters, schedulers, hook managers
+- Data structures: Test with real Event, ScheduledTask, Hook objects
+- Configuration: Use real config values (make them small for tests)
 
-## Fixtures and Factories
+## Async Testing
 
-**Test Data:**
-
-Currently no fixtures are defined. Recommended patterns for new tests:
-
+**Pattern:**
 ```python
-import pytest
-from db.models import Session, Message
-
-@pytest.fixture
-def db_session():
-    """Fixture providing in-memory test database."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from db.models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    yield session
-
-    session.close()
-    engine.dispose()
-
-@pytest.fixture
-def sample_session(db_session):
-    """Fixture providing pre-created test session."""
-    session = Session(
-        id="test-session-1",
-        project_id="test-project",
-        user_id="test-user",
-        title="Test Session",
+@pytest.mark.asyncio
+async def test_interval_task_execution(self, scheduler):
+    task = ScheduledTask(
+        name="quick-task",
+        type=TaskType.INTERVAL,
+        interval=0.1,  # Very short interval for testing
+        command="echo executed",
+        timeout=5.0,
     )
-    db_session.add(session)
-    db_session.commit()
-    return session
+    scheduler.add_task(task)
 
-@pytest.fixture
-def sample_message(db_session, sample_session):
-    """Fixture providing test message."""
-    msg = Message(
-        session_id=sample_session.id,
-        user_id="test-user",
-        role="user",
-        content="Hello Clara",
-    )
-    db_session.add(msg)
-    db_session.commit()
-    return msg
+    await scheduler.start()
+    await asyncio.sleep(0.5)  # Wait for execution
+    await scheduler.stop()
 
-def test_retrieve_messages(db_session, sample_session, sample_message):
-    """Test retrieving messages from session."""
-    messages = db_session.query(Message).filter(
-        Message.session_id == sample_session.id
-    ).all()
-    assert len(messages) == 1
-    assert messages[0].content == "Hello Clara"
+    results = scheduler.get_results()
+    assert len(results) >= 1
+```
+
+**Key points:**
+- Mark async tests with `@pytest.mark.asyncio`
+- Use `async def` for test function
+- `await` all async calls
+- Pytest-asyncio auto-detects and runs with proper event loop
+- Use `asyncio.sleep()` for timing tests (not `time.sleep()`)
+
+## Error and Exception Testing
+
+**Pattern:**
+```python
+def test_invalid_expression(self):
+    with pytest.raises(ValueError):
+        CronParser.parse("* * *")  # Too few fields
+```
+
+**Key points:**
+- Use `pytest.raises(ExceptionType)` context manager
+- Test that specific exceptions are raised for invalid input
+- Verify error messages when important (optional but recommended)
+
+## Fixtures and Test Data
+
+**Factory pattern:**
+```python
+def test_load_from_file(self, scheduler):
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write("""
+tasks:
+  - name: test-task
+    type: interval
+    interval: 3600
+    command: echo loaded
+    description: Test task from file
+""")
+        f.flush()
+        count = scheduler.load_from_file(f.name)
 ```
 
 **Location:**
-- Fixtures should live in `tests/conftest.py` for sharing across test files
-- Module-specific fixtures can live in individual test files
-- Test data factories could be in `tests/factories.py`
+- Fixtures in same test file with `@pytest.fixture` decorator
+- Test data (YAML, JSON) created inline with `tempfile`
+- No separate fixtures directory (tests are self-contained)
 
 ## Coverage
 
-**Requirements:** Not enforced (no coverage threshold configured)
+**Requirements:** Not enforced by CI (no minimum coverage configured)
 
-**View Coverage (when tests exist):**
+**View Coverage:**
 ```bash
-poetry run pytest --cov=clara_core --cov=db --cov-report=html
+pytest --cov=gateway tests/gateway/
+pytest --cov=clara_core tests/
+```
+
+**Generate HTML Report:**
+```bash
+pytest --cov=gateway --cov-report=html tests/gateway/
 # Opens htmlcov/index.html in browser
 ```
 
-**Recommended Coverage Targets:**
-- Critical paths (memory management, tool execution): 80%+
-- Utility functions: 70%+
-- Integrations (Discord, LLM APIs): 40%+ (harder to test with mocks)
-- Overall target: 60%+ for quality assurance
-
-## Test Types
+## Test Types and Scope
 
 **Unit Tests:**
-- Scope: Single function or class method
-- Approach: Isolate with mocks, test behavior not implementation
-- Example: Test `validate_tool_args()` with various input types
-- Location: `tests/test_<module>.py`
+- Scope: Single class or function in isolation
+- Examples: `test_event_creation()`, `test_cron_parser()`, `test_hook_dataclass()`
+- Approach: Direct instantiation, no external dependencies, fast execution
+- Assertions: Verify state changes, return values, method calls
+- Location: `tests/gateway/test_*.py` for core gateway tests
 
 **Integration Tests:**
 - Scope: Multiple components working together
-- Approach: Use real or in-memory dependencies (no mocks)
-- Example: Test ToolRegistry registering and executing a tool
-- Location: `tests/integration/test_<feature>.py`
-- Marked with `@pytest.mark.integration` to run separately
+- Examples: `test_handler_priority()`, `test_python_hook_execution()`, `test_interval_task_execution()`
+- Approach: Real event emitters, schedulers, hooks; short timeouts for speed
+- Assertions: Verify end-to-end behavior (events processed, tasks executed, handlers fired)
+- Location: Same files, mixed with unit tests (via `@pytest.mark.asyncio` for async integration)
 
 **E2E Tests:**
-- Framework: Not currently set up (would require Discord test server)
-- Approach: Full message flow from Discord to LLM and back
-- Would require: Test Discord server, API mocking or staging env
-- Not prioritized - focus on unit and integration tests
+- Not present in current test suite
+- Would test full workflows across multiple services (if added)
+- Would require running services or mock infrastructure
 
-## Common Patterns
+## Common Testing Patterns in Codebase
 
-**Async Testing:**
+**Handler Priority Testing:**
 ```python
-import pytest
-from unittest.mock import AsyncMock
-
 @pytest.mark.asyncio
-async def test_async_operation():
-    """Test async function."""
-    result = await some_async_function()
-    assert result == expected_value
+async def test_handler_priority(self, emitter):
+    results = []
 
-@pytest.mark.asyncio
-async def test_async_with_mock():
-    """Test async function with mocked dependency."""
-    with patch("module.dependency", new_callable=AsyncMock) as mock_dep:
-        mock_dep.return_value = "mocked_result"
-        result = await some_async_function()
-        assert result == "mocked_result"
+    async def low_priority(event: Event):
+        results.append("low")
+
+    async def high_priority(event: Event):
+        results.append("high")
+
+    emitter.on(EventType.GATEWAY_STARTUP, low_priority, priority=0)
+    emitter.on(EventType.GATEWAY_STARTUP, high_priority, priority=10)
+
+    await emitter.emit(Event(type=EventType.GATEWAY_STARTUP))
+
+    # High priority should run first
+    assert results[0] == "high"
+    assert results[1] == "low"
 ```
 
-**Error Testing:**
+**Timeout Testing:**
 ```python
-import pytest
-
-def test_raises_on_invalid_input():
-    """Test function raises expected exception."""
-    with pytest.raises(ValueError, match="Invalid input"):
-        function_that_validates("bad_input")
-
-def test_handles_error_gracefully():
-    """Test error handling behavior."""
-    result = function_with_error_handling("bad_input")
-    assert result is None  # or some error state
-
-def test_logs_error():
-    """Test that errors are logged."""
-    with patch("module.logger") as mock_logger:
-        function_that_logs_errors("bad_input")
-        mock_logger.error.assert_called()
-```
-
-**Database Testing:**
-```python
-def test_create_session(db_session):
-    """Test creating a database session."""
-    session = Session(
-        id="test-1",
-        project_id="proj-1",
-        user_id="user-1",
+@pytest.mark.asyncio
+async def test_task_timeout(self, scheduler):
+    task = ScheduledTask(
+        name="slow-task",
+        type=TaskType.ONE_SHOT,
+        delay=0,
+        command="sleep 10",
+        timeout=0.1,  # Very short timeout
     )
-    db_session.add(session)
-    db_session.commit()
+    scheduler.add_task(task)
 
-    retrieved = db_session.query(Session).filter_by(id="test-1").first()
-    assert retrieved is not None
-    assert retrieved.user_id == "user-1"
+    await scheduler.start()
+    await asyncio.sleep(0.5)
+    await scheduler.stop()
 
-def test_session_relationships(db_session, sample_session, sample_message):
-    """Test ORM relationships."""
-    session = db_session.query(Session).get(sample_session.id)
-    assert len(session.messages) == 1
-    assert session.messages[0].content == sample_message.content
+    results = scheduler.get_results()
+    assert len(results) >= 1
+    assert results[0].success is False
+    assert "Timeout" in results[0].error
 ```
 
-## Testing Gaps and Recommendations
+**Environment Variable Testing:**
+```python
+@pytest.mark.asyncio
+async def test_environment_variables(self, manager, emitter):
+    hook = Hook(
+        name="env-test",
+        event=EventType.SESSION_START,
+        command="echo USER:$CLARA_USER_ID CHANNEL:$CLARA_CHANNEL_ID",
+        timeout=5.0,
+    )
+    manager.register(hook)
 
-**Current State:**
-- No active test coverage
-- Test infrastructure (pytest) is configured but unused
-- No fixtures or test utilities defined
+    await emitter.emit(
+        Event(
+            type=EventType.SESSION_START,
+            user_id="test-user-123",
+            channel_id="test-channel-456",
+        )
+    )
+    await asyncio.sleep(0.2)
 
-**High-Priority Test Areas (when implementing):**
-1. **Tool execution pipeline** (`tools/_registry.py`, `validate_tool_args()`)
-   - Parameter validation and coercion
-   - Tool registration and lookup
-   - Error handling during execution
+    results = manager.get_results()
+    assert len(results) >= 1
+    assert "USER:test-user-123" in results[0].output
+    assert "CHANNEL:test-channel-456" in results[0].output
+```
 
-2. **Memory management** (`clara_core/memory.py`)
-   - Session creation and retrieval
-   - Memory context building
-   - Message history formatting
+**Wildcard/Catch-all Handler Testing:**
+```python
+@pytest.mark.asyncio
+async def test_wildcard_handler(self, emitter):
+    received = []
 
-3. **LLM backends** (`clara_core/llm.py`)
-   - Provider client initialization
-   - Model tier selection
-   - Streaming response handling
+    async def handler(event: Event):
+        received.append(event.type)
 
-4. **Database models** (`db/models.py`)
-   - Model creation and persistence
-   - Relationships and foreign keys
-   - Cascade operations
+    emitter.on("*", handler)
 
-5. **Error handling** (all modules)
-   - Recovery from API failures
-   - Fallback behaviors
-   - Logging of errors
+    await emitter.emit(Event(type=EventType.GATEWAY_STARTUP))
+    await emitter.emit(Event(type=EventType.MESSAGE_RECEIVED))
+
+    assert len(received) == 2
+    assert EventType.GATEWAY_STARTUP in received
+    assert EventType.MESSAGE_RECEIVED in received
+```
+
+## Test Statistics
+
+**Current Coverage:**
+- Total test files: 3 (`test_events.py`, `test_scheduler.py`, `test_hooks.py`)
+- Total test cases: ~60+ individual test methods
+- Focused on: Gateway system (events, scheduling, hooks)
+- Minimal coverage for: Core platform modules (discord_bot, memory, llm backends)
+
+**Gap Analysis:**
+- No tests for discord_bot.py (main entry point)
+- No tests for memory_manager.py (core orchestration)
+- No tests for llm.py (LLM backend abstraction)
+- No tests for tools.py (tool registry)
+- Gateway system well-tested (high confidence in event/scheduler/hook reliability)
 
 ---
 
-*Testing analysis: 2026-01-24*
+*Testing analysis: 2026-01-27*

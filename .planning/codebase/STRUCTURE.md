@@ -1,287 +1,329 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-01-24
+**Analysis Date:** 2026-01-27
 
 ## Directory Layout
 
 ```
-mypalclara/
-├── clara_core/                 # Core Clara platform (shared by all services)
-│   ├── __init__.py             # Platform initialization, singleton exports
-│   ├── config.py               # ClaraConfig dataclass, env variable loading
-│   ├── llm.py                  # LLM provider abstraction (OpenRouter, NanoGPT, OpenAI, Anthropic)
-│   ├── memory.py               # MemoryManager singleton, session/mem0 integration
-│   ├── tools.py                # ToolRegistry singleton, tool definitions and execution
-│   ├── platform.py             # PlatformAdapter abstraction, PlatformMessage/Context
-│   ├── emotional_context.py    # Sentiment tracking for conversation continuity
-│   ├── topic_recurrence.py     # Topic extraction and tracking patterns
+/Users/heidornj/Code/mypalclara/
+├── .githooks/                  # Git hooks for auto version bumping
+├── .github/workflows/          # GitHub Actions workflows (CI/CD)
+├── .mcp_servers/               # MCP servers (Smithery, npm installs)
+├── adapters/                   # Platform adapters (Discord, CLI, Web)
+│   ├── base.py                 # GatewayClient base class for WebSocket
+│   ├── protocol.py             # Shared protocol types
+│   ├── discord/                # Discord platform implementation
+│   │   ├── adapter.py          # DiscordAdapter (Strangler fig pattern)
+│   │   ├── gateway_client.py   # DiscordGatewayClient for WebSocket
+│   │   ├── main.py             # Discord bot startup
+│   │   └── __main__.py         # Entry point
+│   ├── cli/                    # CLI platform implementation
+│   │   ├── adapter.py          # CLIAdapter
+│   │   ├── gateway_client.py   # CLIGatewayClient
+│   │   ├── shell_executor.py   # Shell command execution
+│   │   ├── approval.py         # User confirmation prompts
+│   │   ├── logging.py          # CLI-specific logging
+│   │   └── main.py             # CLI startup
+│   └── web/                    # Web platform (FastAPI)
+│       ├── routes/             # HTTP endpoints
+│       └── __init__.py         # Web adapter setup
+├── backup_service/             # Database backup to S3
+├── clara_core/                 # Core platform logic (platform-agnostic)
+│   ├── __init__.py             # Public API exports
+│   ├── config.py               # ClaraConfig dataclass + init_platform()
+│   ├── llm.py                  # LLM backends (OpenRouter, Anthropic, etc.)
+│   ├── memory.py               # MemoryManager singleton + context building
+│   ├── tools.py                # ToolRegistry singleton + ToolDefinition
+│   ├── platform.py             # PlatformAdapter, PlatformMessage abstractions
+│   ├── emotional_context.py    # Sentiment tracking for continuity
 │   ├── sentiment.py            # Sentiment analysis utilities
-│   ├── discord/                # Discord-specific implementation
-│   │   ├── __init__.py         # Slash command registration (setup_slash_commands)
-│   │   ├── commands.py         # Discord slash command handlers
-│   │   ├── views.py            # Discord UI components (buttons, select menus)
-│   │   └── embeds.py           # Discord embed formatting
-│   ├── mcp/                    # Model Context Protocol plugin system
-│   │   ├── __init__.py         # MCPServerManager singleton, init/shutdown
-│   │   ├── manager.py          # Server lifecycle management
-│   │   ├── client.py           # MCP client wrapper (stdio & HTTP transports)
-│   │   ├── local_server.py     # Local MCP server subprocess management with hot reload
-│   │   ├── remote_server.py    # Remote MCP server HTTP client
-│   │   ├── models.py           # MCPServer SQLAlchemy model, config storage
-│   │   ├── installer.py        # Installation from Smithery, npm, GitHub, Docker, local paths
-│   │   ├── registry_adapter.py # Bridge between MCP tools and ToolRegistry
-│   │   └── oauth.py            # OAuth flow for hosted Smithery servers
-│   ├── core_tools/             # Built-in Clara tools (always available)
-│   │   ├── __init__.py
-│   │   ├── mcp_management.py   # mcp_install, mcp_list, mcp_status, etc.
-│   │   ├── chat_history.py     # Session and message retrieval tools
-│   │   └── system_logs.py      # System information and log viewing
-│   └── services/               # Platform-independent services
-│       ├── __init__.py
-│       └── backup.py           # Database backup utilities
-├── discord_bot.py              # Main Discord bot entry point with async runtime
-├── email_monitor.py            # Email monitoring service for IMAP accounts
-├── organic_response_system.py  # Proactive conversation system (optional)
-├── proactive_engine.py         # Legacy proactive messaging (superseded by ORS)
-├── db/                         # Database models and configuration
-│   ├── __init__.py
-│   ├── connection.py           # SQLAlchemy engine setup (SQLite/PostgreSQL)
-│   ├── models.py               # SQLAlchemy models: Project, Session, Message, ChannelSummary, ChannelConfig, LogEntry, etc.
-│   └── channel_config.py       # Channel-specific behavior config (active/mention/off mode)
-├── config/                     # Application configuration
-│   ├── __init__.py
-│   ├── bot.py                  # Bot-specific configuration constants
-│   ├── logging.py              # Logging setup with file/console/database/Discord handlers
-│   └── mem0.py                 # mem0 client initialization with Qdrant/pgvector/Neo4j
-├── tools/                      # Tool registration and loading system
-│   ├── __init__.py             # Tool module initialization
-│   ├── _base.py                # ToolDef and ToolContext base classes
-│   ├── _loader.py              # Dynamic tool module discovery and loading
-│   └── _registry.py            # Tool registration to ToolRegistry
-├── sandbox/                    # Code execution sandbox system
-│   ├── __init__.py
-│   ├── manager.py              # SandboxManager (auto-selects local or remote)
-│   ├── docker.py               # Local Docker sandbox with container pooling
-│   └── remote_client.py        # Remote sandbox HTTP client
-├── storage/                    # File storage system
-│   ├── __init__.py
-│   └── local_files.py          # Local filesystem storage with per-user directories
+│   ├── topic_recurrence.py     # Topic extraction and storage
+│   ├── core_tools/             # Built-in tools available to all platforms
+│   │   ├── code_execution.py   # Docker/Incus sandbox tools
+│   │   ├── memory_tools.py     # mem0 read/write tools
+│   │   ├── file_tools.py       # Local file operations
+│   │   └── ...                 # Other core tools
+│   ├── discord/                # Discord-specific setup (slash commands, utils)
+│   │   ├── setup.py            # Slash command registration
+│   │   ├── utils.py            # Image resizing, time formatting
+│   │   └── cogs/               # Discord.py cogs (command groups)
+│   ├── mcp/                    # MCP (Model Context Protocol) integration
+│   │   ├── __init__.py         # Public API
+│   │   ├── client.py           # MCPClient for stdio/HTTP transports
+│   │   ├── manager.py          # MCPServerManager singleton
+│   │   ├── installer.py        # Installation from various sources
+│   │   ├── local_server.py     # Local stdio server management
+│   │   ├── remote_server.py    # Remote HTTP server management
+│   │   ├── registry_adapter.py # Bridge MCP tools to ToolRegistry
+│   │   └── models.py           # MCPServer SQLAlchemy model
+│   └── services/               # Platform services
+│       ├── google_workspace.py # Google Sheets/Drive/Docs/Calendar
+│       └── github.py           # GitHub API integration
+├── clara_files/                # User file storage (local)
+├── cli_bot.py                  # CLI entry point (interactive terminal)
+├── discord_bot.py              # Discord bot entry point (4384 lines, main driver)
+├── email_monitor.py            # Email monitoring service entry point
 ├── email_service/              # Email monitoring implementation
-│   ├── __init__.py
-│   ├── monitor.py              # Email polling and rule evaluation
-│   ├── credentials.py          # OAuth and IMAP credential storage
-│   ├── rules_engine.py         # Email rule matching and priority scoring
-│   ├── presets.py              # Pre-built rule presets (job_hunting, urgent, etc.)
-│   └── providers/              # Email provider implementations
-├── release_dashboard/          # Release management dashboard
-│   ├── main.py                 # FastAPI app for staging → main promotion
-│   └── ...
-├── sandbox_service/            # Self-hosted remote sandbox service
-│   ├── main.py                 # FastAPI sandbox API server
-│   └── ...
-├── backup_service/             # Database backup service to S3-compatible storage
-│   ├── backup.py               # Backup/restore logic
-│   └── ...
+│   ├── credentials.py          # OAuth token storage and encryption
+│   ├── monitor.py              # Email polling logic
+│   ├── rules_engine.py         # Rule matching for alerts
+│   └── presets.py              # Built-in filter presets
+├── gateway/                    # WebSocket gateway for adapters
+│   ├── __init__.py             # Public API exports
+│   ├── __main__.py             # Entry point: python -m gateway
+│   ├── main.py                 # Gateway startup and lifecycle
+│   ├── server.py               # GatewayServer (WebSocket server)
+│   ├── processor.py            # MessageProcessor (core message routing)
+│   ├── llm_orchestrator.py     # LLM calling with tool orchestration
+│   ├── tool_executor.py        # Tool execution wrapper
+│   ├── router.py               # Message routing logic
+│   ├── session.py              # SessionManager + NodeRegistry
+│   ├── protocol.py             # Protocol message types
+│   ├── events.py               # Event emission system
+│   ├── hooks.py                # Hook registration and execution
+│   ├── scheduler.py            # Cron/interval task scheduler
+│   └── test_client.py          # Test utility for gateway
+├── hooks/                      # Hook configuration (YAML)
+├── config/                     # Configuration modules
+│   ├── logging.py              # Logging setup with module loggers
+│   ├── mem0.py                 # mem0 initialization
+│   ├── bot.py                  # Bot-specific config
+│   └── __init__.py             # Config package
+├── db/                         # Database layer
+│   ├── __init__.py             # SessionLocal export
+│   ├── connection.py           # SQLAlchemy engine setup (PostgreSQL/SQLite)
+│   ├── models.py               # SQLAlchemy models (Project, Session, Message, etc.)
+│   ├── channel_config.py       # Channel configuration retrieval
+│   └── migrations/             # Alembic migrations (auto-generated)
+├── docs/                       # Documentation
+├── generated/                  # Generated memory JSON (bootstrapping)
+├── inputs/                     # User inputs (user_profile.txt)
+├── mcp_servers/                # MCP server definitions
+│   └── local/                  # Local stdio servers
+│       ├── filesystem/         # File system MCP
+│       ├── playwright/         # Web automation MCP
+│       ├── github/             # GitHub MCP
+│       └── tavily/             # Web search MCP
+├── personalities/              # Clara personality definitions
+├── release_dashboard/          # Release management dashboard (separate service)
+├── sandbox/                    # Code execution backends
+│   ├── __init__.py             # Public API
+│   ├── manager.py              # UnifiedSandboxManager (auto-select)
+│   ├── docker.py               # DockerSandboxManager
+│   ├── incus.py                # IncusSandboxManager (containers/VMs)
+│   └── remote_client.py        # Remote sandbox API client
+├── sandbox_service/            # Standalone remote sandbox service
+├── storage/                    # File storage backends
+│   ├── local_files.py          # LocalFileManager + S3FileManager
+│   └── __init__.py
 ├── scripts/                    # Utility scripts
-│   ├── bump_version.py         # CalVer version management
-│   ├── bootstrap_memory.py     # Load initial user profile to mem0
-│   ├── migrate_to_postgres.py  # Data migration from SQLite to PostgreSQL
-│   ├── restart_bot.py          # Graceful bot restart with optional delay
-│   └── ...
+│   ├── bootstrap_memory.py     # Generate memories from user_profile.txt
+│   ├── bump_version.py         # Version management
+│   ├── clear_dbs.py            # Clear all data
+│   ├── migrate.py              # Database migration runner
+│   ├── migrate_to_postgres.py  # Data migration helper
+│   ├── restart_bot.py          # Bot restart with optional delay
+│   └── imessage_import.py      # Import chat history
+├── tests/                      # Test suite
+│   ├── gateway/                # Gateway tests
+│   └── __init__.py
+├── tools/                      # Tool registry and loading
+│   ├── __init__.py             # Tool system exports
+│   ├── _base.py                # BaseTool class
+│   ├── _loader.py              # Dynamic tool loading
+│   ├── _registry.py            # Tool registration
+│   ├── cli_files.py            # CLI file tools
+│   └── cli_shell.py            # CLI shell tools
 ├── vendor/                     # Vendored dependencies
-│   └── mem0/                   # mem0 library (patched for anthropic_base_url support)
-├── personalities/              # Clara personality profiles and traits
-├── .planning/                  # GSD codebase documentation
-│   └── codebase/               # This directory: ARCHITECTURE.md, STRUCTURE.md, etc.
-├── tests/                      # Unit and integration tests (minimal coverage)
-├── .githooks/                  # Git hooks for automatic version bumping
-├── inputs/                     # User input files (e.g., user_profile.txt for bootstrap)
-├── generated/                  # Generated files (profile_bio.json, etc.)
-├── clara_files/                # Local user file storage (per-user directories)
-├── pyproject.toml              # Poetry dependencies and project config
-├── VERSION                     # Current version (CalVer: YYYY.WW.N)
-├── CLAUDE.md                   # Project instructions for Claude Code
-├── README.md                   # Project overview
-└── docker-compose.yml          # Docker Compose config for local development
+│   └── mem0/                   # mem0 with anthropic_base_url fix
+├── api_service/                # OAuth callback service (separate deployment)
+├── .env.example                # Environment variables template
+├── .env                        # Local environment (gitignored)
+├── docker-compose.yml          # Docker Compose with profiles
+├── Dockerfile                  # Discord bot image
+├── VERSION                     # CalVer version (auto-bumped)
+├── pyproject.toml              # Poetry dependencies + metadata
+├── poetry.lock                 # Locked dependency versions
+├── CLAUDE.md                   # Developer instructions (this file!)
+└── README.md
 ```
 
 ## Directory Purposes
 
-**clara_core/**
-- Purpose: Shared core platform infrastructure used by all services
-- Contains: Platform abstraction, singleton managers, LLM backend, memory system, tool registry, MCP system
-- Key files: `__init__.py` (exports singletons), `memory.py` (MemoryManager), `tools.py` (ToolRegistry), `llm.py` (provider abstraction)
+**adapters/:**
+- Purpose: Platform-specific implementations that connect to Clara Core
+- Contains: Discord, CLI, Web adapter code + gateway client for WebSocket
+- Key files: `base.py` (GatewayClient), `protocol.py` (shared types)
+- Pattern: Each adapter has `adapter.py` (PlatformAdapter impl), `main.py` (startup), `gateway_client.py` (WebSocket)
 
-**discord_bot.py**
-- Purpose: Main Discord bot with message handling, tool integration, streaming responses
-- Contains: 4000+ lines of event handlers, command definitions, response streaming logic, sandbox integration
-- Key concepts: Message queuing/batching for high-volume channels, image resizing for vision, graceful shutdown
+**clara_core/:**
+- Purpose: Platform-independent business logic
+- Contains: LLM backends, MemoryManager, ToolRegistry, MCP integration, platform abstractions
+- Key exports: `init_platform()`, `MemoryManager`, `ToolRegistry`
+- Sub-packages: `discord/` (slash commands), `mcp/` (server management), `services/` (Google, GitHub), `core_tools/` (built-in tools)
 
-**db/**
-- Purpose: SQLAlchemy models and database connection
-- Contains: ORM models (Project, Session, Message, ChannelSummary, ChannelConfig) and connection setup
-- Key files: `models.py` (all models), `connection.py` (engine setup), `channel_config.py` (Discord channel behavior)
+**gateway/:**
+- Purpose: Central message routing hub for platform adapters
+- Contains: WebSocket server, message processor, LLM orchestrator, tool executor, hooks/scheduler
+- Entry point: `python -m gateway`
+- Key classes: `GatewayServer`, `MessageProcessor`, `LLMOrchestrator`, `ToolExecutor`
 
-**config/**
-- Purpose: Application configuration and initialization
-- Contains: Environment variable loading, logging setup, mem0 client initialization
-- Key files: `logging.py` (hierarchical loggers), `mem0.py` (mem0 client), `bot.py` (bot constants)
+**db/:**
+- Purpose: Database access layer
+- Contains: SQLAlchemy models, connection setup (PostgreSQL/SQLite), migrations
+- Key models: `Project`, `Session`, `Message`, `ChannelSummary`, `ChannelConfig`, `MCPServer`, email-related tables
 
-**tools/**
-- Purpose: Tool registration and dynamic loading system
-- Contains: Tool definition schema, dynamic loader, registry integration
-- Key files: `_base.py` (ToolDef/ToolContext), `_loader.py` (module discovery), `_registry.py` (registration)
+**config/:**
+- Purpose: Application configuration
+- Contains: Logging setup, mem0 initialization, bot config, centralized ClaraConfig
+- Key functions: `init_logging()`, `load_dotenv()`, mem0 provider setup
 
-**sandbox/**
-- Purpose: Code execution environment (local Docker or remote API)
-- Contains: Docker manager, remote client, unified manager interface
-- Key files: `docker.py` (local Docker implementation), `remote_client.py` (HTTP client)
+**sandbox/:**
+- Purpose: Code execution backends
+- Contains: Docker, Incus, Remote sandbox managers
+- Pattern: UnifiedSandboxManager auto-selects based on configuration and availability
 
-**storage/local_files.py**
-- Purpose: Persistent local file storage with per-user organization
-- Contains: File upload/download, directory management, size limits
-- Key features: Discord attachment auto-saving, file listing and deletion
+**storage/:**
+- Purpose: File storage backends
+- Contains: Local file manager, S3-compatible storage
+- Usage: Persist user files, save Discord attachments
 
-**email_service/**
-- Purpose: Email monitoring with rule-based alerting
-- Contains: IMAP monitor, OAuth/password-based credentials, rule engine, presets
-- Key files: `monitor.py` (polling loop), `rules_engine.py` (rule matching), `presets.py` (built-in rules)
+**scripts/:**
+- Purpose: Maintenance and utility scripts
+- Contains: Version bumping, DB migrations, memory bootstrapping, data import/export
+- Key scripts: `bump_version.py` (CalVer), `migrate.py` (Alembic), `bootstrap_memory.py` (mem0 init)
 
-**scripts/**
-- Purpose: Utility scripts for development and operations
-- Contains: Version management, database migration, memory bootstrapping, bot restart
-- Key files: `bump_version.py` (CalVer auto-bump), `bootstrap_memory.py` (user profile import)
-
-**vendor/mem0/**
-- Purpose: Vendored mem0 library with patches
-- Contains: Memory system implementation (unmodified from upstream except for bug fixes)
-- Note: Patched to support Anthropic's `anthropic_base_url` parameter
+**tools/:**
+- Purpose: Tool registration and loading system
+- Contains: BaseTool class, dynamic loader, registry, CLI-specific tools
+- Pattern: Dynamically load tools, register with ToolRegistry
 
 ## Key File Locations
 
 **Entry Points:**
-- `discord_bot.py`: Discord bot main entry (`main()` → `async_main()` → `run_bot()`)
-- `email_monitor.py`: Email service entry point
-- `organic_response_system.py`: ORS loop entry point
-- `release_dashboard/main.py`: Release management dashboard entry
-- `sandbox_service/main.py`: Remote sandbox API entry
+- `discord_bot.py`: Main Discord bot (4384 lines, handles all Discord events)
+- `cli_bot.py`: CLI entry point
+- `email_monitor.py`: Email monitoring service
+- `gateway/__main__.py`: Gateway server entry point
 
 **Configuration:**
-- `VERSION`: Current version in CalVer format (YYYY.WW.N)
-- `pyproject.toml`: Poetry dependencies and project metadata
-- `.env` (git-ignored): Environment variables for local development
-- `clara_core/config.py`: Runtime config loading from environment
+- `.env`: Environment variables (gitignored)
+- `.env.example`: Template
+- `VERSION`: CalVer version string (auto-bumped after commits)
+- `pyproject.toml`: Poetry dependencies + metadata
+- `docker-compose.yml`: Local dev setup with profiles
 
 **Core Logic:**
-- `clara_core/memory.py`: Session/mem0 integration, context retrieval, prompt building
-- `clara_core/llm.py`: LLM provider abstraction, tier system, tool format conversion
-- `clara_core/tools.py`: Tool registry, definitions, async execution
-- `clara_core/mcp/manager.py`: MCP server lifecycle
-
-**Models:**
-- `db/models.py`: SQLAlchemy models - Project, Session, Message, ChannelSummary, ChannelConfig, LogEntry, EmailAccount, EmailRule, MCPServer, etc.
+- `clara_core/memory.py`: MemoryManager (session handling, mem0 integration, context building)
+- `clara_core/llm.py`: LLM backends abstraction (OpenRouter, Anthropic, etc.)
+- `clara_core/tools.py`: ToolRegistry singleton
+- `config/mem0.py`: mem0 initialization
+- `db/models.py`: SQLAlchemy models for persistence
 
 **Testing:**
-- `tests/`: Currently minimal; pytest runner configured in pyproject.toml
-- No test files committed yet (tests directory empty)
+- `tests/gateway/`: Gateway unit tests
+- Test files follow pattern: `test_*.py` or `*_test.py`
 
 ## Naming Conventions
 
 **Files:**
-- Python modules: `snake_case.py` (e.g., `memory.py`, `llm.py`, `email_monitor.py`)
-- Private/internal modules: Prefix with `_` (e.g., `_base.py`, `_loader.py`)
-- Main entry points: `{service}.py` or `main.py` (e.g., `discord_bot.py`, `email_monitor.py`)
+- Snake case: `memory_manager.py`, `llm_backends.py`, `discord_bot.py`
+- Test files: `test_processor.py`, `test_hooks.py`
+- Entry points: `__main__.py` for module execution
 
 **Directories:**
-- Core packages: `snake_case/` (e.g., `clara_core/`, `email_service/`, `sandbox/`)
-- Feature packages: `snake_case/` with submodules (e.g., `clara_core/mcp/`, `clara_core/discord/`)
-- External packages: `snake_case/` (e.g., `storage/`, `tools/`)
-- Generated: `generated/`, `clara_files/` (output directories)
+- Snake case: `clara_core/`, `email_service/`, `sandbox/`
+- Acronyms lowercase: `mcp/`, `db/`
+
+**Classes:**
+- PascalCase: `MemoryManager`, `ToolRegistry`, `GatewayServer`, `MessageProcessor`
+- Adapters: `*Adapter` (e.g., `DiscordAdapter`, `PlatformAdapter`)
+- Managers: `*Manager` (e.g., `MCPServerManager`, `SessionManager`)
 
 **Functions:**
-- Sync functions: `snake_case()` (e.g., `get_version()`, `init_platform()`)
-- Async functions: `async snake_case()` (e.g., `async_main()`, `send_message()`)
-- Internal/private: Prefix with `_` (e.g., `_fetch_mem0_context()`, `_format_message()`)
-- Class methods: `snake_case()` (e.g., `get_instance()`, `initialize()`)
+- Snake case: `make_llm()`, `get_context()`, `init_platform()`
+- Getters: `get_*()`, `_get_*()` for internal
+- Setters: `set_*()`
+- Predicates: `is_*()`, `has_*()`
 
 **Variables:**
-- Constants: `UPPER_CASE` (e.g., `CONTEXT_MESSAGE_COUNT`, `BOT_TOKEN`)
-- Module-level config: `UPPER_CASE` (e.g., `DEFAULT_TIER`, `TOOL_FORMAT`)
-- Regular variables: `snake_case` (e.g., `session_id`, `memory_context`)
+- Constants: UPPER_SNAKE_CASE (`DEFAULT_TIER`, `MAX_MEMORIES_PER_TYPE`)
+- Module-level: snake_case (`session_logger`, `_openrouter_client`)
 
 **Types:**
-- Classes: `PascalCase` (e.g., `MemoryManager`, `ToolRegistry`, `PlatformAdapter`)
-- Type aliases: `PascalCase` or `snake_case` depending on convention (e.g., `ModelTier`, `MessageRole`)
+- TypeVar: PascalCase (`T`, `MessageType`)
+- Protocols: `*Protocol` suffix
+- Dataclasses: PascalCase (`ToolDefinition`, `PlatformMessage`)
 
 ## Where to Add New Code
 
+**New Feature (e.g., scheduling, image generation):**
+- Implementation: `clara_core/` (shared logic) or `clara_core/core_tools/` (if a tool)
+- Discord-specific: `adapters/discord/` or `clara_core/discord/`
+- Tests: `tests/` with same relative path
+- Register with ToolRegistry if it's a tool
+
+**New Platform Adapter (e.g., Slack, Telegram):**
+- Create: `adapters/slack/` with:
+  - `adapter.py` - Implement PlatformAdapter interface
+  - `gateway_client.py` - Implement WebSocket client for gateway connection
+  - `main.py` - Platform startup logic
+  - `__main__.py` - Entry point
+- Connect to gateway server in `gateway/main.py`
+
 **New Tool:**
-1. Create tool handler in `tools/{tool_category}.py` or `clara_core/core_tools/{name}.py`
-2. Define `ToolDef` with name, description, parameters (OpenAI schema)
-3. Register in `_registry.py` via `ToolRegistry.register()`
-4. For MCP tools: Server tools auto-register via `registry_adapter.py`
+- If simple: Create in `clara_core/core_tools/` with ToolDefinition dataclass
+- If complex: Create subdirectory with module structure
+- Register with ToolRegistry in `__init__()` of the tool module
+- Add to appropriate handler in `gateway/tool_executor.py` or auto-register
 
-**New Discord Command:**
-1. Add slash command handler to `clara_core/discord/commands.py`
-2. Register in `setup_slash_commands()` via `@client.slash_command()`
-3. For simple commands: may live in `discord_bot.py::DiscordBot` class as message handler
+**New Database Model:**
+- Add to `db/models.py`
+- Create migration: `poetry run python scripts/migrate.py create "description"`
+- Migration files auto-generated in `db/migrations/versions/`
 
-**New Model/Database Table:**
-1. Create SQLAlchemy model in `db/models.py`
-2. Add imports to `db/__init__.py` for exports
-3. Run alembic migration (if setup) or manual SQL for production
+**New Configuration Option:**
+- Add field to `ClaraConfig` dataclass in `clara_core/config.py`
+- Add environment variable loading in `init_platform()`
+- Document in `CLAUDE.md`
 
-**New LLM Provider:**
-1. Add provider client initialization to `clara_core/llm.py`
-2. Add default models to `DEFAULT_MODELS` dict
-3. Create `make_llm_*` function following existing pattern (OpenAI SDK for OpenAI-compatible, Anthropic SDK for Anthropic)
-4. Add environment variable loading to `clara_core/config.py`
-
-**New Memory Feature:**
-1. Extend `MemoryManager` in `clara_core/memory.py` with new method
-2. Add mem0 integration if semantic memory needed
-3. Update prompt building in `_build_system_prompt()` if needed
-
-**New Email Service Feature:**
-1. Add to `email_service/rules_engine.py` for rule evaluation
-2. Or extend `email_service/providers/` with new provider
-3. Register in email monitor initialization
-
-**Utilities/Helpers:**
-- Shared helpers: `config/` (logging, config) or standalone modules at root
-- Platform-specific: `clara_core/{platform}/`
-- Tool-related: `tools/` or `clara_core/core_tools/`
+**Shared Utilities:**
+- Non-tool utilities: `clara_core/` as module-level functions
+- Storage utilities: `storage/` package
+- Sandbox utilities: `sandbox/` package
 
 ## Special Directories
 
 **vendor/mem0/:**
-- Purpose: Vendored mem0 library (for development/patching without waiting for upstream)
-- Generated: No (checked into git)
+- Purpose: Vendored mem0 library with anthropic_base_url fix
+- Generated: No (checked in)
 - Committed: Yes
-- Note: Patched for Anthropic base URL support; excluded from linting via pyproject.toml
-
-**generated/:**
-- Purpose: Output from profile bootstrapping (profile_bio.json, interaction_style.json, etc.)
-- Generated: Yes (by `scripts/bootstrap_memory.py`)
-- Committed: No (in .gitignore)
+- Notes: Contains fix for Anthropic proxy support (e.g., clewdr)
 
 **clara_files/:**
-- Purpose: Per-user local file storage with subdirectories per user_id
-- Generated: Yes (created on first file upload)
-- Committed: No (in .gitignore)
-
-**.planning/codebase/:**
-- Purpose: GSD codebase documentation (this directory)
-- Generated: Yes (by GSD mappers)
-- Committed: Yes
-- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md, INTEGRATIONS.md, STACK.md
+- Purpose: Local file storage for user files
+- Generated: Yes (auto-created on first use)
+- Committed: No (gitignored)
+- Structure: `clara_files/{user_id}/` per user
 
 **.mcp_servers/:**
-- Purpose: Installed MCP servers (cloned repos, configs, auth tokens)
-- Generated: Yes (by MCP installer)
-- Committed: No (in .gitignore)
-- Structure: `local/` (subprocess-based), `remote/` (HTTP), `.oauth/` (tokens)
+- Purpose: Installed MCP servers from Smithery, npm, GitHub, Docker
+- Generated: Yes (auto-populated by installer)
+- Committed: No (gitignored)
+- Structure: `local/` (stdio servers), `hosted/` (Smithery HTTP), cloned repos
+
+**db/migrations/:**
+- Purpose: Alembic database migrations
+- Generated: Yes (auto-created by `migrate.py create`)
+- Committed: Yes
+- Pattern: Timestamped files in `versions/`
+
+**generated/:**
+- Purpose: Output of memory bootstrapping process
+- Generated: Yes (from `bootstrap_memory.py`)
+- Committed: No (gitignored)
+- Files: `profile_bio.json`, `interaction_style.json`, `project_seed.json`
 
 ---
 
-*Structure analysis: 2026-01-24*
+*Structure analysis: 2026-01-27*
