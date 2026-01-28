@@ -26,13 +26,48 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
 from typing import ClassVar
+
+from tenacity import (
+    RetryError,
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from adapters.email import EmailProvider
 from gateway.providers.base import PlatformMessage, Provider
 from gateway.providers.discord import DiscordProvider
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderState(Enum):
+    """Provider lifecycle states."""
+
+    STOPPED = "stopped"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    CRASHED = "crashed"
+    RESTARTING = "restarting"
+
+
+@dataclass
+class ProviderInfo:
+    """Information about a provider instance."""
+
+    name: str
+    state: ProviderState = ProviderState.STOPPED
+    started_at: datetime | None = None
+    crash_count: int = 0
+    last_crash: datetime | None = None
+    last_error: str | None = None
 
 
 class ProviderManager:
@@ -54,6 +89,9 @@ class ProviderManager:
     def __init__(self) -> None:
         """Initialize the manager. Use get_instance() instead for singleton."""
         self._providers: dict[str, Provider] = {}
+        self._info: dict[str, ProviderInfo] = {}
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._shutdown = False
         self._lock = asyncio.Lock()
 
     @classmethod
@@ -101,6 +139,7 @@ class ProviderManager:
                 f"Unregister it first with unregister('{name}')"
             )
         self._providers[name] = provider
+        self._info[name] = ProviderInfo(name=name)
         logger.info(f"[ProviderManager] Registered provider: {name}")
 
     def unregister(self, name: str) -> Provider | None:
@@ -274,11 +313,118 @@ class ProviderManager:
                 logger.info(f"[ProviderManager] Stopping provider: {name}")
                 await provider.stop()
                 provider._running = False
+                if name in self._info:
+                    self._info[name].state = ProviderState.STOPPED
                 logger.info(f"[ProviderManager] Provider '{name}' stopped successfully")
                 return True
             except Exception as e:
                 logger.error(f"[ProviderManager] Failed to stop provider '{name}': {e}")
                 provider._running = False
+                if name in self._info:
+                    self._info[name].state = ProviderState.STOPPED
+                return False
+
+    def get_info(self, name: str) -> ProviderInfo | None:
+        """Get provider info by name.
+
+        Args:
+            name: The provider name to look up
+
+        Returns:
+            ProviderInfo instance, or None if not found
+        """
+        return self._info.get(name)
+
+    def get_all_info(self) -> dict[str, ProviderInfo]:
+        """Get info for all providers.
+
+        Returns:
+            Dict mapping provider names to ProviderInfo instances
+        """
+        return dict(self._info)
+
+    @retry(
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+        wait=wait_exponential(multiplier=1, min=1, max=60),  # 1s, 2s, 4s, 8s, ... 60s
+        stop=stop_after_attempt(5),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    async def _start_with_backoff(self, provider: Provider, name: str) -> None:
+        """Start provider with exponential backoff on transient errors.
+
+        Uses tenacity retry decorator to automatically retry on:
+        - ConnectionError (network issues)
+        - TimeoutError (slow startup)
+        - OSError (system resource issues)
+
+        Retry schedule: 1s, 2s, 4s, 8s, 16s, 32s (max 60s), up to 5 attempts.
+
+        Args:
+            provider: The Provider instance to start
+            name: Provider name for logging
+
+        Raises:
+            RetryError: If all retry attempts fail
+            Exception: If a non-transient error occurs
+        """
+        await provider.start()
+
+    async def restart_with_backoff(self, name: str) -> bool:
+        """Restart a crashed provider with exponential backoff.
+
+        Stops the provider if running, then starts with backoff retry logic.
+        Updates provider info with crash tracking.
+
+        Args:
+            name: The provider name to restart
+
+        Returns:
+            True if restarted successfully, False otherwise
+        """
+        async with self._lock:
+            provider = self._providers.get(name)
+            info = self._info.get(name)
+
+            if not provider or not info:
+                logger.error(f"[ProviderManager] Provider '{name}' not found")
+                return False
+
+            # Mark as restarting
+            info.state = ProviderState.RESTARTING
+
+            # Stop if running
+            if provider.running:
+                try:
+                    await provider.stop()
+                    provider._running = False
+                except Exception as e:
+                    logger.warning(f"[ProviderManager] Error stopping '{name}' before restart: {e}")
+                    provider._running = False
+
+            # Try to start with backoff
+            try:
+                logger.info(f"[ProviderManager] Restarting provider '{name}' with backoff...")
+                info.state = ProviderState.STARTING
+                await self._start_with_backoff(provider, name)
+                provider._running = True
+                info.state = ProviderState.RUNNING
+                info.started_at = datetime.now()
+                logger.info(f"[ProviderManager] Provider '{name}' restarted successfully")
+                return True
+            except RetryError as e:
+                info.state = ProviderState.CRASHED
+                info.crash_count += 1
+                info.last_crash = datetime.now()
+                info.last_error = str(e.last_attempt.exception()) if e.last_attempt.exception() else str(e)
+                logger.error(f"[ProviderManager] Failed to restart '{name}' after all retries: {e}")
+                return False
+            except Exception as e:
+                info.state = ProviderState.CRASHED
+                info.crash_count += 1
+                info.last_crash = datetime.now()
+                info.last_error = str(e)
+                logger.error(f"[ProviderManager] Failed to restart '{name}': {e}")
                 return False
 
     def __len__(self) -> int:
@@ -312,6 +458,8 @@ __all__ = [
     "EmailProvider",
     "PlatformMessage",
     "Provider",
+    "ProviderInfo",
     "ProviderManager",
+    "ProviderState",
     "get_provider_manager",
 ]
