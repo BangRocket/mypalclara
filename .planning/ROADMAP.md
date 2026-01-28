@@ -3,7 +3,7 @@
 **Project:** MyPalClara Gateway Architecture Consolidation
 **Milestone:** Gateway Unification v1
 **Created:** 2026-01-27
-**Status:** Phase 3 Gap Closure (2 plans added)
+**Status:** Gap Closure Phases Added (Phase 5-6)
 
 ---
 
@@ -254,6 +254,89 @@ Plans:
 
 ---
 
+### Phase 5: Email Provider Polish
+
+**Goal:** Fix EmailProvider type safety and wire email alert consumer for functional email→Discord notifications.
+
+**Dependencies:** Phase 4 (requires complete system)
+
+**Gap Closure:** Closes gaps from v1-MILESTONE-AUDIT.md
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — EmailProvider inherits Provider ABC for type safety
+- [ ] 05-02-PLAN.md — Register email alert consumer to send Discord notifications
+
+**Requirements Coverage:**
+- Integration gap: EmailProvider type safety
+- Flow gap: Email Alert Flow consumer registration
+
+**Deliverables:**
+1. EmailProvider inherits from Provider ABC
+2. Type annotations for EmailProvider methods
+3. Email alert event consumer registered in gateway
+4. Discord notifications sent when important emails arrive
+
+**Success Criteria:**
+- [ ] EmailProvider passes mypy type checking
+- [ ] EmailProvider listed in ProviderManager type hints
+- [ ] Email alerts trigger Discord messages via consumer
+- [ ] Integration test validates email→Discord flow
+
+**Files Changed:**
+- MODIFIED: `adapters/email/provider.py` - Inherit Provider ABC, add type hints
+- MODIFIED: `gateway/providers/__init__.py` - Update type hints for EmailProvider
+- MODIFIED: `gateway/main.py` - Register email alert consumer
+- NEW: `tests/adapters/test_email_alert_flow.py` - E2E email→Discord test
+
+**Technical Notes:**
+- EmailProvider must implement: start(), stop(), normalize_message(), send_response()
+- Consumer listens for MESSAGE_RECEIVED events with source="email"
+- Alert routing uses DiscordProvider.send_response() for notifications
+
+---
+
+### Phase 6: Library Updates
+
+**Goal:** Update websockets library to remove deprecation warnings.
+
+**Dependencies:** Phase 4 (requires complete system)
+
+**Gap Closure:** Closes tech debt from v1-MILESTONE-AUDIT.md
+
+**Plans:** 1 plan
+
+Plans:
+- [ ] 06-01-PLAN.md — Update websockets API to modern syntax
+
+**Requirements Coverage:**
+- Tech debt: websockets.server.serve deprecation
+- Tech debt: websockets.client.WebSocketClientProtocol deprecation
+
+**Deliverables:**
+1. Gateway server uses modern websockets API
+2. CLI client uses modern websockets API
+3. No deprecation warnings on startup
+
+**Success Criteria:**
+- [ ] Gateway starts without deprecation warnings
+- [ ] CLI client connects without deprecation warnings
+- [ ] All existing WebSocket tests pass
+- [ ] Load test still passes with updated library
+
+**Files Changed:**
+- MODIFIED: `gateway/server.py` - Update serve() call to modern API
+- MODIFIED: `adapters/cli/gateway_client.py` - Update client connection
+- MODIFIED: `pyproject.toml` - Pin websockets version if needed
+
+**Technical Notes:**
+- Check websockets changelog for migration guide
+- May require websockets>=12.0 for new API
+- Test backward compatibility with existing adapters
+
+---
+
 ## Progress Tracking
 
 | Phase | Status | Started | Completed | Notes |
@@ -262,8 +345,10 @@ Plans:
 | 2 - Gateway Integration & Email | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 3 - CLI Client & Retirement | Complete | 2026-01-28 | 2026-01-28 | 5 plans, 12 min total (inc. gap closure) |
 | 4 - Production Hardening | Complete | 2026-01-28 | 2026-01-28 | 3 plans, ~23 min total (inc. checkpoint) |
+| 5 - Email Provider Polish | Pending | — | — | Gap closure: type safety + alerts |
+| 6 - Library Updates | Pending | — | — | Gap closure: websockets deprecation |
 
-**Overall Progress:** 4/4 phases complete (100%) ✓
+**Overall Progress:** 4/6 phases complete (67%)
 
 ---
 
@@ -295,17 +380,23 @@ Phase 2 (Gateway Integration & Email)
 Phase 3 (CLI Client & Retirement)
     ↓ Required for Phase 4
 Phase 4 (Production Hardening)
+    ↓ Required for Phase 5-6
+Phase 5 (Email Provider Polish) ←─┐
+                                  ├─ Can run in parallel
+Phase 6 (Library Updates) ←───────┘
 ```
 
-**Critical Path:** Linear dependency chain, must complete phases sequentially.
+**Critical Path:** Phases 1-4 are sequential. Phases 5-6 can run in parallel after Phase 4.
 
 **Estimated Timeline:**
-- Phase 1: 1 week (Provider abstraction + Discord wrapper)
-- Phase 2: 1 week (Gateway integration + EmailProvider)
-- Phase 3: 1 week (CLI client + deletion)
-- Phase 4: 1 week (Hardening + validation)
+- Phase 1: 1 week (Provider abstraction + Discord wrapper) — COMPLETE
+- Phase 2: 1 week (Gateway integration + EmailProvider) — COMPLETE
+- Phase 3: 1 week (CLI client + deletion) — COMPLETE
+- Phase 4: 1 week (Hardening + validation) — COMPLETE
+- Phase 5: 1 day (Email provider type safety + alert consumer) — Gap closure
+- Phase 6: 1 day (websockets library update) — Gap closure
 
-**Total:** 4 weeks for complete consolidation
+**Total:** 4 weeks + 2 days for complete consolidation with gap closure
 
 ---
 
@@ -356,4 +447,5 @@ Phase 4 (Production Hardening)
 *Phase 3 planned: 2026-01-27*
 *Phase 3 gap closure: 2026-01-28*
 *Phase 4 planned: 2026-01-27*
-*Next step: Execute Phase 3 gap closure with `/gsd:execute-phase 3`*
+*Phase 5-6 gap closure: 2026-01-28*
+*Next step: Plan Phase 5 with `/gsd:plan-phase 5`*
