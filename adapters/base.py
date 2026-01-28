@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 import websockets
-from websockets.client import WebSocketClientProtocol
+from websockets.asyncio.client import connect, ClientConnection
 
 from config.logging import get_logger
 from gateway.protocol import (
@@ -75,7 +75,7 @@ class GatewayClient(ABC):
         self._current_reconnect_delay = reconnect_delay
         self._reconnect_attempts = 0
 
-        self._ws: WebSocketClientProtocol | None = None
+        self._ws: ClientConnection | None = None
         self._connected = False
         self._running = False
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -91,7 +91,7 @@ class GatewayClient(ABC):
         """
         try:
             logger.info(f"Connecting to gateway at {self.gateway_url}")
-            self._ws = await websockets.connect(
+            self._ws = await connect(
                 self.gateway_url,
                 ping_interval=None,  # We handle our own heartbeats
             )
