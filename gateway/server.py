@@ -16,6 +16,7 @@ import websockets
 from websockets.server import WebSocketServerProtocol, serve
 
 from config.logging import get_logger
+from gateway.rate_limiter import RateLimiter
 from gateway.protocol import (
     CancelledMessage,
     CancelMessage,
@@ -67,8 +68,10 @@ class GatewayServer:
         self.node_registry = NodeRegistry()
         self.session_manager = SessionManager(self.node_registry)
         self.router = MessageRouter()
+        self.rate_limiter = RateLimiter()
 
         self._server: websockets.WebSocketServer | None = None
+        self._cleanup_task: asyncio.Task | None = None
         self._started_at: datetime | None = None
         self._message_count = 0
 
@@ -93,14 +96,32 @@ class GatewayServer:
             ping_interval=30,
             ping_timeout=10,
         )
+        # Start rate limiter cleanup task
+        self._cleanup_task = asyncio.create_task(self._cleanup_rate_limits())
         logger.info(f"Gateway server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
         """Stop the WebSocket server."""
+        # Cancel cleanup task
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
         if self._server:
             self._server.close()
             await self._server.wait_closed()
             logger.info("Gateway server stopped")
+
+    async def _cleanup_rate_limits(self) -> None:
+        """Periodically clean up stale rate limit buckets."""
+        while True:
+            await asyncio.sleep(3600)  # Every hour
+            removed = await self.rate_limiter.cleanup_stale()
+            if removed > 0:
+                logger.debug(f"Cleaned up {removed} stale rate limit buckets")
 
     async def _handle_connection(
         self,
@@ -207,6 +228,25 @@ class GatewayServer:
         node = await self.node_registry.get_node_by_websocket(websocket)
         if not node:
             await self._send_error(websocket, msg.id, "not_registered", "Node not registered")
+            return
+
+        # Check rate limit
+        allowed, retry_after = await self.rate_limiter.check_rate_limit(
+            channel_id=msg.channel.id,
+            user_id=msg.user.id,
+        )
+
+        if not allowed:
+            logger.info(
+                f"Rate limited: user={msg.user.id} channel={msg.channel.id} retry_after={retry_after:.1f}s"
+            )
+            await self._send_error(
+                websocket,
+                msg.id,
+                "rate_limited",
+                f"Rate limit exceeded. Retry after {retry_after:.1f}s",
+                recoverable=True,
+            )
             return
 
         # Determine if request is batchable (active mode, not DM/mention)
