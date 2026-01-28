@@ -143,8 +143,8 @@ Plans:
 - [x] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
 - [x] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe (BLOCKERS FOUND)
 - [x] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation (PARTIAL)
-- [ ] 03-04-PLAN.md — Migrate email_monitor imports to adapters.email (GAP CLOSURE)
-- [ ] 03-05-PLAN.md — Integrate EmailProvider into gateway, delete email_monitor.py (GAP CLOSURE)
+- [x] 03-04-PLAN.md — Migrate email_monitor imports to adapters.email (GAP CLOSURE)
+- [x] 03-05-PLAN.md — Integrate EmailProvider into gateway, delete email_monitor.py (GAP CLOSURE)
 
 **Requirements Coverage:**
 - CLI client connects to gateway via WebSocket
@@ -165,8 +165,8 @@ Plans:
 - [x] CLI client connects to gateway WebSocket server
 - [x] CLI messages flow through gateway processor with full tool support
 - [x] DiscordProvider wraps discord_bot.py (strangler fig pattern - permanent)
-- [ ] `email_monitor.py` deleted from repository
-- [ ] `python -m gateway --enable-email` starts EmailProvider
+- [x] `email_monitor.py` deleted from repository
+- [x] `python -m gateway --enable-email` starts EmailProvider
 - [x] No import errors or broken references after deletion
 - [x] docker-compose.yml runs single gateway container
 - [x] All integration tests pass (71 tests)
@@ -203,9 +203,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Add dependencies (tenacity, structlog), implement rate limiting and structured logging
-- [ ] 04-02-PLAN.md — Health check endpoints, graceful shutdown, provider restart with backoff
-- [ ] 04-03-PLAN.md — Load testing validation, resource limits, documentation updates
+- [x] 04-01-PLAN.md — Add dependencies (tenacity, structlog), implement rate limiting and structured logging
+- [x] 04-02-PLAN.md — Health check endpoints, graceful shutdown, provider restart with backoff
+- [x] 04-03-PLAN.md — Load testing validation, resource limits, documentation updates
 
 **Requirements Coverage:**
 - All validated requirements continue working (mem0, MCP plugins, sandbox, hooks, streaming, etc.)
@@ -221,14 +221,14 @@ Plans:
 8. Monitoring dashboard updates (if Discord monitor exists)
 
 **Success Criteria:**
-- [ ] Provider crash triggers auto-restart (not gateway crash)
-- [ ] Rate limits prevent spam (configurable per provider)
-- [ ] `/health` endpoint reports gateway + provider status
-- [ ] Logs include provider_name, user_id, channel_id context
-- [ ] Gateway handles 100+ concurrent users without degradation
-- [ ] Graceful shutdown completes pending responses before exit
-- [ ] Memory usage stable under sustained load
-- [ ] All existing features functional (Discord streaming, MCP tools, sandbox, image vision, email alerts)
+- [x] Provider crash triggers auto-restart (not gateway crash)
+- [x] Rate limits prevent spam (configurable per provider)
+- [x] `/health` endpoint reports gateway + provider status
+- [x] Logs include provider_name, user_id, channel_id context
+- [x] Gateway handles 100+ concurrent users without degradation
+- [x] Graceful shutdown completes pending responses before exit
+- [x] Memory usage stable under sustained load
+- [x] All existing features functional (Discord streaming, MCP tools, sandbox, image vision, email alerts)
 
 **Key Risks Mitigated:**
 - Gateway Bottleneck: Load testing validates assumptions
@@ -260,10 +260,10 @@ Plans:
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
 | 2 - Gateway Integration & Email | Complete | 2026-01-28 | 2026-01-28 | 3 plans, 13 min total |
-| 3 - CLI Client & Retirement | In Progress | 2026-01-28 | — | 5 plans (3 done, 2 gap closure pending) |
-| 4 - Production Hardening | Planned | — | — | 3 plans in 2 waves |
+| 3 - CLI Client & Retirement | Complete | 2026-01-28 | 2026-01-28 | 5 plans, 12 min total (inc. gap closure) |
+| 4 - Production Hardening | Complete | 2026-01-28 | 2026-01-28 | 3 plans, ~23 min total (inc. checkpoint) |
 
-**Overall Progress:** 2.5/4 phases complete (62.5%) - Phase 3 gap closure in progress
+**Overall Progress:** 4/4 phases complete (100%) ✓
 
 ---
 
