@@ -12,7 +12,7 @@ The proactive messaging system has been completely removed. If you were using OR
 - `organic_response_system.py`
 - `proactive_engine.py`
 - `docs/ors-context-sensitivity-spec.md`
-- `clara-mcp-server/src/tools/ors_notes.rs`
+- `clara-mcp-server/` (entire directory - Rust MCP server removed)
 
 **Removed environment variables:**
 - `ORS_ENABLED` / `PROACTIVE_ENABLED`
@@ -194,9 +194,9 @@ Run `poetry install` to update dependencies.
 - Added `adapters/` directory to image
 - Added default `personality.txt` for mount compatibility
 
-### Rust MCP Server
-- Updated to Rust nightly for edition2024 support
-- Removed ORS notes tools
+### Rust MCP Server (Removed)
+The `clara-mcp-server` Rust binary has been removed. Sandbox tools are now
+handled by the Python tool system which supports local Docker/Incus execution.
 
 ---
 
