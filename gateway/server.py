@@ -75,6 +75,16 @@ class GatewayServer:
         self._started_at: datetime | None = None
         self._message_count = 0
 
+        # Connection tracking
+        self._active_connections = 0
+        self._total_connections = 0
+
+        # WebSocket resource limits (configurable via environment)
+        self._ws_max_message_size = int(os.getenv("WS_MAX_MESSAGE_SIZE", 65536))  # 64KB
+        self._ws_max_queue = int(os.getenv("WS_MAX_QUEUE", 16))
+        self._ws_read_limit = int(os.getenv("WS_READ_LIMIT", 65536))  # 64KB
+        self._ws_write_limit = int(os.getenv("WS_WRITE_LIMIT", 65536))  # 64KB
+
         # Processor will be set by gateway.main
         self._processor: Any = None
 
@@ -89,12 +99,26 @@ class GatewayServer:
     async def start(self) -> None:
         """Start the WebSocket server."""
         self._started_at = datetime.now()
+
+        # Log resource limits
+        logger.info(
+            "websocket_resource_limits",
+            max_message_size=self._ws_max_message_size,
+            max_queue=self._ws_max_queue,
+            read_limit=self._ws_read_limit,
+            write_limit=self._ws_write_limit,
+        )
+
         self._server = await serve(
             self._handle_connection,
             self.host,
             self.port,
             ping_interval=30,
             ping_timeout=10,
+            max_size=self._ws_max_message_size,
+            max_queue=self._ws_max_queue,
+            read_limit=self._ws_read_limit,
+            write_limit=self._ws_write_limit,
         )
         # Start rate limiter cleanup task
         self._cleanup_task = asyncio.create_task(self._cleanup_rate_limits())
@@ -132,6 +156,15 @@ class GatewayServer:
         Args:
             websocket: The WebSocket connection
         """
+        # Track connection
+        self._active_connections += 1
+        self._total_connections += 1
+        logger.debug(
+            "connection_opened",
+            active_connections=self._active_connections,
+            total_connections=self._total_connections,
+        )
+
         node_id = None
         try:
             async for message in websocket:
@@ -169,6 +202,12 @@ class GatewayServer:
         except websockets.ConnectionClosed:
             logger.debug("Connection closed")
         finally:
+            # Track disconnection
+            self._active_connections -= 1
+            logger.debug(
+                "connection_closed",
+                active_connections=self._active_connections,
+            )
             # Clean up on disconnect
             if node_id:
                 await self.node_registry.unregister(websocket)
@@ -446,4 +485,12 @@ class GatewayServer:
             "started_at": self._started_at.isoformat() if self._started_at else None,
             "uptime_seconds": uptime,
             "message_count": self._message_count,
+            "active_connections": self._active_connections,
+            "total_connections": self._total_connections,
+            "resource_limits": {
+                "max_message_size": self._ws_max_message_size,
+                "max_queue": self._ws_max_queue,
+                "read_limit": self._ws_read_limit,
+                "write_limit": self._ws_write_limit,
+            },
         }
