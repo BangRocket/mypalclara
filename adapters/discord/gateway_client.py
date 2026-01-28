@@ -141,10 +141,13 @@ class DiscordGatewayClient(GatewayClient):
                 guild_name=message.guild.name if message.guild else None,
             )
 
-            # Clean content and extract tier override if not already provided
+            # Clean content and extract tier override
             content = self._clean_content(message.content)
+            # Always strip tier prefix from content (even if tier was provided externally)
+            content, extracted_tier = self._extract_tier_override(content)
+            # Use extracted tier if none was provided
             if not tier_override:
-                content, tier_override = self._extract_tier_override(content)
+                tier_override = extracted_tier
 
             # Build attachments
             attachments = []
