@@ -33,14 +33,32 @@ Version is stored in `VERSION` file and synced to `pyproject.toml`. Bot displays
 
 ## Development Commands
 
+### Gateway (Recommended)
+```bash
+poetry run python -m gateway                    # Start gateway with all providers
+poetry run python -m gateway --enable-discord   # Enable Discord provider
+poetry run python -m gateway --help             # Show all options
+```
+
+The gateway is the primary entry point for Clara. It runs all providers (Discord, Email, CLI) in a single process with unified lifecycle management.
+
+### CLI Client
+```bash
+poetry run clara-cli                            # Connect to gateway (recommended)
+poetry run python -m adapters.cli               # Alternative module invocation
+poetry run python cli_bot.py                    # Deprecated - shows migration notice
+```
+
 ### Backend (Python)
 ```bash
 poetry install                    # Install dependencies
-poetry run python discord_bot.py  # Run Discord bot
 poetry run ruff check .           # Lint
 poetry run ruff format .          # Format
 
-# Daemon mode (Unix only)
+# Legacy Discord bot (DEPRECATED - use gateway instead)
+poetry run python discord_bot.py  # Run Discord bot directly (wrapped by DiscordProvider)
+
+# Daemon mode (Unix only) - still works with legacy bot
 poetry run python discord_bot.py --daemon                    # Run in background
 poetry run python discord_bot.py --daemon --logfile bot.log  # With log file
 poetry run python discord_bot.py --status                    # Check if running
@@ -56,6 +74,11 @@ poetry run python scripts/restart_bot.py --logfile /var/log/clara.log  # With lo
 
 ### Docker
 ```bash
+# Gateway (recommended)
+docker-compose --profile gateway up                    # Run gateway with all providers
+docker-compose --profile gateway --profile postgres up # Gateway + databases
+
+# Legacy Discord bot (deprecated)
 docker-compose --profile discord up                    # Run Discord bot only
 docker-compose --profile discord --profile postgres up # Discord bot + databases
 ```
@@ -103,15 +126,25 @@ poetry run python scripts/migrate.py reset
 
 ## Architecture
 
-### Core Structure
-- `discord_bot.py` - Discord bot with multi-user support, reply chains, and streaming responses
+### Gateway and Providers (New Architecture)
+The gateway is the primary entry point that runs all providers in a single process:
+- `gateway/server.py` - WebSocket server accepting adapter connections
+- `gateway/providers/` - Provider implementations that run inside the gateway
+- `gateway/providers/discord.py` - DiscordProvider wraps discord_bot.py (strangler fig pattern)
+- `adapters/cli/` - CLI client that connects to gateway via WebSocket
+- `adapters/email/` - EmailProvider (migration in progress, still uses email_monitor.py externally)
+
+**Provider Pattern:** Providers run inside the gateway process for reduced latency. The DiscordProvider uses composition to wrap the existing discord_bot.py code without rewriting it (strangler fig pattern). This allows gradual migration while maintaining full functionality.
+
+### Core Structure (Legacy - being wrapped by providers)
+- `discord_bot.py` - Discord bot (WRAPPED by DiscordProvider - do not delete)
 - `discord_monitor.py` - Web dashboard for monitoring Discord bot status and activity
 - `memory_manager.py` - Core orchestrator: session handling, mem0 integration, prompt building with Clara's persona
 - `llm_backends.py` - LLM provider abstraction (OpenRouter, NanoGPT, custom OpenAI, native Anthropic) - both streaming and non-streaming
 - `mem0_config.py` - mem0 memory system configuration (Qdrant/pgvector for vectors, OpenAI embeddings)
 - `models.py` - SQLAlchemy models: Project, Session, Message, ChannelSummary
 - `db.py` - Database setup (SQLite for dev, PostgreSQL for production)
-- `email_monitor.py` - Email monitoring and auto-response system
+- `email_monitor.py` - Email monitoring (has external imports - migration incomplete)
 
 ### Sandbox System
 - `sandbox/docker.py` - Local Docker sandbox for code execution
@@ -130,7 +163,7 @@ poetry run python scripts/migrate.py reset
 - `tools/mcp_management.py` - User-facing management tools (mcp_install, mcp_list, etc.)
 
 ### Gateway System
-WebSocket-based gateway for platform adapters (in development):
+WebSocket-based gateway - the primary entry point for all Clara providers:
 - `gateway/server.py` - WebSocket server accepting adapter connections
 - `gateway/processor.py` - Message processing and context building
 - `gateway/llm_orchestrator.py` - Streaming LLM responses with tool detection
@@ -138,10 +171,18 @@ WebSocket-based gateway for platform adapters (in development):
 - `gateway/events.py` - Event system for gateway lifecycle and message events
 - `gateway/hooks.py` - Hook registration and execution (shell commands or Python callables)
 - `gateway/scheduler.py` - Task scheduler (one-shot, interval, cron)
+- `gateway/providers/` - Provider implementations (Discord, Email in progress)
 
 **Run the gateway:**
 ```bash
-poetry run python -m gateway --host 127.0.0.1 --port 18789
+poetry run python -m gateway                     # Start with default settings
+poetry run python -m gateway --enable-discord    # Enable Discord provider
+poetry run python -m gateway --host 0.0.0.0 --port 18789  # Custom bind
+```
+
+**Connect CLI client:**
+```bash
+poetry run clara-cli                             # Connects to localhost:18789
 ```
 
 ### Memory System
