@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import websockets
-from websockets.server import WebSocketServerProtocol, serve
+from websockets.asyncio.server import serve, ServerConnection
 
 from config.logging import get_structured_logger
 from gateway.rate_limiter import RateLimiter
@@ -149,7 +149,7 @@ class GatewayServer:
 
     async def _handle_connection(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
     ) -> None:
         """Handle a new WebSocket connection.
 
@@ -214,7 +214,7 @@ class GatewayServer:
 
     async def _handle_register(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         msg: RegisterMessage,
     ) -> str:
         """Handle adapter registration.
@@ -245,14 +245,14 @@ class GatewayServer:
 
         return msg.node_id
 
-    async def _handle_ping(self, websocket: WebSocketServerProtocol) -> None:
+    async def _handle_ping(self, websocket: ServerConnection) -> None:
         """Handle ping from adapter."""
         await self.node_registry.update_ping(websocket)
         await self._send(websocket, PongMessage())
 
     async def _handle_message_request(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         msg: MessageRequest,
     ) -> None:
         """Handle a message processing request.
@@ -320,7 +320,7 @@ class GatewayServer:
 
     async def _process_request(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         node_id: str,
         msg: MessageRequest,
     ) -> None:
@@ -368,7 +368,7 @@ class GatewayServer:
 
     async def _handle_cancel(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         msg: CancelMessage,
     ) -> None:
         """Handle cancel request.
@@ -390,7 +390,7 @@ class GatewayServer:
 
     async def _handle_status_request(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
     ) -> None:
         """Handle status request."""
         router_stats = await self.router.get_stats()
@@ -412,7 +412,7 @@ class GatewayServer:
 
     async def _send(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         message: Any,
     ) -> None:
         """Send a message to a WebSocket.
@@ -428,7 +428,7 @@ class GatewayServer:
 
     async def _send_error(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         request_id: str | None,
         code: str,
         message: str,

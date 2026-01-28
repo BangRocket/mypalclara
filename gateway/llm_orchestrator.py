@@ -18,7 +18,7 @@ from config.logging import get_logger
 from gateway.protocol import ResponseChunk, ToolResult, ToolStart
 
 if TYPE_CHECKING:
-    from websockets.server import WebSocketServerProtocol
+    from websockets.asyncio.server import ServerConnection
 
 logger = get_logger("gateway.llm")
 
@@ -66,7 +66,7 @@ class LLMOrchestrator:
         user_id: str,
         request_id: str,
         tier: str | None = None,
-        websocket: WebSocketServerProtocol | None = None,
+        websocket: ServerConnection | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Generate response with tool calling support.
 

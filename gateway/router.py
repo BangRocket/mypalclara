@@ -19,7 +19,7 @@ from config.logging import get_logger
 from gateway.protocol import MessageRequest
 
 if TYPE_CHECKING:
-    from websockets.server import WebSocketServerProtocol
+    from websockets.asyncio.server import ServerConnection
 
 logger = get_logger("gateway.router")
 
@@ -40,7 +40,7 @@ class QueuedRequest:
     """A request waiting to be processed."""
 
     request: MessageRequest
-    websocket: WebSocketServerProtocol
+    websocket: ServerConnection
     node_id: str
     queued_at: datetime = field(default_factory=datetime.now)
     position: int = 0
@@ -62,7 +62,7 @@ class ActiveRequest:
     """A request currently being processed."""
 
     request: MessageRequest
-    websocket: WebSocketServerProtocol
+    websocket: ServerConnection
     node_id: str
     task: asyncio.Task[Any] | None = None
     started_at: datetime = field(default_factory=datetime.now)
@@ -99,7 +99,7 @@ class MessageRouter:
     async def submit(
         self,
         request: MessageRequest,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         node_id: str,
         is_batchable: bool = False,
     ) -> tuple[bool, int]:

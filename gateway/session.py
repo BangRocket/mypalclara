@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from config.logging import get_logger
 
 if TYPE_CHECKING:
-    from websockets.server import WebSocketServerProtocol
+    from websockets.asyncio.server import ServerConnection
 
 logger = get_logger("gateway.session")
 
@@ -29,7 +29,7 @@ class NodeConnection:
     node_id: str
     session_id: str
     platform: str
-    websocket: WebSocketServerProtocol
+    websocket: ServerConnection
     capabilities: list[str] = field(default_factory=list)
     connected_at: datetime = field(default_factory=datetime.now)
     last_ping: datetime = field(default_factory=datetime.now)
@@ -74,12 +74,12 @@ class NodeRegistry:
     def __init__(self) -> None:
         self._nodes: dict[str, NodeConnection] = {}  # node_id -> NodeConnection
         self._sessions: dict[str, str] = {}  # session_id -> node_id
-        self._websockets: dict[WebSocketServerProtocol, str] = {}  # ws -> node_id
+        self._websockets: dict[ServerConnection, str] = {}  # ws -> node_id
         self._lock = asyncio.Lock()
 
     async def register(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         node_id: str,
         platform: str,
         capabilities: list[str] | None = None,
@@ -140,7 +140,7 @@ class NodeRegistry:
 
             return session_id, is_reconnection
 
-    async def unregister(self, websocket: WebSocketServerProtocol) -> str | None:
+    async def unregister(self, websocket: ServerConnection) -> str | None:
         """Unregister a node by its WebSocket connection.
 
         Args:
@@ -163,7 +163,7 @@ class NodeRegistry:
         async with self._lock:
             return self._nodes.get(node_id)
 
-    async def get_node_by_websocket(self, websocket: WebSocketServerProtocol) -> NodeConnection | None:
+    async def get_node_by_websocket(self, websocket: ServerConnection) -> NodeConnection | None:
         """Get a node by its WebSocket connection."""
         async with self._lock:
             node_id = self._websockets.get(websocket)
@@ -176,7 +176,7 @@ class NodeRegistry:
         async with self._lock:
             return [n for n in self._nodes.values() if n.platform == platform]
 
-    async def update_ping(self, websocket: WebSocketServerProtocol) -> None:
+    async def update_ping(self, websocket: ServerConnection) -> None:
         """Update the last ping time for a node."""
         async with self._lock:
             node_id = self._websockets.get(websocket)

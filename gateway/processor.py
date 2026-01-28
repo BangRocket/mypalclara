@@ -28,7 +28,7 @@ from gateway.protocol import (
 from gateway.tool_executor import ToolExecutor
 
 if TYPE_CHECKING:
-    from websockets.server import WebSocketServerProtocol
+    from websockets.asyncio.server import ServerConnection
 
     from gateway.server import GatewayServer
 
@@ -95,7 +95,7 @@ class MessageProcessor:
     async def process(
         self,
         request: MessageRequest,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         server: GatewayServer,
     ) -> None:
         """Process a message request and stream the response.
@@ -392,7 +392,7 @@ class MessageProcessor:
 
     async def _send(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: ServerConnection,
         message: Any,
     ) -> None:
         """Send a message to a WebSocket.
