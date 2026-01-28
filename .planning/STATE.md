@@ -10,30 +10,30 @@ See: .planning/PROJECT.md (updated 2026-01-27)
 ## Current Position
 
 Phase: 2 of 4 (Gateway Integration & Email)
-Plan: 1 of 3 in Phase 2 (12 plans total)
+Plan: 2 of 3 in Phase 2 (12 plans total)
 Status: In progress
-Last activity: 2026-01-28 - Completed 02-02-PLAN.md (Email Provider Extraction)
+Last activity: 2026-01-28 - Completed 02-01-PLAN.md (Discord Gateway Integration)
 
-Progress: [████░░░░░░] 33%
+Progress: [█████░░░░░] 42%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 4.3 minutes
-- Total execution time: 0.29 hours
+- Total plans completed: 5
+- Average duration: 4.4 minutes
+- Total execution time: 0.37 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
-| 2 - Gateway Integration & Email | 1 | 4 min | 4 min |
+| 2 - Gateway Integration & Email | 2 | 10 min | 5 min |
 | 3 - CLI Client & Retirement | 0 | 0 | N/A |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (4 min), 01-03 (6 min), 02-02 (4 min)
+- Last 5 plans: 01-02 (4 min), 01-03 (6 min), 02-01 (6 min), 02-02 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -65,6 +65,11 @@ Recent decisions affecting current work:
 - D01-03-02: Providers start after server ready, stop before shutdown - proper lifecycle ordering
 - D01-03-03: CLI flag with env var fallback (CLARA_GATEWAY_DISCORD) - deployment flexibility
 
+**From 02-01:**
+- D02-01-01: response_id stored in PendingResponse for chunk/end correlation
+- D02-01-02: Tier prefix requires space or EOL after prefix (!highway vs !high)
+- D02-01-03: Tier prefix always stripped from content, even when tier passed externally
+
 **From 02-02:**
 - D02-02-01: Use MESSAGE_RECEIVED event type for email alerts - reuses existing event type
 - D02-02-02: ThreadPoolExecutor with 2 workers for email I/O - isolates blocking IMAP operations
@@ -81,7 +86,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed 02-02-PLAN.md (Email Provider Extraction)
+Stopped at: Completed 02-01-PLAN.md (Discord Gateway Integration)
 Resume file: None
 
-**Next step:** Continue Phase 2 execution
+**Next step:** Execute 02-03-PLAN.md (Gateway Processor Pipeline)
