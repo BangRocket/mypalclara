@@ -86,7 +86,7 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 6. Behavioral test suite validating Discord parity (20+ tests)
 
 **Success Criteria:**
-- [ ] Discord message → Gateway processor → LLM → Response flows end-to-end
+- [ ] Discord message -> Gateway processor -> LLM -> Response flows end-to-end
 - [ ] DiscordProvider receives response callbacks and streams to Discord channels
 - [ ] Tier-based model selection works (!high, !mid, !low prefixes)
 - [ ] Image/vision support functional through DiscordProvider
@@ -125,6 +125,13 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 - CLI client connects to gateway via WebSocket
 - `python -m gateway` is the only entry point needed
 - `discord_bot.py` deleted (code merged into gateway)
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Refactor cli_bot.py to migration wrapper, add clara-cli script
+- [ ] 03-02-PLAN.md — Verify Phase 2 providers exist and deletion is safe
+- [ ] 03-03-PLAN.md — Delete legacy files, update Docker Compose and documentation
 
 **Deliverables:**
 1. CLI client refactored to connect via WebSocket (not direct MemoryManager)
@@ -224,7 +231,7 @@ Consolidate MyPalClara into a single gateway daemon architecture where Discord, 
 |-------|--------|---------|-----------|-------|
 | 1 - Provider Foundation | Pending | — | — | Provider abstraction + Discord wrapper |
 | 2 - Gateway Integration & Email | Pending | — | — | Full pipeline + EmailProvider |
-| 3 - CLI Client & Retirement | Pending | — | — | Delete old entry points |
+| 3 - CLI Client & Retirement | Planned | — | — | 3 plans in 2 waves |
 | 4 - Production Hardening | Pending | — | — | Monitoring + load validation |
 
 **Overall Progress:** 0/4 phases complete (0%)
@@ -311,4 +318,5 @@ Phase 4 (Production Hardening)
 ---
 
 *Roadmap created: 2026-01-27*
-*Next step: Begin Phase 1 implementation*
+*Phase 3 planned: 2026-01-27*
+*Next step: Complete Phases 1-2 before executing Phase 3*
