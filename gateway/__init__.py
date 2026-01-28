@@ -44,6 +44,7 @@ from gateway.protocol import (
     ToolStart,
 )
 from gateway.providers import (
+    DiscordProvider,
     PlatformMessage,
     Provider,
     ProviderManager,
@@ -101,6 +102,7 @@ __all__ = [
     "ResponseEnd",
     "NodeInfo",
     # Providers
+    "DiscordProvider",
     "PlatformMessage",
     "Provider",
     "ProviderManager",
