@@ -28,6 +28,7 @@ import asyncio
 import logging
 from typing import ClassVar
 
+from adapters.email import EmailProvider
 from gateway.providers.base import PlatformMessage, Provider
 from gateway.providers.discord import DiscordProvider
 
@@ -308,6 +309,7 @@ def get_provider_manager() -> ProviderManager:
 
 __all__ = [
     "DiscordProvider",
+    "EmailProvider",
     "PlatformMessage",
     "Provider",
     "ProviderManager",
