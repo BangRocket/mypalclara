@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from adapters.base import GatewayClient
 from config.logging import get_logger
-from gateway.protocol import ChannelInfo, UserInfo
+from gateway.protocol import AttachmentInfo, ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     import discord
@@ -34,6 +34,7 @@ class PendingResponse:
     tool_count: int = 0
     last_edit: datetime | None = None
     status_message: discord.Message | None = None
+    response_id: str | None = None  # Set when ResponseStart received
 
 
 class DiscordGatewayClient(GatewayClient):
@@ -62,6 +63,49 @@ class DiscordGatewayClient(GatewayClient):
         self._pending: dict[str, PendingResponse] = {}
         self._edit_cooldown = 0.5  # Seconds between edits
 
+    def _get_pending_by_response_id(self, response_id: str) -> PendingResponse | None:
+        """Find pending response by response_id (from ResponseStart).
+
+        Args:
+            response_id: The response ID from ResponseStart message
+
+        Returns:
+            PendingResponse if found, None otherwise
+        """
+        for pending in self._pending.values():
+            if pending.response_id == response_id:
+                return pending
+        return None
+
+    def _extract_tier_override(self, content: str) -> tuple[str, str | None]:
+        """Extract tier prefix from content.
+
+        Args:
+            content: Message content
+
+        Returns:
+            Tuple of (clean_content, tier) where tier is None if no prefix found
+        """
+        content_stripped = content.strip()
+        content_lower = content_stripped.lower()
+
+        tier_prefixes = {
+            "!high": "high",
+            "!opus": "high",
+            "!mid": "mid",
+            "!sonnet": "mid",
+            "!low": "low",
+            "!haiku": "low",
+            "!fast": "low",
+        }
+
+        for prefix, tier in tier_prefixes.items():
+            if content_lower.startswith(prefix):
+                # Return content after prefix, preserving original case
+                return content_stripped[len(prefix) :].strip(), tier
+
+        return content_stripped, None
+
     async def send_discord_message(
         self,
         message: discord.Message,
@@ -71,11 +115,13 @@ class DiscordGatewayClient(GatewayClient):
 
         Args:
             message: The Discord message to process
-            tier_override: Optional model tier override
+            tier_override: Optional model tier override (can also be extracted from content)
 
         Returns:
             Request ID if sent, None if failed
         """
+        import base64
+
         try:
             # Build user info
             user = UserInfo(
@@ -95,8 +141,47 @@ class DiscordGatewayClient(GatewayClient):
                 guild_name=message.guild.name if message.guild else None,
             )
 
-            # Clean content
+            # Clean content and extract tier override if not already provided
             content = self._clean_content(message.content)
+            if not tier_override:
+                content, tier_override = self._extract_tier_override(content)
+
+            # Build attachments
+            attachments = []
+            for attach in message.attachments:
+                # Check if it's an image
+                if attach.content_type and attach.content_type.startswith("image/"):
+                    try:
+                        # Download and encode image
+                        data = await attach.read()
+                        b64 = base64.b64encode(data).decode()
+                        attachments.append(
+                            AttachmentInfo(
+                                type="image",
+                                filename=attach.filename,
+                                media_type=attach.content_type,
+                                base64_data=b64,
+                                size=attach.size,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to download attachment {attach.filename}: {e}")
+                elif attach.content_type and attach.content_type.startswith("text/"):
+                    try:
+                        # Read text content
+                        data = await attach.read()
+                        text_content = data.decode("utf-8", errors="replace")
+                        attachments.append(
+                            AttachmentInfo(
+                                type="text",
+                                filename=attach.filename,
+                                media_type=attach.content_type,
+                                content=text_content,
+                                size=attach.size,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to read text attachment {attach.filename}: {e}")
 
             # Build reply chain if present
             reply_chain = await self._build_reply_chain(message)
@@ -106,6 +191,7 @@ class DiscordGatewayClient(GatewayClient):
                 user=user,
                 channel=channel,
                 content=content,
+                attachments=[a.model_dump() for a in attachments],
                 tier_override=tier_override,
                 reply_chain=reply_chain,
                 metadata={
@@ -180,21 +266,19 @@ class DiscordGatewayClient(GatewayClient):
         if not pending:
             return
 
+        # Store response_id mapping for chunk/end correlation
+        pending.response_id = message.id
+
         # Show typing indicator
         await pending.message.channel.trigger_typing()
-        logger.debug(f"Response started for {request_id}")
+        logger.debug(f"Response started for {request_id} (response_id: {message.id})")
 
     async def on_response_chunk(self, message: Any) -> None:
         """Handle streaming response chunk."""
-        pending = self._pending.get(message.id)
+        # ResponseChunk uses response_id (from ResponseStart) in message.id
+        pending = self._get_pending_by_response_id(message.id)
         if not pending:
-            # Try with request_id
-            for p in self._pending.values():
-                if hasattr(message, "id") and p.request_id == message.id:
-                    pending = p
-                    break
-            if not pending:
-                return
+            return
 
         pending.accumulated_text = message.accumulated or (pending.accumulated_text + message.chunk)
 
@@ -225,10 +309,14 @@ class DiscordGatewayClient(GatewayClient):
 
     async def on_response_end(self, message: Any) -> None:
         """Handle response completion."""
-        request_id = message.id
-        pending = self._pending.pop(request_id, None)
+        # ResponseEnd uses response_id in message.id
+        response_id = message.id
+        pending = self._get_pending_by_response_id(response_id)
         if not pending:
             return
+
+        # Remove from pending using request_id
+        self._pending.pop(pending.request_id, None)
 
         # Send final response
         try:
@@ -257,12 +345,15 @@ class DiscordGatewayClient(GatewayClient):
         except Exception as e:
             logger.exception(f"Failed to send final response: {e}")
 
-        logger.info(f"Response {request_id} complete: " f"{len(message.full_text)} chars, {message.tool_count} tools")
+        logger.info(
+            f"Response {pending.request_id} complete: "
+            f"{len(message.full_text)} chars, {message.tool_count} tools"
+        )
 
     async def on_tool_start(self, message: Any) -> None:
         """Handle tool execution start."""
-        request_id = message.id
-        pending = self._pending.get(request_id)
+        # ToolStart uses response_id in message.id
+        pending = self._get_pending_by_response_id(message.id)
         if not pending:
             return
 
@@ -270,7 +361,8 @@ class DiscordGatewayClient(GatewayClient):
 
         # Send status message
         try:
-            status = f"-# {message.emoji} {message.tool_name}... (step {message.step})"
+            emoji = message.emoji or ""
+            status = f"-# {emoji} {message.tool_name}... (step {message.step})"
             await pending.message.channel.send(status, silent=True)
         except Exception as e:
             logger.debug(f"Failed to send tool status: {e}")
