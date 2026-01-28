@@ -38,7 +38,7 @@ load_dotenv()
 import uvicorn
 
 from config.logging import get_logger, init_logging
-from gateway.events import Event, EventType, emit, get_event_emitter
+from gateway.events import Event, EventType, emit, get_event_emitter, on
 from gateway.health import health_app, set_gateway_components
 from gateway.hooks import get_hook_manager
 from gateway.processor import MessageProcessor
@@ -48,6 +48,83 @@ from gateway.server import GatewayServer
 
 init_logging()
 logger = get_logger("gateway")
+
+
+async def email_alert_consumer(event: Event) -> None:
+    """Handle email alerts by sending Discord notifications.
+
+    Only processes events from the email platform. Formats the email
+    info into a Discord message and sends via DiscordProvider.
+    """
+    # Only handle email platform events
+    if event.platform != "email":
+        return
+
+    # Get provider manager to access Discord provider
+    manager = get_provider_manager()
+    discord_provider = manager.get("discord")
+
+    if not discord_provider or not discord_provider.running:
+        logger.warning("Discord provider not available for email alert")
+        return
+
+    # Extract email data
+    data = event.data
+    from_addr = data.get("from", "Unknown")
+    subject = data.get("subject", "No Subject")
+    preview = data.get("preview", "")[:200]  # Truncate preview
+
+    # Format the alert message
+    message = (
+        f"**New Email Alert**\n"
+        f"From: {from_addr}\n"
+        f"Subject: {subject}\n"
+        f"Preview: {preview}..."
+    )
+
+    # Get target user from event
+    # user_id format is "discord-{discord_user_id}" (set by EmailProvider)
+    user_id = event.user_id
+
+    if not user_id:
+        logger.warning("Email alert has no target user_id")
+        return
+
+    # Extract Discord user ID from prefixed user_id (e.g., "discord-123456" -> "123456")
+    # This matches the format set by email monitoring rules
+    discord_user_id = user_id
+    if user_id.startswith("discord-"):
+        discord_user_id = user_id[8:]  # Remove "discord-" prefix
+
+    # Get the Discord channel object for DM routing
+    # DiscordProvider.send_response() requires context["channel"] to be an actual
+    # Discord channel object with a .send() method, NOT a string channel_id
+    bot = discord_provider.bot
+    if bot is None:
+        logger.warning("Discord bot not initialized")
+        return
+
+    try:
+        # Fetch the Discord User object
+        discord_user = await bot.fetch_user(int(discord_user_id))
+        # Create/get the DM channel for this user
+        dm_channel = await discord_user.create_dm()
+    except Exception as e:
+        logger.warning(f"Failed to get DM channel for user {discord_user_id}: {e}")
+        return
+
+    # Build context with the actual Discord channel object
+    context = {
+        "channel": dm_channel,  # REQUIRED: actual Discord channel object
+        "user_id": user_id,
+        "is_alert": True,  # Flag to indicate this is an automated alert
+    }
+
+    try:
+        await discord_provider.send_response(context, message)
+        logger.info(f"Sent email alert to {user_id}: {subject}")
+    except Exception as e:
+        logger.exception(f"Failed to send email alert: {e}")
 
 
 def run_health_server(port: int) -> None:
@@ -102,6 +179,11 @@ async def main(
         email_provider = EmailProvider()
         provider_manager.register(email_provider)
         logger.info("Email provider registered")
+
+    # Register email alert consumer if both providers are enabled
+    if enable_discord and enable_email:
+        on(EventType.MESSAGE_RECEIVED, email_alert_consumer)
+        logger.info("Email alert consumer registered")
 
     # Create server and processor
     server = GatewayServer(host=host, port=port)
