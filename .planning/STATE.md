@@ -10,30 +10,30 @@ See: .planning/PROJECT.md (updated 2026-01-27)
 ## Current Position
 
 Phase: 2 of 4 (Gateway Integration & Email)
-Plan: 0 of 3 in Phase 2 (12 plans total)
-Status: Ready to execute
-Last activity: 2026-01-28 - Completed Phase 1 (Provider Foundation)
+Plan: 1 of 3 in Phase 2 (12 plans total)
+Status: In progress
+Last activity: 2026-01-28 - Completed 02-02-PLAN.md (Email Provider Extraction)
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 4.3 minutes
-- Total execution time: 0.22 hours
+- Total execution time: 0.29 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 - Provider Foundation | 3 | 13 min | 4.3 min |
-| 2 - Gateway Integration & Email | 0 | 0 | N/A |
+| 2 - Gateway Integration & Email | 1 | 4 min | 4 min |
 | 3 - CLI Client & Retirement | 0 | 0 | N/A |
 | 4 - Production Hardening | 0 | 0 | N/A |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (4 min), 01-03 (6 min)
+- Last 5 plans: 01-01 (3 min), 01-02 (4 min), 01-03 (6 min), 02-02 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -65,6 +65,11 @@ Recent decisions affecting current work:
 - D01-03-02: Providers start after server ready, stop before shutdown - proper lifecycle ordering
 - D01-03-03: CLI flag with env var fallback (CLARA_GATEWAY_DISCORD) - deployment flexibility
 
+**From 02-02:**
+- D02-02-01: Use MESSAGE_RECEIVED event type for email alerts - reuses existing event type
+- D02-02-02: ThreadPoolExecutor with 2 workers for email I/O - isolates blocking IMAP operations
+- D02-02-03: Prefix user_id with discord- when from env var - enables platform-specific routing
+
 ### Pending Todos
 
 None yet.
@@ -76,7 +81,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-28
-Stopped at: Completed Phase 1 (Provider Foundation)
+Stopped at: Completed 02-02-PLAN.md (Email Provider Extraction)
 Resume file: None
 
-**Next step:** Execute Phase 2 with `/gsd:execute-phase 2`
+**Next step:** Continue Phase 2 execution
