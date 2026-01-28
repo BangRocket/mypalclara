@@ -103,7 +103,7 @@ from db.channel_config import (
     should_respond_to_message,
 )
 from db.models import ChannelSummary, Project, Session
-from email_monitor import (
+from adapters.email import (
     email_check_loop,
     handle_email_tool,
 )
