@@ -13,7 +13,7 @@ Environment variables:
     CLARA_SCHEDULER_DIR - Directory containing scheduler.yaml (default: .)
     CLARA_GATEWAY_DISCORD - Enable Discord provider (default: false)
     CLARA_GATEWAY_EMAIL - Enable Email provider (default: false)
-    HEALTH_PORT - Port for health check server (default: 8080)
+    HEALTH_PORT - Port for health check server (default: 18790)
     SHUTDOWN_GRACE_PERIOD - Seconds to wait for pending requests (default: 30)
 """
 
@@ -132,7 +132,7 @@ async def main(
     set_gateway_components(server, processor, started_at)
 
     # Start health check server
-    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    health_port = int(os.getenv("HEALTH_PORT", "18790"))
     health_thread = threading.Thread(
         target=run_health_server,
         args=(health_port,),
