@@ -2224,10 +2224,13 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Add recent channel/DM messages as context
                 if len(recent_channel_msgs) > 1:
                     channel_context = []
+                    my_user_id = str(self.user.id) if self.user else ""
                     for msg in recent_channel_msgs[:-1]:  # All except current message
-                        role = "assistant" if msg.is_bot else "user"
-                        if not is_dm and not msg.is_bot:
-                            # Prefix with username for channel messages
+                        # Only treat THIS bot's messages as assistant, not other bots
+                        is_my_message = msg.user_id == my_user_id
+                        role = "assistant" if is_my_message else "user"
+                        if not is_dm and not is_my_message:
+                            # Prefix with username for channel messages (including other bots)
                             content = f"[{msg.username}]: {msg.content}"
                         else:
                             content = msg.content
@@ -2472,8 +2475,10 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         """Generate a summary of messages, incorporating existing summary."""
         # Format messages for summarization
         formatted = []
+        my_user_id = str(self.user.id) if self.user else ""
         for msg in messages:
-            role = "Clara" if msg.is_bot else msg.username
+            # Only label THIS bot's messages as "Clara", use actual username for others
+            role = "Clara" if msg.user_id == my_user_id else msg.username
             content = msg.content[:500]  # truncate long messages
             formatted.append(f"{role}: {content}")
 
