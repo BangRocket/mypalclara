@@ -94,7 +94,7 @@ from config.logging import (
     init_logging,
     set_db_session_factory,
 )
-from db import SessionLocal
+from db import SessionLocal, init_db
 from db.channel_config import (
     CLARA_ADMIN_ROLE,
     get_channel_mode,
@@ -4115,6 +4115,9 @@ async def run_monitor_server():
 
 async def async_main():
     """Run both bot and monitoring server."""
+    # Ensure database tables exist before enabling database logging
+    init_db()
+
     # Initialize database logging
     set_db_session_factory(SessionLocal)
 
