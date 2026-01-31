@@ -21,6 +21,18 @@ from gateway.protocol import (
     CancelMessage,
     ChannelInfo,
     GatewayMessage,
+    MCPEnableRequest,
+    MCPEnableResponse,
+    MCPInstallRequest,
+    MCPInstallResponse,
+    MCPListRequest,
+    MCPListResponse,
+    MCPRestartRequest,
+    MCPRestartResponse,
+    MCPStatusRequest,
+    MCPStatusResponse,
+    MCPUninstallRequest,
+    MCPUninstallResponse,
     MessageRequest,
     MessageType,
     PingMessage,
@@ -82,6 +94,9 @@ class GatewayClient(ABC):
         self._reconnect_task: asyncio.Task[None] | None = None
         self._pending_requests: dict[str, asyncio.Future[None]] = {}
         self._response_handlers: dict[str, Callable[[GatewayMessage], Any]] = {}
+
+        # MCP request tracking
+        self._pending_mcp_requests: dict[str, asyncio.Future[GatewayMessage]] = {}
 
     async def connect(self) -> bool:
         """Connect to the gateway.
@@ -303,6 +318,16 @@ class GatewayClient(ABC):
             await self.on_status(message)
         elif msg_type == MessageType.PROACTIVE_MESSAGE:
             await self.on_proactive_message(message)
+        # MCP Response types
+        elif msg_type in (
+            MessageType.MCP_LIST_RESPONSE,
+            MessageType.MCP_INSTALL_RESPONSE,
+            MessageType.MCP_UNINSTALL_RESPONSE,
+            MessageType.MCP_STATUS_RESPONSE,
+            MessageType.MCP_RESTART_RESPONSE,
+            MessageType.MCP_ENABLE_RESPONSE,
+        ):
+            await self._handle_mcp_response(message)
         else:
             logger.debug(f"Unhandled message type: {msg_type}")
 
@@ -401,6 +426,198 @@ class GatewayClient(ABC):
     async def on_proactive_message(self, message: Any) -> None:
         """Handle proactive message from ORS."""
         logger.info(f"Proactive message for {message.user.id}: {message.content[:50]}")
+
+    # =========================================================================
+    # MCP Management Methods
+    # =========================================================================
+
+    async def _handle_mcp_response(self, message: GatewayMessage) -> None:
+        """Handle MCP response messages by resolving pending futures.
+
+        Args:
+            message: The MCP response message
+        """
+        request_id = getattr(message, "request_id", None)
+        if request_id and request_id in self._pending_mcp_requests:
+            future = self._pending_mcp_requests.pop(request_id)
+            if not future.done():
+                future.set_result(message)
+        else:
+            logger.warning(f"Received MCP response for unknown request: {request_id}")
+
+    async def _send_mcp_request(
+        self,
+        request: Any,
+        timeout: float = 30.0,
+    ) -> GatewayMessage:
+        """Send an MCP request and wait for response.
+
+        Args:
+            request: The MCP request message
+            timeout: Timeout in seconds
+
+        Returns:
+            The MCP response message
+
+        Raises:
+            RuntimeError: If not connected to gateway
+            asyncio.TimeoutError: If response times out
+        """
+        if not self._ws or not self._connected:
+            raise RuntimeError("Not connected to gateway")
+
+        request_id = request.request_id
+        future: asyncio.Future[GatewayMessage] = asyncio.get_event_loop().create_future()
+        self._pending_mcp_requests[request_id] = future
+
+        try:
+            await self._ws.send(request.model_dump_json())
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._pending_mcp_requests.pop(request_id, None)
+            raise
+        except Exception:
+            self._pending_mcp_requests.pop(request_id, None)
+            raise
+
+    async def mcp_list(self, timeout: float = 30.0) -> MCPListResponse:
+        """List all MCP servers.
+
+        Args:
+            timeout: Request timeout in seconds
+
+        Returns:
+            MCPListResponse with server list
+        """
+        import uuid
+
+        request = MCPListRequest(request_id=f"mcp-{uuid.uuid4().hex[:8]}")
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
+
+    async def mcp_install(
+        self,
+        source: str,
+        name: str | None = None,
+        requested_by: str | None = None,
+        timeout: float = 120.0,
+    ) -> MCPInstallResponse:
+        """Install an MCP server.
+
+        Args:
+            source: Server source (npm package, smithery:name, github URL)
+            name: Custom name for the server
+            requested_by: User ID who requested installation
+            timeout: Request timeout in seconds (longer for install)
+
+        Returns:
+            MCPInstallResponse with installation result
+        """
+        import uuid
+
+        request = MCPInstallRequest(
+            request_id=f"mcp-{uuid.uuid4().hex[:8]}",
+            source=source,
+            name=name,
+            requested_by=requested_by,
+        )
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
+
+    async def mcp_uninstall(
+        self,
+        server_name: str,
+        timeout: float = 30.0,
+    ) -> MCPUninstallResponse:
+        """Uninstall an MCP server.
+
+        Args:
+            server_name: Name of server to uninstall
+            timeout: Request timeout in seconds
+
+        Returns:
+            MCPUninstallResponse with result
+        """
+        import uuid
+
+        request = MCPUninstallRequest(
+            request_id=f"mcp-{uuid.uuid4().hex[:8]}",
+            server_name=server_name,
+        )
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
+
+    async def mcp_status(
+        self,
+        server_name: str | None = None,
+        timeout: float = 30.0,
+    ) -> MCPStatusResponse:
+        """Get MCP server status.
+
+        Args:
+            server_name: Specific server name (None for overall status)
+            timeout: Request timeout in seconds
+
+        Returns:
+            MCPStatusResponse with status info
+        """
+        import uuid
+
+        request = MCPStatusRequest(
+            request_id=f"mcp-{uuid.uuid4().hex[:8]}",
+            server_name=server_name,
+        )
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
+
+    async def mcp_restart(
+        self,
+        server_name: str,
+        timeout: float = 60.0,
+    ) -> MCPRestartResponse:
+        """Restart an MCP server.
+
+        Args:
+            server_name: Name of server to restart
+            timeout: Request timeout in seconds
+
+        Returns:
+            MCPRestartResponse with result
+        """
+        import uuid
+
+        request = MCPRestartRequest(
+            request_id=f"mcp-{uuid.uuid4().hex[:8]}",
+            server_name=server_name,
+        )
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
+
+    async def mcp_enable(
+        self,
+        server_name: str,
+        enabled: bool,
+        timeout: float = 30.0,
+    ) -> MCPEnableResponse:
+        """Enable or disable an MCP server.
+
+        Args:
+            server_name: Name of server to enable/disable
+            enabled: True to enable, False to disable
+            timeout: Request timeout in seconds
+
+        Returns:
+            MCPEnableResponse with result
+        """
+        import uuid
+
+        request = MCPEnableRequest(
+            request_id=f"mcp-{uuid.uuid4().hex[:8]}",
+            server_name=server_name,
+            enabled=enabled,
+        )
+        response = await self._send_mcp_request(request, timeout)
+        return response  # type: ignore
 
     @property
     def is_connected(self) -> bool:

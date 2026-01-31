@@ -44,6 +44,20 @@ class MessageType(str, Enum):
     # Proactive (ORS)
     PROACTIVE_MESSAGE = "proactive_message"
 
+    # MCP Management
+    MCP_LIST = "mcp_list"
+    MCP_LIST_RESPONSE = "mcp_list_response"
+    MCP_INSTALL = "mcp_install"
+    MCP_INSTALL_RESPONSE = "mcp_install_response"
+    MCP_UNINSTALL = "mcp_uninstall"
+    MCP_UNINSTALL_RESPONSE = "mcp_uninstall_response"
+    MCP_STATUS = "mcp_status"
+    MCP_STATUS_RESPONSE = "mcp_status_response"
+    MCP_RESTART = "mcp_restart"
+    MCP_RESTART_RESPONSE = "mcp_restart_response"
+    MCP_ENABLE = "mcp_enable"
+    MCP_ENABLE_RESPONSE = "mcp_enable_response"
+
 
 class UserInfo(BaseModel):
     """Information about a user."""
@@ -278,11 +292,154 @@ class ProactiveMessage(BaseModel):
 
 
 # ============================================================================
+# MCP Management Messages
+# ============================================================================
+
+
+class MCPServerInfo(BaseModel):
+    """Information about an MCP server."""
+
+    name: str = Field(..., description="Server name")
+    status: str = Field(..., description="Server status (running, stopped, error)")
+    enabled: bool = Field(True, description="Whether server is enabled")
+    connected: bool = Field(False, description="Whether server is connected")
+    tool_count: int = Field(0, description="Number of tools available")
+    source_type: str = Field("unknown", description="Source type (npm, smithery, github, etc.)")
+    transport: str | None = Field(None, description="Transport type (stdio, http)")
+    tools: list[str] = Field(default_factory=list, description="List of tool names")
+    last_error: str | None = Field(None, description="Last error message if any")
+
+
+class MCPListRequest(BaseModel):
+    """Adapter -> Gateway: List all MCP servers."""
+
+    type: Literal[MessageType.MCP_LIST] = MessageType.MCP_LIST
+    request_id: str = Field(..., description="Request ID for correlation")
+
+
+class MCPListResponse(BaseModel):
+    """Gateway -> Adapter: List of MCP servers."""
+
+    type: Literal[MessageType.MCP_LIST_RESPONSE] = MessageType.MCP_LIST_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(True, description="Whether request succeeded")
+    servers: list[MCPServerInfo] = Field(default_factory=list, description="List of servers")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+class MCPInstallRequest(BaseModel):
+    """Adapter -> Gateway: Install an MCP server."""
+
+    type: Literal[MessageType.MCP_INSTALL] = MessageType.MCP_INSTALL
+    request_id: str = Field(..., description="Request ID for correlation")
+    source: str = Field(..., description="Server source (npm package, smithery:name, github URL)")
+    name: str | None = Field(None, description="Custom name for the server")
+    requested_by: str | None = Field(None, description="User ID who requested installation")
+
+
+class MCPInstallResponse(BaseModel):
+    """Gateway -> Adapter: Installation result."""
+
+    type: Literal[MessageType.MCP_INSTALL_RESPONSE] = MessageType.MCP_INSTALL_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(..., description="Whether installation succeeded")
+    server_name: str | None = Field(None, description="Name of installed server")
+    tools_discovered: int = Field(0, description="Number of tools discovered")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+class MCPUninstallRequest(BaseModel):
+    """Adapter -> Gateway: Uninstall an MCP server."""
+
+    type: Literal[MessageType.MCP_UNINSTALL] = MessageType.MCP_UNINSTALL
+    request_id: str = Field(..., description="Request ID for correlation")
+    server_name: str = Field(..., description="Name of server to uninstall")
+
+
+class MCPUninstallResponse(BaseModel):
+    """Gateway -> Adapter: Uninstall result."""
+
+    type: Literal[MessageType.MCP_UNINSTALL_RESPONSE] = MessageType.MCP_UNINSTALL_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(..., description="Whether uninstall succeeded")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+class MCPStatusRequest(BaseModel):
+    """Adapter -> Gateway: Get status of an MCP server."""
+
+    type: Literal[MessageType.MCP_STATUS] = MessageType.MCP_STATUS
+    request_id: str = Field(..., description="Request ID for correlation")
+    server_name: str | None = Field(None, description="Server name (None for overall status)")
+
+
+class MCPStatusResponse(BaseModel):
+    """Gateway -> Adapter: Server status."""
+
+    type: Literal[MessageType.MCP_STATUS_RESPONSE] = MessageType.MCP_STATUS_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(True, description="Whether request succeeded")
+    server: MCPServerInfo | None = Field(None, description="Server info if specific server requested")
+    total_servers: int = Field(0, description="Total number of servers")
+    connected_servers: int = Field(0, description="Number of connected servers")
+    enabled_servers: int = Field(0, description="Number of enabled servers")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+class MCPRestartRequest(BaseModel):
+    """Adapter -> Gateway: Restart an MCP server."""
+
+    type: Literal[MessageType.MCP_RESTART] = MessageType.MCP_RESTART
+    request_id: str = Field(..., description="Request ID for correlation")
+    server_name: str = Field(..., description="Name of server to restart")
+
+
+class MCPRestartResponse(BaseModel):
+    """Gateway -> Adapter: Restart result."""
+
+    type: Literal[MessageType.MCP_RESTART_RESPONSE] = MessageType.MCP_RESTART_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(..., description="Whether restart succeeded")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+class MCPEnableRequest(BaseModel):
+    """Adapter -> Gateway: Enable or disable an MCP server."""
+
+    type: Literal[MessageType.MCP_ENABLE] = MessageType.MCP_ENABLE
+    request_id: str = Field(..., description="Request ID for correlation")
+    server_name: str = Field(..., description="Name of server to enable/disable")
+    enabled: bool = Field(..., description="True to enable, False to disable")
+
+
+class MCPEnableResponse(BaseModel):
+    """Gateway -> Adapter: Enable/disable result."""
+
+    type: Literal[MessageType.MCP_ENABLE_RESPONSE] = MessageType.MCP_ENABLE_RESPONSE
+    request_id: str = Field(..., description="Request ID for correlation")
+    success: bool = Field(..., description="Whether operation succeeded")
+    enabled: bool = Field(..., description="Current enabled state")
+    error: str | None = Field(None, description="Error message if failed")
+
+
+# ============================================================================
 # Union Types for Parsing
 # ============================================================================
 
 # All message types that can be sent adapter -> gateway
-AdapterMessage = RegisterMessage | PingMessage | MessageRequest | CancelMessage | StatusMessage
+AdapterMessage = (
+    RegisterMessage
+    | PingMessage
+    | MessageRequest
+    | CancelMessage
+    | StatusMessage
+    | MCPListRequest
+    | MCPInstallRequest
+    | MCPUninstallRequest
+    | MCPStatusRequest
+    | MCPRestartRequest
+    | MCPEnableRequest
+)
 
 # All message types that can be sent gateway -> adapter
 GatewayMessage = (
@@ -297,6 +454,12 @@ GatewayMessage = (
     | ErrorMessage
     | StatusMessage
     | ProactiveMessage
+    | MCPListResponse
+    | MCPInstallResponse
+    | MCPUninstallResponse
+    | MCPStatusResponse
+    | MCPRestartResponse
+    | MCPEnableResponse
 )
 
 
@@ -322,6 +485,13 @@ def parse_adapter_message(data: dict[str, Any]) -> AdapterMessage:
         MessageType.MESSAGE: MessageRequest,
         MessageType.CANCEL: CancelMessage,
         MessageType.STATUS: StatusMessage,
+        # MCP Management
+        MessageType.MCP_LIST: MCPListRequest,
+        MessageType.MCP_INSTALL: MCPInstallRequest,
+        MessageType.MCP_UNINSTALL: MCPUninstallRequest,
+        MessageType.MCP_STATUS: MCPStatusRequest,
+        MessageType.MCP_RESTART: MCPRestartRequest,
+        MessageType.MCP_ENABLE: MCPEnableRequest,
     }
 
     parser = parsers.get(msg_type)
@@ -359,6 +529,13 @@ def parse_gateway_message(data: dict[str, Any]) -> GatewayMessage:
         MessageType.ERROR: ErrorMessage,
         MessageType.STATUS: StatusMessage,
         MessageType.PROACTIVE_MESSAGE: ProactiveMessage,
+        # MCP Management Responses
+        MessageType.MCP_LIST_RESPONSE: MCPListResponse,
+        MessageType.MCP_INSTALL_RESPONSE: MCPInstallResponse,
+        MessageType.MCP_UNINSTALL_RESPONSE: MCPUninstallResponse,
+        MessageType.MCP_STATUS_RESPONSE: MCPStatusResponse,
+        MessageType.MCP_RESTART_RESPONSE: MCPRestartResponse,
+        MessageType.MCP_ENABLE_RESPONSE: MCPEnableResponse,
     }
 
     parser = parsers.get(msg_type)
