@@ -32,6 +32,7 @@ import discord
 from discord.ext import commands as discord_commands
 
 from adapters.discord.gateway_client import DiscordGatewayClient
+from clara_core.discord import setup as setup_slash_commands
 from config.logging import get_logger, init_logging
 
 init_logging()
@@ -59,6 +60,7 @@ class GatewayDiscordBot(discord_commands.Bot):
         )
         self.gateway_client: DiscordGatewayClient | None = None
         self._gateway_task: asyncio.Task | None = None
+        self._commands_synced: bool = False
 
     async def setup_hook(self) -> None:
         """Called when the bot is ready to start.
@@ -80,6 +82,22 @@ class GatewayDiscordBot(discord_commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Gateway: {GATEWAY_URL}")
         logger.info(f"Guilds: {len(self.guilds)}")
+
+        # Register and sync slash commands (only once)
+        # See: https://github.com/BangRocket/mypalclara/issues/136
+        if not self._commands_synced:
+            try:
+                setup_slash_commands(self)
+                logger.info("Slash commands cog registered")
+
+                # Use guild-specific sync for instant visibility
+                guild_ids = [guild.id for guild in self.guilds]
+                await self.sync_commands(guild_ids=guild_ids)
+                cmd_count = len(self.pending_application_commands or [])
+                logger.info(f"Synced {cmd_count} slash commands to {len(guild_ids)} guilds")
+                self._commands_synced = True
+            except Exception as e:
+                logger.warning(f"Failed to sync slash commands: {e}")
 
         # Initialize gateway client if not already done
         # Note: This is done here instead of setup_hook() because Pycord
