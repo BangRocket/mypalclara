@@ -61,15 +61,12 @@ class GatewayDiscordBot(discord_commands.Bot):
         self._gateway_task: asyncio.Task | None = None
 
     async def setup_hook(self) -> None:
-        """Called when the bot is ready to start."""
-        # Create gateway client
-        self.gateway_client = DiscordGatewayClient(
-            bot=self,
-            gateway_url=GATEWAY_URL,
-        )
+        """Called when the bot is ready to start.
 
-        # Start gateway connection in background
-        self._gateway_task = asyncio.create_task(self._run_gateway())
+        Note: Pycord does not call this method automatically like discord.py does.
+        Gateway initialization is done in on_ready() instead for compatibility.
+        """
+        pass
 
     async def _run_gateway(self) -> None:
         """Run the gateway client."""
@@ -83,6 +80,18 @@ class GatewayDiscordBot(discord_commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Gateway: {GATEWAY_URL}")
         logger.info(f"Guilds: {len(self.guilds)}")
+
+        # Initialize gateway client if not already done
+        # Note: This is done here instead of setup_hook() because Pycord
+        # does not call setup_hook() automatically like discord.py does.
+        # See: https://github.com/BangRocket/mypalclara/issues/132
+        if self.gateway_client is None:
+            self.gateway_client = DiscordGatewayClient(
+                bot=self,
+                gateway_url=GATEWAY_URL,
+            )
+            self._gateway_task = asyncio.create_task(self._run_gateway())
+            logger.info("Gateway client initialized")
 
     async def on_message(self, message: discord.Message) -> None:
         """Handle incoming Discord messages."""
