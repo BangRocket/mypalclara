@@ -186,15 +186,11 @@ class DiscordGatewayClient(GatewayClient):
 
     async def on_response_chunk(self, message: Any) -> None:
         """Handle streaming response chunk."""
-        pending = self._pending.get(message.id)
+        request_id = message.request_id
+        pending = self._pending.get(request_id)
         if not pending:
-            # Try with request_id
-            for p in self._pending.values():
-                if hasattr(message, "id") and p.request_id == message.id:
-                    pending = p
-                    break
-            if not pending:
-                return
+            logger.debug(f"No pending request for chunk {request_id}")
+            return
 
         pending.accumulated_text = message.accumulated or (pending.accumulated_text + message.chunk)
 
@@ -225,9 +221,10 @@ class DiscordGatewayClient(GatewayClient):
 
     async def on_response_end(self, message: Any) -> None:
         """Handle response completion."""
-        request_id = message.id
+        request_id = message.request_id
         pending = self._pending.pop(request_id, None)
         if not pending:
+            logger.debug(f"No pending request for response end {request_id}")
             return
 
         # Send final response
@@ -261,9 +258,10 @@ class DiscordGatewayClient(GatewayClient):
 
     async def on_tool_start(self, message: Any) -> None:
         """Handle tool execution start."""
-        request_id = message.id
+        request_id = message.request_id
         pending = self._pending.get(request_id)
         if not pending:
+            logger.debug(f"No pending request for tool start {request_id}")
             return
 
         pending.tool_count = message.step

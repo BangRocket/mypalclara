@@ -143,6 +143,7 @@ class MessageProcessor:
                         websocket,
                         ToolStart(
                             id=response_id,
+                            request_id=request.id,
                             tool_name=event["tool_name"],
                             step=event["step"],
                             emoji=self._get_tool_emoji(event["tool_name"]),
@@ -154,6 +155,7 @@ class MessageProcessor:
                         websocket,
                         ToolResult(
                             id=response_id,
+                            request_id=request.id,
                             tool_name=event["tool_name"],
                             success=event["success"],
                             output_preview=event.get("output_preview"),
@@ -167,6 +169,7 @@ class MessageProcessor:
                         websocket,
                         ResponseChunk(
                             id=response_id,
+                            request_id=request.id,
                             chunk=chunk_text,
                             accumulated=full_text,
                         ),
@@ -185,6 +188,7 @@ class MessageProcessor:
                 websocket,
                 ResponseEnd(
                     id=response_id,
+                    request_id=request.id,
                     full_text=full_text,
                     files=files,
                     tool_count=tool_count,
