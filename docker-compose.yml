@@ -72,6 +72,12 @@ services:
       - "18789:18789"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost', 18789), timeout=5); s.close()"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
     environment:
       # Gateway
       - CLARA_GATEWAY_HOST=0.0.0.0
