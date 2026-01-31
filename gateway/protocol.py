@@ -176,6 +176,7 @@ class ResponseChunk(BaseModel):
 
     type: Literal[MessageType.RESPONSE_CHUNK] = MessageType.RESPONSE_CHUNK
     id: str = Field(..., description="Response ID")
+    request_id: str = Field(..., description="Original request message ID")
     chunk: str = Field(..., description="Text chunk")
     accumulated: str | None = Field(None, description="Full accumulated text so far")
 
@@ -185,6 +186,7 @@ class ResponseEnd(BaseModel):
 
     type: Literal[MessageType.RESPONSE_END] = MessageType.RESPONSE_END
     id: str = Field(..., description="Response ID")
+    request_id: str = Field(..., description="Original request message ID")
     full_text: str = Field(..., description="Complete response text")
     files: list[str] = Field(default_factory=list, description="File paths to attach")
     tool_count: int = Field(0, description="Number of tools executed")
@@ -201,6 +203,7 @@ class ToolStart(BaseModel):
 
     type: Literal[MessageType.TOOL_START] = MessageType.TOOL_START
     id: str = Field(..., description="Response ID")
+    request_id: str = Field(..., description="Original request message ID")
     tool_name: str = Field(..., description="Name of the tool being executed")
     step: int = Field(..., description="Tool step number (1-indexed)")
     description: str | None = Field(None, description="Human-readable description")
@@ -212,6 +215,7 @@ class ToolResult(BaseModel):
 
     type: Literal[MessageType.TOOL_RESULT] = MessageType.TOOL_RESULT
     id: str = Field(..., description="Response ID")
+    request_id: str = Field(..., description="Original request message ID")
     tool_name: str = Field(..., description="Name of the tool")
     success: bool = Field(..., description="Whether execution succeeded")
     output_preview: str | None = Field(None, description="Truncated output preview")

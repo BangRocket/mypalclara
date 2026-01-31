@@ -188,11 +188,41 @@ class GatewayClient(ABC):
         """
         pass
 
-    async def start(self) -> None:
-        """Start the client (connect and begin processing)."""
-        if not await self.connect():
-            raise RuntimeError("Failed to connect to gateway")
+    async def start(self, max_initial_attempts: int = 10) -> None:
+        """Start the client (connect and begin processing).
 
+        Args:
+            max_initial_attempts: Maximum connection attempts on startup.
+                Set to 0 for infinite retries. Default is 10.
+        """
+        # Retry initial connection with exponential backoff
+        # This handles cases where the gateway isn't ready yet (e.g., Docker startup)
+        attempt = 0
+        while True:
+            if await self.connect():
+                break
+
+            attempt += 1
+            if max_initial_attempts > 0 and attempt >= max_initial_attempts:
+                raise RuntimeError(
+                    f"Failed to connect to gateway after {attempt} attempts"
+                )
+
+            delay = min(self._current_reconnect_delay, self.max_reconnect_delay)
+            logger.info(
+                f"Gateway not ready, retrying in {delay:.1f}s "
+                f"(attempt {attempt}/{max_initial_attempts or '∞'})..."
+            )
+            await asyncio.sleep(delay)
+
+            # Exponential backoff
+            self._current_reconnect_delay = min(
+                self._current_reconnect_delay * 2,
+                self.max_reconnect_delay,
+            )
+
+        # Reset backoff after successful connection
+        self._current_reconnect_delay = self.reconnect_delay
         self._running = True
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 

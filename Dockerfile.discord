@@ -58,6 +58,7 @@ COPY adapters/ ./adapters/
 COPY clara_core/ ./clara_core/
 COPY config/ ./config/
 COPY db/ ./db/
+COPY gateway/ ./gateway/
 COPY sandbox/ ./sandbox/
 COPY storage/ ./storage/
 COPY tools/ ./tools/
