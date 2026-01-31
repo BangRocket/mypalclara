@@ -1,0 +1,76 @@
+# Gateway Dockerfile for MyPalClara
+# WebSocket server for platform adapters
+
+# Stage 1: Build Rust MCP server (using nightly for edition2024 support)
+FROM rustlang/rust:nightly-slim AS mcp-builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Rust project
+COPY clara-mcp-server/ ./
+
+# Build release binary
+RUN cargo build --release
+
+# Stage 2: Python runtime
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies including Node.js for MCP servers
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    postgresql-client \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy MCP server binary from builder
+COPY --from=mcp-builder /build/target/release/clara-mcp-server /usr/local/bin/clara-mcp-server
+
+# Install Poetry
+RUN pip install poetry
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Configure Poetry to not create virtual environment
+RUN poetry config virtualenvs.create false
+
+# Install dependencies (production only)
+RUN poetry install --only main --no-interaction --no-ansi
+
+# Copy application code
+COPY *.py ./
+COPY clara_core/ ./clara_core/
+COPY config/ ./config/
+COPY db/ ./db/
+COPY sandbox/ ./sandbox/
+COPY storage/ ./storage/
+COPY tools/ ./tools/
+COPY gateway/ ./gateway/
+COPY adapters/ ./adapters/
+COPY email_service/ ./email_service/
+COPY vendor/ ./vendor/
+COPY VERSION ./
+
+# Create directories for persistent data
+RUN mkdir -p /data /app/clara_files /app/mcp_servers
+ENV DATA_DIR=/data
+ENV CLARA_FILES_DIR=/app/clara_files
+ENV MCP_SERVERS_DIR=/app/mcp_servers
+
+# Expose gateway port
+EXPOSE 18789
+
+# Run the gateway
+CMD ["python", "-m", "gateway"]

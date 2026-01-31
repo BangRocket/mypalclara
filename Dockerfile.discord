@@ -1,8 +1,8 @@
 # Discord Bot Dockerfile for MyPalClara
 # For local development with docker-compose
 
-# Stage 1: Build Rust MCP server
-FROM rust:1.83-slim AS mcp-builder
+# Stage 1: Build Rust MCP server (using nightly for edition2024 support)
+FROM rustlang/rust:nightly-slim AS mcp-builder
 
 WORKDIR /build
 
@@ -54,6 +54,7 @@ RUN playwright install chromium --with-deps
 
 # Copy application code
 COPY *.py ./
+COPY adapters/ ./adapters/
 COPY clara_core/ ./clara_core/
 COPY config/ ./config/
 COPY db/ ./db/

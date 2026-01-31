@@ -24,8 +24,8 @@ def get_channel_mode(channel_id: str) -> ChannelMode:
     """Get the configured mode for a channel.
 
     Returns:
-        "active" - Clara participates actively, ORS enabled
-        "mention" - Clara only responds to mentions, ORS disabled
+        "active" - Clara participates actively in conversation
+        "mention" - Clara only responds to mentions
         "off" - Clara ignores the channel entirely
     """
     with get_session() as session:
@@ -84,14 +84,6 @@ def get_guild_channels(guild_id: str) -> list[ChannelConfig]:
             select(ChannelConfig).where(ChannelConfig.guild_id == guild_id)
         ).scalars().all()
         return list(configs)
-
-
-def is_ors_enabled(channel_id: str) -> bool:
-    """Check if ORS (Organic Response System) should run for this channel.
-
-    ORS only runs in 'active' mode channels.
-    """
-    return get_channel_mode(channel_id) == "active"
 
 
 def should_respond_to_message(channel_id: str, is_mention: bool) -> bool:

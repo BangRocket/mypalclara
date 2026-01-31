@@ -441,6 +441,16 @@ def init_logging(session_factory=None, console_level: int | None = None):
     if console_level is None:
         console_level = _get_console_level()
 
+    # Debug: show what level we're using
+    level_name = logging.getLevelName(console_level)
+    print(f"[logging] Initializing with console level: {level_name} (LOG_LEVEL={os.getenv('LOG_LEVEL', 'not set')})", file=sys.stderr)
+
+    # Clear any existing handlers on root logger (from basicConfig or other sources)
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        print(f"[logging] Clearing {len(root_logger.handlers)} existing handlers", file=sys.stderr)
+        root_logger.handlers.clear()
+
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)

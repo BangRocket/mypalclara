@@ -13,6 +13,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -42,6 +43,7 @@ class Session(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
     user_id = Column(String, nullable=False)
+    context_id = Column(String, nullable=False, default="default")  # Platform context identifier
     title = Column(String, nullable=True)  # Thread title for UI
     archived = Column(String, default="false", nullable=False)  # "true" or "false"
     started_at = Column(DateTime, default=utcnow, nullable=False)
@@ -49,6 +51,11 @@ class Session(Base):
     previous_session_id = Column(String, nullable=True)
     context_snapshot = Column(Text, nullable=True)
     session_summary = Column(Text, nullable=True)  # LLM-generated summary
+
+    # Index for efficient session lookups by user_id + context_id + project_id
+    __table_args__ = (
+        Index('ix_session_user_context_project', 'user_id', 'context_id', 'project_id'),
+    )
 
     project = relationship("Project", back_populates="sessions")
     messages = relationship("Message", back_populates="session")

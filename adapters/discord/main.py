@@ -1,0 +1,186 @@
+"""Standalone Discord adapter for the Clara Gateway.
+
+This runs the Discord bot as a thin client that connects to the gateway
+for all message processing.
+
+Usage:
+    poetry run python -m adapters.discord
+
+Environment variables:
+    DISCORD_BOT_TOKEN - Discord bot token (required)
+    CLARA_GATEWAY_URL - Gateway WebSocket URL (default: ws://127.0.0.1:18789)
+    USE_GATEWAY - Must be "true" to use gateway mode
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+import signal
+import sys
+from pathlib import Path
+
+# Add parent to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import discord
+from discord.ext import commands as discord_commands
+
+from adapters.discord.gateway_client import DiscordGatewayClient
+from config.logging import get_logger, init_logging
+
+init_logging()
+logger = get_logger("adapters.discord")
+
+# Configuration
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
+
+# Intents for Discord
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+
+
+class GatewayDiscordBot(discord_commands.Bot):
+    """Discord bot that uses the gateway for processing."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            command_prefix="!",
+            intents=intents,
+            help_command=None,
+        )
+        self.gateway_client: DiscordGatewayClient | None = None
+        self._gateway_task: asyncio.Task | None = None
+
+    async def setup_hook(self) -> None:
+        """Called when the bot is ready to start."""
+        # Create gateway client
+        self.gateway_client = DiscordGatewayClient(
+            bot=self,
+            gateway_url=GATEWAY_URL,
+        )
+
+        # Start gateway connection in background
+        self._gateway_task = asyncio.create_task(self._run_gateway())
+
+    async def _run_gateway(self) -> None:
+        """Run the gateway client."""
+        try:
+            await self.gateway_client.start()
+        except Exception as e:
+            logger.exception(f"Gateway client error: {e}")
+
+    async def on_ready(self) -> None:
+        """Called when Discord connection is established."""
+        logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
+        logger.info(f"Gateway: {GATEWAY_URL}")
+        logger.info(f"Guilds: {len(self.guilds)}")
+
+    async def on_message(self, message: discord.Message) -> None:
+        """Handle incoming Discord messages."""
+        # Ignore own messages
+        if message.author == self.user:
+            return
+
+        # Check if mentioned or in DM
+        is_dm = message.guild is None
+        is_mention = self.user in message.mentions if self.user else False
+
+        if not is_dm and not is_mention:
+            return  # Only respond to DMs or mentions
+
+        # Check if gateway is connected
+        if not self.gateway_client or not self.gateway_client.is_connected:
+            logger.warning("Gateway not connected, skipping message")
+            return
+
+        # Detect tier override from message
+        tier_override = self._detect_tier(message.content)
+
+        # Send to gateway
+        try:
+            await self.gateway_client.send_discord_message(
+                message=message,
+                tier_override=tier_override,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to send to gateway: {e}")
+            await message.reply(
+                "Sorry, I'm having trouble connecting right now.",
+                mention_author=False,
+            )
+
+    def _detect_tier(self, content: str) -> str | None:
+        """Detect tier override from message prefix."""
+        content_lower = content.lower().strip()
+
+        tier_prefixes = {
+            "!high": "high",
+            "!opus": "high",
+            "!mid": "mid",
+            "!sonnet": "mid",
+            "!low": "low",
+            "!haiku": "low",
+            "!fast": "low",
+        }
+
+        for prefix, tier in tier_prefixes.items():
+            if content_lower.startswith(prefix):
+                return tier
+
+        return None
+
+    async def close(self) -> None:
+        """Clean shutdown."""
+        if self.gateway_client:
+            await self.gateway_client.disconnect()
+        if self._gateway_task:
+            self._gateway_task.cancel()
+        await super().close()
+
+
+async def main() -> None:
+    """Run the gateway-connected Discord bot."""
+    if not BOT_TOKEN:
+        logger.error("DISCORD_BOT_TOKEN not set")
+        sys.exit(1)
+
+    bot = GatewayDiscordBot()
+
+    # Set up signal handlers
+    loop = asyncio.get_event_loop()
+    stop_event = asyncio.Event()
+
+    def signal_handler():
+        logger.info("Received shutdown signal")
+        stop_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
+
+    # Start bot
+    try:
+        async with bot:
+            await asyncio.gather(
+                bot.start(BOT_TOKEN),
+                stop_event.wait(),
+            )
+    except Exception as e:
+        logger.exception(f"Bot error: {e}")
+    finally:
+        if not bot.is_closed():
+            await bot.close()
+
+    logger.info("Bot stopped")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

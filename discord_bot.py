@@ -27,6 +27,10 @@ Environment variables:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from adapters.discord.adapter import DiscordAdapter
 
 # Load .env BEFORE other imports that read env vars at module level
 from dotenv import load_dotenv
@@ -76,8 +80,12 @@ from clara_core.emotional_context import (
 # Import MCP plugin system
 from clara_core.mcp import get_mcp_manager, init_mcp, shutdown_mcp
 
-# Import Discord slash commands
+# Import Discord slash commands and utilities
 from clara_core.discord import setup as setup_slash_commands
+from clara_core.discord.utils import (
+    format_user_timezone_timestamp,
+    resize_image_for_vision as _resize_image_impl,
+)
 from clara_core.topic_recurrence import extract_and_store_topics
 from config.logging import (
     get_discord_handler,
@@ -91,7 +99,6 @@ from db.channel_config import (
     CLARA_ADMIN_ROLE,
     get_channel_mode,
     get_guild_channels,
-    is_ors_enabled,
     set_channel_mode,
     should_respond_to_message,
 )
@@ -103,15 +110,6 @@ from email_monitor import (
 from email_service.monitor import (
     email_monitor_loop,
     is_email_monitoring_enabled,
-)
-from organic_response_system import (
-    is_enabled as proactive_enabled,
-)
-from organic_response_system import (
-    on_user_message as proactive_on_user_message,
-)
-from organic_response_system import (
-    ors_main_loop as proactive_check_loop,
 )
 from sandbox.manager import get_sandbox_manager
 from storage.local_files import get_file_manager
@@ -137,6 +135,11 @@ CHANNEL_HISTORY_LIMIT = int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50"))
 
 # Log channel configuration - mirror console logs to this Discord channel
 LOG_CHANNEL_ID = os.getenv("DISCORD_LOG_CHANNEL_ID", "")
+
+# Feature flag for Discord adapter (Strangler Fig pattern)
+# When true, messages route through DiscordAdapter
+# When false (default), use existing direct code path
+USE_DISCORD_ADAPTER = os.getenv("USE_DISCORD_ADAPTER", "false").lower() == "true"
 
 # Version (CalVer: YYYY.WW.N)
 def get_version() -> str:
@@ -218,6 +221,8 @@ MAX_IMAGES_PER_REQUEST = int(os.getenv("DISCORD_MAX_IMAGES_PER_REQUEST", "1"))
 def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> tuple[bytes, str]:
     """Resize an image to fit within max_dimension while preserving aspect ratio.
 
+    Delegates to clara_core.discord.utils.resize_image_for_vision.
+
     Args:
         image_bytes: Raw image bytes
         max_dimension: Maximum pixels on longest edge (default: 1568)
@@ -225,48 +230,7 @@ def resize_image_for_vision(image_bytes: bytes, max_dimension: int = MAX_IMAGE_D
     Returns:
         Tuple of (resized image bytes in JPEG format, media_type)
     """
-    with Image.open(io.BytesIO(image_bytes)) as img:
-        # Get original dimensions
-        orig_width, orig_height = img.size
-
-        # Check if resize is needed
-        if orig_width <= max_dimension and orig_height <= max_dimension:
-            # Image is already small enough, but still convert to JPEG for consistency
-            # (unless it's already a small PNG/GIF that should stay as-is)
-            if len(image_bytes) < 500_000:  # < 500KB, keep original format
-                # Determine format from image
-                img_format = img.format or "PNG"
-                media_type = f"image/{img_format.lower()}"
-                if media_type == "image/jpeg":
-                    media_type = "image/jpeg"
-                return image_bytes, media_type
-
-        # Calculate new dimensions maintaining aspect ratio
-        if orig_width > orig_height:
-            new_width = max_dimension
-            new_height = int(orig_height * (max_dimension / orig_width))
-        else:
-            new_height = max_dimension
-            new_width = int(orig_width * (max_dimension / orig_height))
-
-        # Convert to RGB if necessary (for JPEG output)
-        if img.mode in ("RGBA", "P", "LA"):
-            # Create white background for transparency
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            if img.mode == "P":
-                img = img.convert("RGBA")
-            background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-            img = background
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-
-        # Resize with high-quality resampling
-        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-        # Save to bytes as JPEG with good quality
-        output = io.BytesIO()
-        resized.save(output, format="JPEG", quality=85, optimize=True)
-        return output.getvalue(), "image/jpeg"
+    return _resize_image_impl(image_bytes, max_dimension)
 
 
 ALLOWED_CHANNELS = [ch.strip() for ch in os.getenv("DISCORD_ALLOWED_CHANNELS", "").split(",") if ch.strip()]
@@ -363,17 +327,11 @@ def _get_current_time() -> str:
 def _format_discord_timestamp(dt: datetime) -> str:
     """Format a Discord message timestamp in the user's timezone.
 
+    Delegates to clara_core.discord.utils.format_user_timezone_timestamp.
+
     Returns format like "10:43 PM EST".
     """
-    from zoneinfo import ZoneInfo
-
-    try:
-        tz = ZoneInfo(DEFAULT_TIMEZONE)
-        # Discord timestamps are always UTC-aware
-        local_dt = dt.astimezone(tz)
-        return local_dt.strftime("%-I:%M %p %Z")
-    except Exception:
-        return dt.strftime("%H:%M UTC")
+    return format_user_timezone_timestamp(dt, DEFAULT_TIMEZONE)
 
 
 async def init_modular_tools() -> None:
@@ -1107,6 +1065,49 @@ class BotMonitor:
 monitor = BotMonitor()
 
 
+def _create_discord_memory_callback():
+    """Create callback that sends memory events as Discord embeds.
+
+    This callback is passed to MemoryManager.initialize() and called when
+    memories are retrieved or extracted. It queues Discord embeds for display.
+    """
+    def on_memory_event(event_type: str, data: dict):
+        discord_handler = get_discord_handler()
+        if not discord_handler:
+            return
+
+        if event_type == "memory_retrieved":
+            fields = [
+                {"name": "Key", "value": str(data["key_count"]), "inline": True},
+                {"name": "User", "value": str(data["user_count"]), "inline": True},
+                {"name": "Project", "value": str(data["proj_count"]), "inline": True},
+            ]
+            samples = data.get("samples", [])
+            description = "\n".join(f"- {s}" for s in samples) if samples else None
+
+            discord_handler.queue_embed(
+                title=f"Memory Retrieval ({data['total']} total)",
+                description=description,
+                fields=fields,
+                footer=f"user: {data['user_id'][:8]}",
+                tag="mem0",
+            )
+
+        elif event_type == "memory_extracted":
+            samples = data.get("samples", [])
+            description = "\n".join(f"- {s}" for s in samples) if samples else None
+
+            discord_handler.queue_embed(
+                title=f"Memory Extracted ({data['count']} new)",
+                description=description,
+                fields=[{"name": "Source", "value": data["source_type"], "inline": True}],
+                footer=f"user: {data['user_id'][:8]}",
+                tag="mem0",
+            )
+
+    return on_memory_event
+
+
 class ClaraDiscordBot(discord_commands.Bot):
     """Discord bot that integrates Clara's memory-enhanced AI."""
 
@@ -1140,8 +1141,17 @@ class ClaraDiscordBot(discord_commands.Bot):
         self._first_ready = True
 
         # Initialize Clara's unified platform (DB, LLM, MemoryManager, ToolRegistry)
-        init_platform()
+        # Pass Discord-specific memory callback for embed notifications
+        init_platform(on_memory_event=_create_discord_memory_callback())
         self.mm = MemoryManager.get_instance()
+
+        # Discord adapter for platform-agnostic message handling (Strangler Fig pattern)
+        self._adapter: DiscordAdapter | None = None
+        if USE_DISCORD_ADAPTER:
+            from adapters.discord import DiscordAdapter
+
+            self._adapter = DiscordAdapter(self)
+            logger.info("Discord adapter enabled via USE_DISCORD_ADAPTER")
 
     def _sync_llm(self, messages: list[dict]) -> str:
         """Synchronous LLM call for MemoryManager."""
@@ -1358,7 +1368,7 @@ You have persistent memory via mem0. Use memories naturally without announcing "
             registry = get_registry()
             tool_prompts = registry.get_system_prompts(
                 platform="discord",
-                allowed_modules=["mcp_management", "ors_notes"],
+                allowed_modules=["mcp_management"],
             )
             if tool_prompts:
                 static_parts.append(tool_prompts)
@@ -1626,17 +1636,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
             self.loop.create_task(email_monitor_loop(self))
             logger.info("User email monitoring service started")
 
-        # Start proactive conversation engine (if enabled)
-        if proactive_enabled():
-            sync_llm = make_llm(tier="mid")  # Use mid tier for proactive decisions
-
-            # Wrap sync LLM in async for ORS
-            async def async_llm(messages: list[dict[str, str]]) -> str:
-                return sync_llm(messages)
-
-            self.loop.create_task(proactive_check_loop(self, async_llm))
-            logger.info("Proactive conversation engine started")
-
     async def on_guild_join(self, guild):
         """Called when bot joins a guild."""
         monitor.update_guilds(self.guilds)
@@ -1826,7 +1825,19 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 message.reference and message.reference.resolved and message.reference.resolved.author == self.user
             )
 
-        # Try to acquire channel for processing (queue if busy)
+        # Route through adapter if enabled (Strangler Fig pattern)
+        # NOTE: Adapter currently bypasses queue for simplicity.
+        # Full queue integration through adapter is Phase 3+ work.
+        if self._adapter and USE_DISCORD_ADAPTER:
+            # Convert to platform-agnostic message
+            platform_msg = self._adapter.message_to_platform(message)
+            # Keep original Discord message for delegation
+            platform_msg.metadata["_discord_message"] = message
+            # Delegate to adapter (which delegates back to _handle_message)
+            await self._adapter.handle_message(platform_msg)
+            return
+
+        # Legacy path: direct processing (unchanged)
         await self._process_with_queue(message, is_dm, is_mention)
 
     async def _process_with_queue(self, message: DiscordMessage, is_dm: bool, is_mention: bool = False):
@@ -2057,16 +2068,6 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 project_id = await self._ensure_project(user_id)
                 logger.debug(f" User: {user_id}, Project: {project_id}")
 
-                # Track interaction for proactive engine
-                proactive_channel_id = (
-                    f"discord-dm-{message.author.id}" if is_dm else f"discord-channel-{message.channel.id}"
-                )
-                await proactive_on_user_message(
-                    user_id=user_id,
-                    channel_id=proactive_channel_id,
-                    message_preview=message.content[:100] if message.content else None,
-                )
-
                 # Get the user's message content (or use auto-continue content, or batched)
                 tier_override = None
                 image_attachments = []  # Images for vision support
@@ -2164,7 +2165,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                 # Fetch memories (DMs prioritize personal, servers prioritize project)
                 # Run in dedicated executor to avoid blocking the event loop
                 loop = asyncio.get_event_loop()
-                user_mems, proj_mems = await loop.run_in_executor(
+                user_mems, proj_mems, graph_relations = await loop.run_in_executor(
                     BLOCKING_IO_EXECUTOR,
                     lambda: self.mm.fetch_mem0_context(
                         user_id,
@@ -2205,6 +2206,7 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
                     user_content,
                     emotional_context=emotional_context,
                     recurring_topics=recurring_topics,
+                    graph_relations=graph_relations,
                 )
 
                 # Inject Discord-specific context after the base system prompt
@@ -2523,43 +2525,34 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         For channels: One shared thread per channel (all users share context)
         For DMs: One thread per user (private conversations)
 
+        Uses MemoryManager.get_or_create_session with context_id for
+        platform-agnostic session isolation.
+
         Returns:
             tuple: (thread, thread_owner_id)
         """
         db = SessionLocal()
         try:
             if is_dm:
-                # DMs: per-user thread
+                # DMs: per-user thread with user-specific context
                 thread_owner = f"discord-dm-{message.author.id}"
+                context_id = f"dm-{message.author.id}"
                 thread_title = f"DM with {message.author.display_name}"
             else:
                 # Channels: shared thread for the channel
                 thread_owner = f"discord-channel-{message.channel.id}"
+                context_id = f"channel-{message.channel.id}"
                 guild_name = message.guild.name if message.guild else "Server"
                 channel_name = getattr(message.channel, "name", "channel")
                 thread_title = f"{guild_name} #{channel_name}"
 
-            # Find existing active thread
-            thread = (
-                db.query(Session)
-                .filter_by(user_id=thread_owner, title=thread_title)
-                .filter(Session.archived != "true")
-                .order_by(Session.last_activity_at.desc())
-                .first()
+            # Use MemoryManager.get_or_create_session with context_id
+            thread = self.mm.get_or_create_session(
+                db=db,
+                user_id=thread_owner,
+                context_id=context_id,
+                title=thread_title,
             )
-
-            if not thread:
-                project_id = await self._ensure_project(thread_owner)
-                thread = Session(
-                    project_id=project_id,
-                    user_id=thread_owner,
-                    title=thread_title,
-                    archived="false",
-                )
-                db.add(thread)
-                db.commit()
-                db.refresh(thread)
-                logger.debug(f" Created thread: {thread_title}")
 
             return thread, thread_owner
         finally:

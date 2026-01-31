@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
+
+logger = logging.getLogger("db")
 
 # Support both SQLite (local dev) and PostgreSQL (production)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -24,14 +27,14 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres"):
         pool_pre_ping=True,  # Verify connections before use
         echo=False,
     )
-    print(f"[db] Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
+    logger.info(f"Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
 else:
     # Fallback to SQLite for local development
     DATA_DIR = Path(os.getenv("DATA_DIR", "."))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE_URL = f"sqlite:///{DATA_DIR}/assistant.db"
     engine = create_engine(DATABASE_URL, echo=False, future=True)
-    print(f"[db] Using SQLite: {DATABASE_URL}")
+    logger.info(f"Using SQLite: {DATABASE_URL}")
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -41,9 +44,61 @@ def get_session():
     return SessionLocal()
 
 
-def init_db() -> None:
-    from db.models import Base
-    Base.metadata.create_all(bind=engine)
+def init_db(run_migrations: bool = True) -> None:
+    """Initialize the database.
+
+    Args:
+        run_migrations: If True, run Alembic migrations. If False, use create_all
+                       (for testing or when migrations aren't available).
+    """
+    if run_migrations:
+        try:
+            run_alembic_migrations()
+        except Exception as e:
+            logger.warning(f"Migration failed, falling back to create_all: {e}")
+            from db.models import Base
+            Base.metadata.create_all(bind=engine)
+    else:
+        from db.models import Base
+        Base.metadata.create_all(bind=engine)
+
+
+def run_alembic_migrations() -> None:
+    """Run pending Alembic migrations."""
+    from alembic import command
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from alembic.runtime.migration import MigrationContext
+
+    # Find alembic.ini
+    project_root = Path(__file__).parent.parent
+    alembic_ini = project_root / "alembic.ini"
+
+    if not alembic_ini.exists():
+        logger.warning("alembic.ini not found, skipping migrations")
+        from db.models import Base
+        Base.metadata.create_all(bind=engine)
+        return
+
+    # Configure Alembic
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("sqlalchemy.url", str(DATABASE_URL))
+
+    # Check current state
+    with engine.connect() as conn:
+        context = MigrationContext.configure(conn)
+        current_rev = context.get_current_revision()
+
+    script = ScriptDirectory.from_config(cfg)
+    head_rev = script.get_current_head()
+
+    if current_rev == head_rev:
+        logger.debug(f"Database up to date at {current_rev or 'base'}")
+        return
+
+    logger.info(f"Running migrations: {current_rev or 'base'} -> {head_rev}")
+    command.upgrade(cfg, "head")
+    logger.info(f"Migrations complete")
 
 
 def get_engine():
