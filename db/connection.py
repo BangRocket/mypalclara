@@ -51,16 +51,17 @@ def init_db(run_migrations: bool = True) -> None:
         run_migrations: If True, run Alembic migrations. If False, use create_all
                        (for testing or when migrations aren't available).
     """
+    from db.models import Base
+
     if run_migrations:
         try:
             run_alembic_migrations()
         except Exception as e:
-            logger.warning(f"Migration failed, falling back to create_all: {e}")
-            from db.models import Base
-            Base.metadata.create_all(bind=engine)
-    else:
-        from db.models import Base
-        Base.metadata.create_all(bind=engine)
+            logger.warning(f"Migration failed: {e}")
+
+    # Always run create_all to ensure new tables exist
+    # (create_all only creates tables that don't exist, it's safe to call after migrations)
+    Base.metadata.create_all(bind=engine)
 
 
 def run_alembic_migrations() -> None:
@@ -76,8 +77,6 @@ def run_alembic_migrations() -> None:
 
     if not alembic_ini.exists():
         logger.warning("alembic.ini not found, skipping migrations")
-        from db.models import Base
-        Base.metadata.create_all(bind=engine)
         return
 
     # Configure Alembic
