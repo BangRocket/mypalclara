@@ -19,27 +19,17 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from clara_core.cognition.types import CognitionEvent, EvaluationResult, EventType
+from clara_core.cognition.types import (
+    CognitionEvent,
+    EvaluationResult,
+    EventType,
+    QuickContext,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class QuickContext:
-    """Minimal context for fast evaluation decisions.
-
-    Extracted without full memory fetch to enable quick pattern matching.
-    """
-
-    recent_message_count: int = 0  # Messages in current session
-    is_dm: bool = False  # Direct message (always respond)
-    has_mention: bool = False  # Bot was mentioned
-    channel_activity_level: str = "normal"  # "quiet", "normal", "active"
-    is_reply_chain: bool = False  # Part of ongoing conversation
-    last_response_time: float | None = None  # Unix timestamp
 
 
 @dataclass

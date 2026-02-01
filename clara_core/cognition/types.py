@@ -71,6 +71,23 @@ class CognitionEvent:
 
 
 @dataclass
+class QuickContext:
+    """Minimal context for fast evaluation decisions.
+
+    Extracted without full memory fetch to enable quick pattern matching.
+    Used by the Evaluator to make fast-path decisions without expensive
+    context building.
+    """
+
+    recent_message_count: int = 0  # Messages in current session
+    is_dm: bool = False  # Direct message (always respond)
+    has_mention: bool = False  # Bot was mentioned
+    channel_activity_level: str = "normal"  # "quiet", "normal", "active"
+    is_reply_chain: bool = False  # Part of ongoing conversation
+    last_response_time: float | None = None  # Unix timestamp of last bot response
+
+
+@dataclass
 class EvaluationResult:
     """Result of evaluating a cognition event.
 

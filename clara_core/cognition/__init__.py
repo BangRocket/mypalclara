@@ -33,21 +33,35 @@ from clara_core.cognition.types import (
     EvaluationResult,
     EventMetadata,
     EventType,
+    QuickContext,
     RejectedEvent,
     RouteDecision,
     TextChunkEvent,
     ToolCallEvent,
 )
-from clara_core.cognition.router import CognitionRouter
+
+# Import router conditionally to avoid circular import during development
+try:
+    from clara_core.cognition.router import CognitionRouter
+except ImportError:
+    CognitionRouter = None  # type: ignore
+
+# Import evaluator
+from clara_core.cognition.evaluator import Evaluator, EvaluatorConfig, create_evaluator
 
 __all__ = [
     # Core types
     "CognitionEvent",
     "EventType",
     "EventMetadata",
+    "QuickContext",
     # Router
     "CognitionRouter",
     "RouteDecision",
+    # Evaluator
+    "Evaluator",
+    "EvaluatorConfig",
+    "create_evaluator",
     # Pipeline types
     "EvaluationResult",
     "ContextBundle",
