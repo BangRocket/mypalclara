@@ -1,6 +1,22 @@
 """
 Discord bot for Clara - Multi-user AI assistant with memory.
 
+DEPRECATION NOTICE:
+    This standalone Discord bot is deprecated in favor of the gateway adapter pattern.
+    The gateway provides:
+    - Rate-limited tool execution (10 per-request, 20 per-minute)
+    - Unified cognition pipeline for all platforms
+    - Centralized context and memory management
+    - Better observability and control
+
+    To migrate to the gateway pattern:
+    1. Run the Clara gateway: `poetry run python -m gateway`
+    2. Set DISCORD_USE_GATEWAY=true
+    3. The Discord adapter will route messages through the gateway
+
+    This bot remains functional during the transition period but will be
+    removed in a future release once gateway migration is complete.
+
 Inspired by llmcord's clean design, but integrates directly with Clara's
 MemoryManager for full mem0 memory support.
 
@@ -16,6 +32,7 @@ Options:
 Environment variables:
     DISCORD_BOT_TOKEN - Discord bot token (required)
     DISCORD_CLIENT_ID - Discord client ID (for invite link)
+    DISCORD_USE_GATEWAY - Set to 'true' to route messages through gateway (recommended)
     DISCORD_MAX_MESSAGES - Max messages in conversation chain (default: 25)
     DISCORD_MAX_CHARS - Max chars per message content (default: 100000)
     DISCORD_MAX_TOOL_RESULT_CHARS - Max chars per tool result (default: 50000)
@@ -140,6 +157,11 @@ LOG_CHANNEL_ID = os.getenv("DISCORD_LOG_CHANNEL_ID", "")
 # When true, messages route through DiscordAdapter
 # When false (default), use existing direct code path
 USE_DISCORD_ADAPTER = os.getenv("USE_DISCORD_ADAPTER", "false").lower() == "true"
+
+# Feature flag for gateway integration
+# When true, messages route through the Clara gateway for cognition pipeline processing
+# This provides rate-limited tool execution and unified message handling
+DISCORD_USE_GATEWAY = os.getenv("DISCORD_USE_GATEWAY", "false").lower() in ("true", "1", "yes")
 
 # Version (CalVer: YYYY.WW.N)
 def get_version() -> str:
@@ -1587,6 +1609,16 @@ Note: Messages prefixed with [Username] are from other users. Address people by 
         if CLIENT_ID:
             invite = f"https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=274877991936&scope=bot"
             logger.info(f"Invite URL: {invite}")
+
+        # Deprecation warning for standalone bot mode
+        if not DISCORD_USE_GATEWAY:
+            logger.warning(
+                "DEPRECATION: Running in standalone mode (legacy). "
+                "Set DISCORD_USE_GATEWAY=true to use the cognition pipeline. "
+                "The gateway provides rate-limited tool execution and unified processing."
+            )
+        else:
+            logger.info("Gateway mode enabled - using cognition pipeline for message processing")
 
         # Start connection health monitor (only once)
         if self._first_ready:
