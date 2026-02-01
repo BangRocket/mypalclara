@@ -225,7 +225,7 @@ class Contextualizer:
         Returns:
             SessionInfo with session details
         """
-        from db import get_db
+        from db import SessionLocal
 
         # Build context_id for session isolation
         if is_dm:
@@ -234,7 +234,7 @@ class Contextualizer:
             context_id = f"channel-{channel_id}"
 
         def _get_or_create():
-            with get_db() as db:
+            with SessionLocal() as db:
                 session = mm.get_or_create_session(
                     db=db,
                     user_id=user_id,
