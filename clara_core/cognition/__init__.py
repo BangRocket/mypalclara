@@ -50,6 +50,21 @@ except ImportError:
 # Import evaluator
 from clara_core.cognition.evaluator import Evaluator, EvaluatorConfig, create_evaluator
 
+# Import contextualizer
+from clara_core.cognition.contextualize import (
+    Contextualizer,
+    ContextualizerConfig,
+    SessionInfo,
+    create_contextualizer,
+)
+
+# Import responder
+from clara_core.cognition.respond import (
+    Responder,
+    ResponderConfig,
+    create_responder,
+)
+
 __all__ = [
     # Core types
     "CognitionEvent",
@@ -63,6 +78,15 @@ __all__ = [
     "Evaluator",
     "EvaluatorConfig",
     "create_evaluator",
+    # Contextualizer
+    "Contextualizer",
+    "ContextualizerConfig",
+    "SessionInfo",
+    "create_contextualizer",
+    # Responder
+    "Responder",
+    "ResponderConfig",
+    "create_responder",
     # Pipeline types
     "EvaluationResult",
     "ContextBundle",
