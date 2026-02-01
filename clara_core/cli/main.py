@@ -15,8 +15,23 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
+
+# Load environment variables from .env files
+# Priority: .env.local > .env (local overrides shared)
+_env_loaded = False
+for env_file in [".env.local", ".env"]:
+    env_path = Path(env_file)
+    if env_path.exists():
+        load_dotenv(env_path, override=not _env_loaded)
+        _env_loaded = True
+
+# Also check ~/.clara/.env for user-level config
+clara_env = Path.home() / ".clara" / ".env"
+if clara_env.exists():
+    load_dotenv(clara_env, override=False)
 
 # Create the main app
 # Note: rich_markup_mode disabled due to typer/click/Python 3.13 compatibility bug
