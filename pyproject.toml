@@ -5,7 +5,13 @@ description = "MyPalClara - AI assistant with session management and memory"
 authors = ["Joshua Heidorn <heidornj@icloud.com>"]
 license = "PolyForm-Noncommercial-1.0.0"
 readme = "README.md"
-package-mode = false
+packages = [
+    { include = "clara_core" },
+    { include = "config" },
+    { include = "gateway" },
+    { include = "adapters" },
+    { include = "tools" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11,<3.14"
@@ -72,9 +78,17 @@ alembic = "^1.18.1"
 # CLI interface
 prompt_toolkit = "^3.0.52"
 rich = "^14.0.0"
+typer = "^0.9.0"  # CLI framework
+click = ">=8.1.0,<8.2.0"  # Pin to 8.1.x to avoid make_metavar() signature change
 
 # Gateway
 websockets = "^15.0"  # WebSocket server for gateway architecture
+
+# Config file support
+pyyaml = "^6.0"  # YAML config files
+
+[tool.poetry.scripts]
+clara = "clara_core.cli.main:run"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

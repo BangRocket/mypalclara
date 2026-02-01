@@ -19,12 +19,11 @@ from rich.console import Console
 from rich.panel import Panel
 
 # Create the main app
+# Note: rich_markup_mode disabled due to typer/click/Python 3.13 compatibility bug
 app = typer.Typer(
     name="clara",
     help="Clara AI Assistant - Personal AI gateway and assistant",
     no_args_is_help=True,
-    rich_markup_mode="rich",
-    pretty_exceptions_enable=True,
 )
 
 # Console for rich output
