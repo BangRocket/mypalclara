@@ -188,9 +188,10 @@ class RouteDecision:
 class TextChunkEvent:
     """A chunk of text being streamed from the LLM."""
 
-    text: str
+    text: str  # This chunk's text
     is_final: bool = False  # True for the last chunk
     request_id: str = ""
+    accumulated: str = ""  # Full text accumulated so far (optional)
 
 
 @dataclass
@@ -206,6 +207,16 @@ class ToolCallEvent:
     executed: bool = False
     result: Any = None
     error: str | None = None
+
+
+@dataclass
+class ResponseCompleteEvent:
+    """Event indicating response generation is complete."""
+
+    full_text: str  # Complete response text
+    tool_count: int = 0  # Number of tool calls made
+    request_id: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)  # Additional metadata
 
 
 @dataclass

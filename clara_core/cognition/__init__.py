@@ -35,6 +35,7 @@ from clara_core.cognition.types import (
     EventType,
     QuickContext,
     RejectedEvent,
+    ResponseCompleteEvent,
     RouteDecision,
     TextChunkEvent,
     ToolCallEvent,
@@ -68,5 +69,6 @@ __all__ = [
     # Stream events
     "TextChunkEvent",
     "ToolCallEvent",
+    "ResponseCompleteEvent",
     "RejectedEvent",
 ]

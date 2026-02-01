@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 from clara_core.cognition.types import (
     ContextBundle,
     EvaluationResult,
+    ResponseCompleteEvent,
     TextChunkEvent,
     ToolCallEvent,
 )
@@ -60,16 +61,6 @@ class ResponderConfig:
     # Chunk settings for simulated streaming
     chunk_size: int = 50  # Characters per chunk for simulated streaming
     chunk_delay: float = 0.01  # Delay between chunks (seconds)
-
-
-@dataclass
-class ResponseCompleteEvent:
-    """Event indicating response generation is complete."""
-
-    full_text: str
-    tool_count: int = 0
-    request_id: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class Responder:
