@@ -1148,3 +1148,152 @@ Your description (no quotes, no period at end):"""
     except Exception:
         # Silently fail - description is optional
         return None
+
+
+# ============== Async Wrapper Functions ==============
+# These provide async interfaces for the CLI and other async code
+
+
+async def get_llm_response(
+    messages: list[dict[str, str]],
+    tier: ModelTier | None = None,
+) -> str:
+    """Async wrapper for getting an LLM response.
+
+    Args:
+        messages: List of message dicts with role/content
+        tier: Optional model tier ("high", "mid", "low")
+
+    Returns:
+        The assistant's response text
+    """
+    import asyncio
+
+    llm = make_llm(tier)
+
+    # Run sync LLM call in thread pool
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, llm, messages)
+
+
+async def get_quick_llm_response(
+    messages: list[dict[str, str]],
+    max_tokens: int = 150,
+) -> str:
+    """Async wrapper for quick, low-tier LLM calls.
+
+    Designed for fast triage/evaluation tasks like:
+    - Message complexity assessment
+    - Intent classification
+    - Quick routing decisions
+
+    Always uses the "low" tier (Haiku-class) for speed and cost efficiency.
+
+    Args:
+        messages: List of message dicts with role/content
+        max_tokens: Maximum tokens in response (default 150 for quick decisions)
+
+    Returns:
+        The assistant's response text
+    """
+    import asyncio
+
+    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    model = get_model_for_tier("low", provider)
+
+    # Build the appropriate client call based on provider
+    if provider == "anthropic":
+        client = _get_anthropic_client()
+
+        def call_llm():
+            # Extract system messages
+            system_parts = []
+            filtered = []
+            for m in messages:
+                if m.get("role") == "system":
+                    system_parts.append(m.get("content", ""))
+                else:
+                    filtered.append(m)
+            system = "\n\n".join(system_parts)
+
+            kwargs: dict = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "messages": filtered,
+            }
+            if system:
+                kwargs["system"] = system
+
+            resp = client.messages.create(**kwargs)
+            return resp.content[0].text if resp.content else ""
+
+    else:
+        # OpenAI-compatible providers
+        if provider == "nanogpt":
+            client = _get_nanogpt_client()
+        elif provider == "openai":
+            client = _get_custom_openai_client()
+        else:  # openrouter
+            client = _get_openrouter_client()
+
+        def call_llm():
+            resp = client.chat.completions.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+            if isinstance(resp, str):
+                return resp
+            return resp.choices[0].message.content or ""
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, call_llm)
+
+
+async def get_streaming_llm_response(
+    messages: list[dict[str, str]],
+    tier: ModelTier | None = None,
+):
+    """Async generator for streaming LLM responses.
+
+    Args:
+        messages: List of message dicts with role/content
+        tier: Optional model tier ("high", "mid", "low")
+
+    Yields:
+        Text chunks as they arrive
+    """
+    import asyncio
+    import concurrent.futures
+
+    llm = make_llm_streaming(tier)
+    loop = asyncio.get_event_loop()
+
+    # Create a queue to pass chunks from sync generator to async
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def run_generator():
+        """Run the sync generator and put chunks in queue."""
+        try:
+            for chunk in llm(messages):
+                # Schedule putting the chunk in the queue
+                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+        finally:
+            # Signal completion
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    # Start the generator in a thread
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = loop.run_in_executor(executor, run_generator)
+
+    try:
+        # Yield chunks as they arrive
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk
+    finally:
+        # Wait for the thread to complete
+        await future
+        executor.shutdown(wait=False)
