@@ -18,6 +18,30 @@ The caller is responsible for:
 
 This design enables rate limiting at the pipeline level (10 per-request,
 20 per-minute) to prevent runaway tool loops.
+
+Tool Result Re-entry Pattern:
+    When process() yields a ToolCallEvent, the caller should:
+
+    1. Execute the tool externally (outside the pipeline)
+    2. Create a new CognitionEvent with the result:
+       ```python
+       tool_result_event = CognitionEvent(
+           type=EventType.TOOL_RESULT,
+           payload={
+               "result": tool_result,
+               "tool_name": tool_call_event.tool_name,
+               "call_id": tool_call_event.call_id,
+           },
+           metadata=EventMetadata(
+               request_id=original_event.request_id,  # IMPORTANT: Same request_id
+               user_id=original_event.metadata.user_id,
+               channel_id=original_event.metadata.channel_id,
+           ),
+       )
+       ```
+    3. Re-enter the pipeline: `async for event in pipeline.process(tool_result_event, tools)`
+    4. The router will rate-limit tool results (10 per-request, 20 per-minute)
+    5. If rate-limited, a RejectedEvent is yielded instead of continuing
 """
 
 from __future__ import annotations
