@@ -115,6 +115,15 @@ class GatewayServer:
             await self._server.wait_closed()
             logger.info("Gateway server stopped")
 
+    async def serve_forever(self) -> None:
+        """Run the server until stopped.
+
+        This waits indefinitely, allowing the WebSocket server to handle
+        connections in the background. Use Ctrl+C or call stop() to exit.
+        """
+        if self._server:
+            await self._server.serve_forever()
+
     async def _handle_connection(
         self,
         websocket: WebSocketServerProtocol,

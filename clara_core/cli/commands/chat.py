@@ -1,6 +1,10 @@
 """Chat command implementation.
 
 Provides interactive chat with Clara via the CLI.
+
+Features:
+- Gateway mode: Connects to running gateway for full features (tools, MCP, etc.)
+- Direct mode: Falls back to direct LLM with mem0 memory integration
 """
 
 from __future__ import annotations
@@ -8,7 +12,8 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 from rich.console import Console
 from rich.live import Live
@@ -16,7 +21,15 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+if TYPE_CHECKING:
+    pass
+
 console = Console()
+
+# Gateway connection settings
+DEFAULT_GATEWAY_HOST = "127.0.0.1"
+DEFAULT_GATEWAY_PORT = 18789
+GATEWAY_CONNECT_TIMEOUT = 2.0  # seconds
 
 
 def run_chat(
@@ -54,10 +67,15 @@ def _send_single_message(message: str, agent: str, tier: str) -> None:
 
 def _run_interactive_chat(agent: str, tier: str) -> None:
     """Run interactive chat session."""
+    # Check gateway availability
+    gateway_available = asyncio.run(_check_gateway_available())
+    mode = "[green]gateway[/green]" if gateway_available else "[yellow]direct+mem0[/yellow]"
+
     console.print(Panel(
         f"[bold blue]Clara Chat[/bold blue]\n\n"
         f"Agent: [green]{agent}[/green]\n"
-        f"Tier: [green]{tier}[/green]\n\n"
+        f"Tier: [green]{tier}[/green]\n"
+        f"Mode: {mode}\n\n"
         f"Type [bold]quit[/bold] or [bold]exit[/bold] to end the session.\n"
         f"Type [bold]/tier <level>[/bold] to change tier.\n"
         f"Type [bold]/agent <name>[/bold] to change agent.",
@@ -155,14 +173,48 @@ def _run_interactive_chat(agent: str, tier: str) -> None:
             break
 
 
+async def _check_gateway_available() -> bool:
+    """Check if the gateway is running and accepting connections."""
+    gateway_url = _get_gateway_url()
+    if not gateway_url:
+        return False
+
+    try:
+        import websockets
+    except ImportError:
+        return False
+
+    try:
+        async with asyncio.timeout(GATEWAY_CONNECT_TIMEOUT):
+            async with websockets.connect(gateway_url):
+                return True
+    except Exception:
+        return False
+
+
+def _get_gateway_url() -> str | None:
+    """Get gateway WebSocket URL from config or environment."""
+    # Explicit URL takes priority
+    url = os.getenv("CLARA_GATEWAY_URL")
+    if url:
+        return url
+
+    # Try to build from host/port
+    host = os.getenv("CLARA_GATEWAY_HOST", DEFAULT_GATEWAY_HOST)
+    port = os.getenv("CLARA_GATEWAY_PORT", str(DEFAULT_GATEWAY_PORT))
+
+    return f"ws://{host}:{port}"
+
+
 async def _get_response(message: str, agent: str, tier: str) -> str:
     """Get a response from the LLM."""
     # Try to use the gateway if available
-    gateway_url = os.getenv("CLARA_GATEWAY_URL")
-    if gateway_url:
-        return await _get_gateway_response(message, agent, tier, gateway_url)
+    if await _check_gateway_available():
+        gateway_url = _get_gateway_url()
+        if gateway_url:
+            return await _get_gateway_response(message, agent, tier, gateway_url)
 
-    # Fall back to direct LLM call
+    # Fall back to direct LLM call with mem0
     return await _get_direct_response(message, agent, tier)
 
 
@@ -174,11 +226,12 @@ async def _get_streaming_response(
 ) -> str:
     """Get a streaming response from the LLM."""
     # Try to use the gateway if available
-    gateway_url = os.getenv("CLARA_GATEWAY_URL")
-    if gateway_url:
-        return await _get_gateway_streaming_response(message, agent, tier, history, gateway_url)
+    if await _check_gateway_available():
+        gateway_url = _get_gateway_url()
+        if gateway_url:
+            return await _get_gateway_streaming_response(message, agent, tier, history, gateway_url)
 
-    # Fall back to direct LLM call
+    # Fall back to direct LLM call with mem0
     return await _get_direct_streaming_response(message, agent, tier, history)
 
 
@@ -278,19 +331,22 @@ async def _get_gateway_streaming_response(
 
 
 async def _get_direct_response(message: str, agent: str, tier: str) -> str:
-    """Get response directly from LLM backend."""
+    """Get response directly from LLM backend with mem0 context."""
     try:
-        from llm_backends import get_llm_response
+        from clara_core.llm import get_llm_response
     except ImportError:
         return _get_fallback_response()
 
-    # Build simple prompt
+    # Build prompt with memory context
     system_prompt = _get_system_prompt(agent)
+    memory_context = _fetch_memory_context(message)
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": message},
-    ]
+    messages = [{"role": "system", "content": system_prompt}]
+
+    if memory_context:
+        messages.append({"role": "system", "content": memory_context})
+
+    messages.append({"role": "user", "content": message})
 
     return await get_llm_response(messages, tier=tier)
 
@@ -301,21 +357,25 @@ async def _get_direct_streaming_response(
     tier: str,
     history: list[dict],
 ) -> str:
-    """Get streaming response directly from LLM backend."""
+    """Get streaming response directly from LLM backend with mem0 context."""
     try:
-        from llm_backends import get_streaming_llm_response
+        from clara_core.llm import get_streaming_llm_response
     except ImportError:
         console.print(_get_fallback_response())
         return _get_fallback_response()
 
-    # Build messages
+    # Build prompt with memory context
     system_prompt = _get_system_prompt(agent)
+    memory_context = _fetch_memory_context(message)
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        *history,
-        {"role": "user", "content": message},
-    ]
+    messages = [{"role": "system", "content": system_prompt}]
+
+    if memory_context:
+        messages.append({"role": "system", "content": memory_context})
+
+    # Add history and current message
+    messages.extend(history)
+    messages.append({"role": "user", "content": message})
 
     # Stream response
     response_text = ""
@@ -327,17 +387,84 @@ async def _get_direct_streaming_response(
     return response_text
 
 
+def _fetch_memory_context(message: str) -> str:
+    """Fetch relevant memories from mem0 for the given message."""
+    try:
+        from config.mem0 import MEM0
+    except ImportError:
+        return ""
+
+    if MEM0 is None:
+        return ""
+
+    user_id = os.getenv("USER_ID", "cli-user")
+    agent_id = os.getenv("BOT_NAME", "clara").lower()
+
+    # Limit search query length
+    search_query = message[:2000] if len(message) > 2000 else message
+
+    memories = []
+
+    try:
+        # Search for relevant memories
+        results = MEM0.search(
+            search_query,
+            user_id=user_id,
+            agent_id=agent_id,
+            limit=10,
+        )
+
+        for r in results.get("results", []):
+            mem = r.get("memory", "")
+            if mem:
+                memories.append(f"- {mem}")
+
+    except Exception as e:
+        console.print(f"[dim]Memory search failed: {e}[/dim]")
+        return ""
+
+    if not memories:
+        return ""
+
+    return "MEMORIES:\n" + "\n".join(memories)
+
+
 def _get_system_prompt(agent: str) -> str:
-    """Get system prompt for agent."""
-    # Default Clara prompt
-    if agent.lower() == "clara":
-        return """You are Clara, a friendly and helpful AI assistant.
+    """Get system prompt for agent.
+
+    Loads from:
+    1. config/bot.py PERSONALITY (for clara)
+    2. personalities/{agent}.txt file
+    3. Fallback generic prompt
+    """
+    agent_lower = agent.lower()
+
+    # For Clara, use the main personality from config
+    if agent_lower == "clara":
+        try:
+            from config.bot import PERSONALITY
+            return PERSONALITY
+        except ImportError:
+            pass
+
+    # Try to load from personality file
+    personality_paths = [
+        Path("personalities") / f"{agent_lower}.txt",
+        Path.home() / ".clara" / "personalities" / f"{agent_lower}.txt",
+    ]
+
+    for path in personality_paths:
+        if path.exists():
+            try:
+                return path.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+
+    # Fallback generic prompt
+    return f"""You are {agent}, an AI assistant.
 You are knowledgeable, thoughtful, and always aim to be genuinely helpful.
 You have a warm personality but remain professional and focused.
 When you don't know something, you say so honestly."""
-
-    # For other agents, use a generic prompt
-    return f"You are {agent}, an AI assistant. Be helpful and informative."
 
 
 def _get_fallback_response() -> str:
