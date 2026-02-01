@@ -10,9 +10,14 @@ This module defines all the types used throughout the cognition pipeline:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
+
+def _utc_now() -> datetime:
+    """Get timezone-aware UTC datetime."""
+    return datetime.now(UTC)
 
 
 class EventType(Enum):
@@ -28,7 +33,7 @@ class EventType(Enum):
 class EventMetadata:
     """Metadata attached to cognition events."""
 
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=_utc_now)
     source: str = ""  # Channel/platform identifier (e.g., "discord", "telegram")
     rate_limit_key: str = ""  # Key for rate limiting (e.g., request_id)
     user_id: str = ""
