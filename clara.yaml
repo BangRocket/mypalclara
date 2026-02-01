@@ -1,0 +1,166 @@
+# Clara Configuration
+# Sensitive values use ${ENV_VAR} substitution
+
+llm:
+  provider: anthropic
+  api_key: ${ANTHROPIC_API_KEY}
+  base_url: ${ANTHROPIC_BASE_URL}
+  model: claude-opus-4-5
+  model_high: claude-opus-4-5
+  model_mid: claude-sonnet-4-5
+  model_low: claude-haiku-4-5
+
+memory:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  enable_graph: false
+  graph_provider: neo4j
+
+gateway:
+  host: 127.0.0.1
+  port: 18789
+  hooks_dir: ./hooks
+  scheduler_dir: .
+
+database:
+  url: ${DATABASE_URL}
+  mem0_url: ${MEM0_DATABASE_URL}
+
+discord:
+  bot_token: ${DISCORD_BOT_TOKEN}
+  client_id: "1077628342292988095"
+  allowed_servers:
+    - "345340972797919235"
+  allowed_channels:
+    - "1451983877244715241"
+    - "1451713565517156434"
+  max_messages: 100
+  max_tool_result_chars: 50000
+  stop_phrases:
+    - "clara stop"
+    - "stop clara"
+    - "nevermind"
+    - "never mind"
+  summary_age_minutes: 30
+  channel_history_limit: 50
+  monitor_port: 8001
+  monitor_enabled: true
+  log_channel_id: "1456746551341744210"
+  max_image_dimension: 1568
+  max_image_size: 4194304
+  max_images_per_request: 1
+
+agents:
+  - id: clara
+    name: Clara
+    personality_file: ./personalities/clara.txt
+    default_tier: high
+    auto_tier: false
+    bindings:
+      - binding_type: default
+        session_scope: per-peer
+        require_mention: false
+
+  - id: flo
+    name: Florence
+    personality_file: ./personalities/flo.txt
+    default_tier: high
+    auto_tier: false
+    bindings:
+      - binding_type: default
+        session_scope: per-peer
+        require_mention: false
+
+tools:
+  enabled: []  # Empty = all tools enabled
+  disabled: []
+  settings:
+    web_search:
+      api_key: ${TAVILY_API_KEY}
+    github:
+      token: ${GITHUB_TOKEN}
+    azure_devops:
+      org: sandboxservers
+      pat: ${AZURE_DEVOPS_PAT}
+    google:
+      client_id: ${GOOGLE_CLIENT_ID}
+      client_secret: ${GOOGLE_CLIENT_SECRET}
+      redirect_uri: https://auth.stage.jorsh.app/oauth/google/callback
+    claude_code:
+      workdir: /Users/heidornj/Code/mypalclara
+      max_turns: 10
+
+sandbox:
+  mode: remote
+  api_url: ${SANDBOX_API_URL}
+  api_key: ${SANDBOX_API_KEY}
+  timeout: 120
+  docker_image: python:3.12-slim
+  docker_timeout: 900
+  docker_memory: 512m
+  docker_cpu: 1.0
+
+storage:
+  s3_enabled: true
+  s3_bucket: flo-files
+  s3_endpoint_url: https://s3.wasabisys.com
+  s3_region: us-east-1
+  s3_access_key: ${S3_ACCESS_KEY}
+  s3_secret_key: ${S3_SECRET_KEY}
+
+email:
+  enabled: true
+  address: clara@jorsh.net
+  notify_user: "271274659385835521"
+  encryption_key: ${EMAIL_ENCRYPTION_KEY}
+
+proactive:
+  enabled: true
+  poll_minutes: 15
+  min_gap_hours: 2
+  active_days: 7
+
+organic_responses:
+  enabled: false
+  base_interval_minutes: 15
+  min_speak_gap_hours: 2
+  active_days: 7
+  note_decay_days: 7
+  idle_timeout_minutes: 30
+  confidence_threshold: 0.4
+  daily_limit: 50
+
+# Fast LLM for quick operations (tier classification, etc.)
+fast_llm:
+  provider: nanogpt
+  api_key: ${NANOGPT_API_KEY}
+  model: zai-org/glm-4.7
+
+# Alternative providers (for fallback or specific use cases)
+providers:
+  openrouter:
+    api_key: ${OPENROUTER_API_KEY}
+    model: anthropic/claude-sonnet-4
+    title: MyPalClara
+
+  custom_openai:
+    api_key: ${CUSTOM_OPENAI_API_KEY}
+    base_url: https://clewdr.jorsh.app/code/v1
+    model: claude-opus-4-5
+    model_high: claude-opus-4-5
+    model_mid: claude-sonnet-4-5
+    model_low: claude-haiku-4-5
+
+  nanogpt:
+    api_key: ${NANOGPT_API_KEY}
+    model: zai-org/glm-4.7
+
+# Session settings
+default_user_id: demo-user
+default_project: Default Project
+session_idle_minutes: 30
+skip_profile_load: true
+
+# Logging
+log_level: DEBUG

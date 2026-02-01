@@ -4,6 +4,12 @@ Submodules:
 - config.bot: Bot personality and name configuration
 - config.logging: Logging setup with console and database handlers
 - config.mem0: mem0 memory system configuration
+- config.schema: Pydantic configuration schemas with validation
+
+Configuration can be loaded from:
+- Environment variables (default)
+- JSON5 configuration files
+- Programmatic construction
 """
 
 # Lazy imports to avoid circular dependencies
@@ -11,3 +17,4 @@ Submodules:
 #   from config.bot import PERSONALITY, BOT_NAME
 #   from config.logging import init_logging, get_logger
 #   from config.mem0 import MEM0
+#   from config.schema import ClaraConfig, get_config
