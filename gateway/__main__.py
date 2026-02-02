@@ -518,24 +518,12 @@ def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
 
-    # If no command, run in foreground (development mode)
+    # If no command, run in foreground with adapters (same as 'start -f')
     if args.command is None:
-        # Legacy behavior: run gateway in foreground without adapters
-        from gateway.main import main as legacy_main
-        from gateway.main import parse_args as legacy_parse
-
-        legacy_args = legacy_parse()
-        try:
-            asyncio.run(
-                legacy_main(
-                    legacy_args.host,
-                    legacy_args.port,
-                    legacy_args.hooks_dir,
-                    legacy_args.scheduler_dir,
-                )
-            )
-        except KeyboardInterrupt:
-            pass
+        print(f"Starting gateway on {args.host}:{args.port}")
+        print("Starting all enabled adapters")
+        # None = start all enabled adapters
+        _run_gateway(args, None)
         return
 
     # Dispatch to command handlers
