@@ -29,8 +29,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from aiohttp import web
-from botbuilder.core import BotFrameworkAdapterSettings
+from botbuilder.core import BotFrameworkAdapterSettings, TurnContext
 from botbuilder.integration.aiohttp import BotFrameworkHttpAdapter
+from botbuilder.schema import Activity
 
 from adapters.teams.bot import TeamsBot
 from adapters.teams.gateway_client import TeamsGatewayClient
@@ -51,12 +52,16 @@ async def messages(req: web.Request) -> web.Response:
     bot: TeamsBot = req.app["bot"]
     adapter: BotFrameworkHttpAdapter = req.app["adapter"]
 
-    if "application/json" in req.headers.get("Content-Type", ""):
-        body = await req.json()
-    else:
+    if "application/json" not in req.headers.get("Content-Type", ""):
         return web.Response(status=415)
 
-    response = await adapter.process(req, bot)
+    body = await req.json()
+    activity = Activity().deserialize(body)
+
+    async def turn_handler(turn_context: TurnContext) -> None:
+        await bot.on_turn(turn_context)
+
+    response = await adapter.process(req, activity, turn_handler)
     if response:
         return response
     return web.Response(status=200)
