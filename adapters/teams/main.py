@@ -42,8 +42,8 @@ logger = get_logger("adapters.teams")
 # Configuration
 APP_ID = os.getenv("TEAMS_APP_ID")
 APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD")
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
-PORT = int(os.getenv("TEAMS_PORT", "3978"))
+GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL") or "ws://127.0.0.1:18789"
+PORT = int(os.getenv("TEAMS_PORT") or "3978")
 
 
 async def messages(req: web.Request) -> web.Response:
