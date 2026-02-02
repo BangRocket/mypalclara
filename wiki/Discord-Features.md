@@ -50,6 +50,14 @@ Clara ignores all messages in the channel.
 
 ## Message Handling
 
+### Response Behavior
+
+When processing a message, Clara:
+1. Shows "Clara is typing..." indicator while generating
+2. Sends the complete response when finished
+
+This provides a clean experience without message flickering during streaming. The typing indicator refreshes automatically during long responses.
+
 ### Reply Chains
 Clara tracks conversation threads through Discord's reply feature. Reply to Clara's message to continue the conversation context.
 

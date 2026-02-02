@@ -23,9 +23,19 @@ poetry run python -m gateway --host 127.0.0.1 --port 18789
 ### Daemon Mode
 
 ```bash
-# Start in background
+# Start gateway with all enabled adapters
 poetry run python -m gateway start
 poetry run python -m gateway start --logfile /var/log/clara-gateway.log
+
+# Start with specific adapter(s) only
+poetry run python -m gateway start --adapter discord
+poetry run python -m gateway start --adapter discord --adapter teams
+
+# Start gateway without spawning adapters
+poetry run python -m gateway start --no-adapters
+
+# Run in foreground with adapters (for development)
+poetry run python -m gateway start -f
 
 # Check status
 poetry run python -m gateway status
@@ -36,6 +46,53 @@ poetry run python -m gateway stop
 # Restart
 poetry run python -m gateway restart
 ```
+
+### Adapter Management
+
+The gateway spawns and supervises platform adapters as subprocesses.
+
+```bash
+# Check adapter status
+poetry run python -m gateway adapter discord status
+
+# Start/stop individual adapters
+poetry run python -m gateway adapter discord start
+poetry run python -m gateway adapter discord stop
+
+# Restart an adapter
+poetry run python -m gateway adapter discord restart
+```
+
+### Adapter Configuration
+
+Configure adapters in `gateway/adapters.yaml`:
+
+```yaml
+adapters:
+  discord:
+    enabled: true
+    module: adapters.discord
+    env:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+    restart_policy: always
+    restart_delay: 5
+    max_restarts: 10
+    reset_window: 300
+
+  teams:
+    enabled: false  # Enable when configured
+    module: adapters.teams
+    env:
+      TEAMS_APP_ID: ${TEAMS_APP_ID}
+      TEAMS_APP_PASSWORD: ${TEAMS_APP_PASSWORD}
+    restart_policy: always
+    restart_delay: 5
+```
+
+**Restart Policies:**
+- `always` - Restart on any exit
+- `on_failure` - Only restart on non-zero exit
+- `never` - Don't auto-restart
 
 ### Environment Variables
 
