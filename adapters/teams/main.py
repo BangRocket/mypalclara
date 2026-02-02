@@ -114,6 +114,9 @@ async def on_shutdown(app: web.Application) -> None:
     gateway_client = app.get("gateway_client")
     if gateway_client:
         await gateway_client.disconnect()
+        # Close Graph client
+        if gateway_client._graph_client:
+            await gateway_client._graph_client.close()
 
     gateway_task = app.get("gateway_task")
     if gateway_task:

@@ -9,12 +9,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from botbuilder.core import TurnContext
 from botbuilder.schema import Activity, ActivityTypes, Attachment
 
 from adapters.base import GatewayClient
+from adapters.teams.graph_client import GraphClient, get_graph_client
 from adapters.teams.message_builder import AdaptiveCardBuilder
 from config.logging import get_logger
 from gateway.protocol import ChannelInfo, UserInfo
@@ -50,11 +52,13 @@ class TeamsGatewayClient(GatewayClient):
     def __init__(
         self,
         gateway_url: str | None = None,
+        graph_client: GraphClient | None = None,
     ) -> None:
         """Initialize the Teams gateway client.
 
         Args:
             gateway_url: Optional gateway URL override
+            graph_client: Optional Graph client for conversation history and files
         """
         super().__init__(
             platform="teams",
@@ -65,6 +69,7 @@ class TeamsGatewayClient(GatewayClient):
         self._pending: dict[str, PendingResponse] = {}
         self._update_cooldown = 1.0  # Seconds between updates (Teams is slower)
         self._card_builder = AdaptiveCardBuilder()
+        self._graph_client = graph_client or get_graph_client()
 
     async def send_teams_message(
         self,
@@ -162,10 +167,10 @@ class TeamsGatewayClient(GatewayClient):
         turn_context: TurnContext,
         max_messages: int = 5,
     ) -> list[dict[str, Any]]:
-        """Build conversation history from Teams context.
+        """Build conversation history from Teams using Graph API.
 
-        Note: Teams doesn't provide easy access to conversation history
-        like Discord does. This is a placeholder for future enhancement.
+        Fetches recent messages from the conversation to provide context
+        for the AI response.
 
         Args:
             turn_context: Bot Framework turn context
@@ -174,10 +179,61 @@ class TeamsGatewayClient(GatewayClient):
         Returns:
             List of message dicts with role and content
         """
-        # Teams doesn't expose conversation history easily
-        # Would need to use Graph API for full history
-        # For now, return empty chain
-        return []
+        try:
+            activity = turn_context.activity
+            conversation = activity.conversation
+
+            # Determine conversation type and fetch history
+            is_channel = conversation.conversation_type == "channel"
+
+            if is_channel:
+                # Channel message - need team_id and channel_id
+                # conversation.id format: 19:xxx@thread.tacv2
+                # channel_data contains team info
+                channel_data = activity.channel_data or {}
+                team_id = channel_data.get("team", {}).get("id")
+                channel_id = conversation.id
+
+                if team_id and channel_id:
+                    messages = await self._graph_client.get_channel_messages(
+                        team_id=team_id,
+                        channel_id=channel_id,
+                        limit=max_messages + 1,  # +1 to exclude current message
+                    )
+                else:
+                    logger.debug("Missing team_id or channel_id for channel history")
+                    return []
+            else:
+                # Personal or group chat
+                chat_id = conversation.id
+                messages = await self._graph_client.get_chat_messages(
+                    chat_id=chat_id,
+                    limit=max_messages + 1,
+                )
+
+            # Filter out the current message and format for gateway
+            reply_chain = []
+            current_text = (activity.text or "").strip()
+
+            for msg in messages:
+                # Skip the current message
+                if msg.get("content", "").strip() == current_text:
+                    continue
+
+                reply_chain.append({
+                    "role": msg["role"],
+                    "content": msg["content"],
+                })
+
+                if len(reply_chain) >= max_messages:
+                    break
+
+            logger.debug(f"Built reply chain with {len(reply_chain)} messages")
+            return reply_chain
+
+        except Exception as e:
+            logger.warning(f"Failed to build reply chain: {e}")
+            return []
 
     async def on_response_start(self, message: Any) -> None:
         """Handle response start."""
@@ -346,27 +402,70 @@ class TeamsGatewayClient(GatewayClient):
         turn_context: TurnContext,
         file_paths: list[str],
     ) -> None:
-        """Send files to Teams conversation.
+        """Send files to Teams conversation via OneDrive.
 
-        Note: Teams file handling is more complex than Discord.
-        Files typically need to be uploaded to SharePoint/OneDrive first.
-        This is a placeholder for full implementation.
+        Uploads files to the bot's OneDrive storage and sends
+        file cards with download links.
 
         Args:
             turn_context: Bot Framework turn context
             file_paths: List of file paths to send
         """
-        from pathlib import Path
-
         for path_str in file_paths:
             path = Path(path_str)
-            if path.exists():
-                # For now, just mention the file
-                # Full implementation would upload to SharePoint
+            if not path.exists():
+                logger.warning(f"File not found: {path_str}")
+                continue
+
+            try:
+                # Upload to OneDrive
+                result = await self._graph_client.upload_file_to_onedrive(
+                    file_path=path,
+                    folder="Clara Files",
+                )
+
+                if result:
+                    # Create sharing link
+                    share_url = await self._graph_client.create_sharing_link(
+                        item_id=result["id"],
+                        link_type="view",
+                    )
+
+                    # Send file card with download link
+                    card = self._card_builder.build_file_card(
+                        filename=result["name"],
+                        file_size=result.get("size"),
+                        download_url=share_url or result.get("webUrl"),
+                    )
+
+                    await turn_context.send_activity(
+                        Activity(
+                            type=ActivityTypes.message,
+                            attachments=[
+                                Attachment(
+                                    content_type="application/vnd.microsoft.card.adaptive",
+                                    content=card,
+                                )
+                            ],
+                        )
+                    )
+                    logger.info(f"File uploaded and shared: {result['name']}")
+                else:
+                    # Fallback to text mention if upload fails
+                    await turn_context.send_activity(
+                        Activity(
+                            type=ActivityTypes.message,
+                            text=f"File ready: {path.name} (upload to OneDrive failed)",
+                        )
+                    )
+                    logger.warning(f"File upload failed, mentioned instead: {path.name}")
+
+            except Exception as e:
+                logger.exception(f"Failed to send file {path.name}: {e}")
+                # Send error message
                 await turn_context.send_activity(
                     Activity(
                         type=ActivityTypes.message,
-                        text=f"File ready: {path.name}",
+                        text=f"Failed to share file: {path.name}",
                     )
                 )
-                logger.info(f"File mentioned: {path.name}")

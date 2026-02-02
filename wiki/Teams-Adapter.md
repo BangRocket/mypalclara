@@ -81,6 +81,23 @@ TEAMS_TENANT_ID=your-tenant-id            # Restrict to specific tenant
 CLARA_GATEWAY_URL=ws://127.0.0.1:18789    # Gateway WebSocket URL
 ```
 
+## Azure Permissions
+
+For full functionality, configure these Microsoft Graph API permissions in Azure:
+
+| Permission | Type | Description |
+|------------|------|-------------|
+| `Chat.Read.All` | Application | Read chat messages (conversation history) |
+| `ChannelMessage.Read.All` | Application | Read channel messages |
+| `Files.ReadWrite.All` | Application | Upload files to OneDrive |
+
+To configure:
+1. Azure Portal → App registrations → Your bot
+2. API permissions → Add permission → Microsoft Graph
+3. Select "Application permissions"
+4. Add the permissions above
+5. Grant admin consent
+
 ## Running
 
 ### Standalone
