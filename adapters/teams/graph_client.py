@@ -181,7 +181,13 @@ class GraphClient:
     ) -> list[dict[str, Any]]:
         """Fetch recent messages from a Teams chat.
 
-        Note: Requires Chat.Read.All application permission.
+        Permissions (choose one):
+        - RSC: ChatMessage.Read.Chat (scoped to installed chats, recommended)
+        - Application: Chat.Read.WhereInstalled (scoped to installed chats)
+        - Application: Chat.Read.All (tenant-wide, not recommended)
+
+        Note: RSC permissions don't support reading 1:1 personal chat messages.
+        For personal chats with RSC, this will return an empty list.
 
         Args:
             chat_id: The Teams chat/conversation ID
@@ -235,7 +241,9 @@ class GraphClient:
     ) -> list[dict[str, Any]]:
         """Fetch recent messages from a Teams channel.
 
-        Note: Requires ChannelMessage.Read.All application permission.
+        Permissions (choose one):
+        - RSC: ChannelMessage.Read.Group (scoped to installed teams, recommended)
+        - Application: ChannelMessage.Read.All (tenant-wide, not recommended)
 
         Args:
             team_id: The Teams team ID
@@ -285,6 +293,7 @@ class GraphClient:
         """Upload a file to the bot's OneDrive.
 
         Note: Requires Files.ReadWrite.All application permission.
+        There is no RSC equivalent for file permissions.
 
         Args:
             file_path: Local file path

@@ -83,13 +83,55 @@ CLARA_GATEWAY_URL=ws://127.0.0.1:18789    # Gateway WebSocket URL
 
 ## Azure Permissions
 
-For full functionality, configure these Microsoft Graph API permissions in Azure:
+### Option 1: RSC Permissions (Recommended)
+
+Resource-Specific Consent (RSC) permissions are scoped to only the teams/chats where the bot is installed - no tenant-wide admin consent needed.
+
+Add to your Teams app manifest (`manifest.json`):
+
+```json
+{
+  "webApplicationInfo": {
+    "id": "<your-bot-app-id>",
+    "resource": "https://graph.microsoft.com"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "ChatMessage.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "ChannelMessage.Read.Group",
+          "type": "Application"
+        }
+      ]
+    }
+  }
+}
+```
+
+| RSC Permission | Scope | Description |
+|----------------|-------|-------------|
+| `ChatMessage.Read.Chat` | Per-chat | Read messages in chats where bot is installed |
+| `ChannelMessage.Read.Group` | Per-team | Read messages in teams where bot is installed |
+
+**Benefits:**
+- Team owners/chat members grant consent (not tenant admin)
+- Access limited to specific resources, not entire tenant
+- No admin portal configuration needed
+
+**Limitation:** RSC for personal (1:1) chats only supports read receipts, not message content. History won't be available for 1:1 chats.
+
+### Option 2: WhereInstalled Permissions (Alternative)
+
+If RSC doesn't meet your needs, use scoped application permissions:
 
 | Permission | Type | Description |
 |------------|------|-------------|
-| `Chat.Read.All` | Application | Read chat messages (conversation history) |
-| `ChannelMessage.Read.All` | Application | Read channel messages |
-| `Files.ReadWrite.All` | Application | Upload files to OneDrive |
+| `Chat.Read.WhereInstalled` | Application | Read chats where app is installed |
+| `ChatMessage.Read.WhereInstalled` | Application | Read messages where app is installed |
 
 To configure:
 1. Azure Portal → App registrations → Your bot
@@ -97,6 +139,27 @@ To configure:
 3. Select "Application permissions"
 4. Add the permissions above
 5. Grant admin consent
+
+### File Upload Permissions
+
+For file uploads to OneDrive, add in Azure Portal:
+
+| Permission | Type | Description |
+|------------|------|-------------|
+| `Files.ReadWrite.All` | Application | Upload files to OneDrive |
+
+**Note:** There's no RSC equivalent for Files permissions. Consider whether file upload is needed for your use case.
+
+### Option 3: Tenant-Wide (Not Recommended)
+
+Only use these if you specifically need access to all conversations:
+
+| Permission | Type | Risk |
+|------------|------|------|
+| `Chat.Read.All` | Application | ⚠️ Reads ALL tenant chats |
+| `ChannelMessage.Read.All` | Application | ⚠️ Reads ALL tenant channels |
+
+These require tenant admin consent and grant very broad access.
 
 ## Running
 
