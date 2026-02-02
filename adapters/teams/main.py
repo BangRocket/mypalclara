@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from aiohttp import web
-from botbuilder.core import BotFrameworkAdapterSettings, TurnContext
+from botbuilder.core import BotFrameworkAdapterSettings
 from botbuilder.integration.aiohttp import BotFrameworkHttpAdapter
 from botbuilder.schema import Activity
 
@@ -58,10 +58,7 @@ async def messages(req: web.Request) -> web.Response:
     body = await req.json()
     activity = Activity().deserialize(body)
 
-    async def turn_handler(turn_context: TurnContext) -> None:
-        await bot.on_turn(turn_context)
-
-    response = await adapter.process(req, activity, turn_handler)
+    response = await adapter.process(req, activity, bot)
     if response:
         return response
     return web.Response(status=200)
