@@ -453,10 +453,10 @@ class AdapterManager:
                 )
                 if not line:
                     break
-                # Log with adapter prefix
+                # Print adapter output directly (already formatted by adapter's logger)
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if line_str:
-                    logger.info(f"[{name}] {line_str}")
+                    print(f"[{name}] {line_str}", flush=True)
         except Exception:
             pass  # Process likely terminated
 
