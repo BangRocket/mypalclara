@@ -18,9 +18,9 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 
-Base = declarative_base()
+from db.base import Base
 
 
 def gen_uuid() -> str:
@@ -369,9 +369,40 @@ class GuildConfig(Base):
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
-# Import MCP models so they're included in metadata for table creation
-# The model is defined in clara_core/mcp/models.py but uses this Base
-try:
-    from clara_core.mcp.models import MCPServer  # noqa: F401
-except ImportError:
-    pass  # MCP module not yet installed
+# Import MCP database models for multi-user support and metrics tracking
+from db.mcp_models import (
+    MCPOAuthToken,
+    MCPRateLimit,
+    MCPServer,
+    MCPToolCall,
+    MCPUsageMetrics,
+)
+
+__all__ = [
+    # Core models
+    "Base",
+    "Project",
+    "Session",
+    "Message",
+    "ChannelSummary",
+    "ChannelConfig",
+    "LogEntry",
+    "GoogleOAuthToken",
+    # Proactive models
+    "ProactiveMessage",
+    "UserInteractionPattern",
+    "ProactiveNote",
+    "ProactiveAssessment",
+    # Email monitoring
+    "EmailAccount",
+    "EmailRule",
+    "EmailAlert",
+    # Guild config
+    "GuildConfig",
+    # MCP models
+    "MCPServer",
+    "MCPOAuthToken",
+    "MCPToolCall",
+    "MCPUsageMetrics",
+    "MCPRateLimit",
+]
