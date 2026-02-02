@@ -10,8 +10,10 @@ def utcnow():
 
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -366,6 +368,182 @@ class GuildConfig(Base):
 
 
 # =============================================================================
+# Memory Dynamics Models (FSRS-6 + Intentions)
+# =============================================================================
+
+
+class MemoryDynamics(Base):
+    """FSRS-6 scheduling data for mem0 memories.
+
+    Tracks the spaced repetition state for each memory to enable
+    intelligent retrieval weighting based on the forgetting curve.
+
+    Attributes:
+        memory_id: The mem0 memory ID this tracks
+        user_id: Owner of the memory
+        stability: Days until retrievability drops to 90% (FSRS S parameter)
+        difficulty: Inherent difficulty 1-10 (FSRS D parameter)
+        retrieval_strength: Current recall ability (Bjork dual-strength R_r)
+        storage_strength: Consolidated long-term strength (Bjork dual-strength R_s)
+        last_accessed_at: When the memory was last used/retrieved
+        access_count: Total number of times memory was accessed
+    """
+
+    __tablename__ = "memory_dynamics"
+
+    memory_id = Column(String, primary_key=True)  # mem0 memory ID
+    user_id = Column(String, nullable=False, index=True)
+
+    # FSRS-6 core fields
+    stability = Column(Float, default=1.0)  # Days until R=90%
+    difficulty = Column(Float, default=5.0)  # 1-10 scale
+    retrieval_strength = Column(Float, default=1.0)  # Dual-strength: recall
+    storage_strength = Column(Float, default=0.5)  # Dual-strength: consolidation
+
+    # Key memory flag (high importance, always retrieved)
+    is_key = Column(Boolean, default=False)
+    importance_weight = Column(Float, default=1.0)  # Multiplier for ranking
+
+    # Access tracking
+    last_accessed_at = Column(DateTime, nullable=True)
+    access_count = Column(Integer, default=0)
+
+    # Lifecycle
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    # Composite index for efficient user+recency queries
+    __table_args__ = (
+        Index("ix_memory_dynamics_user_accessed", "user_id", "last_accessed_at"),
+    )
+
+
+class MemoryAccessLog(Base):
+    """History of memory accesses for FSRS calculations.
+
+    Records each time a memory is retrieved and used, along with
+    an inferred grade based on usage signals. This enables the
+    FSRS algorithm to update stability and difficulty over time.
+
+    Attributes:
+        memory_id: The memory that was accessed
+        user_id: User who accessed it
+        grade: FSRS grade (1=Again, 2=Hard, 3=Good, 4=Easy)
+        signal_type: What triggered this access
+        retrievability_at_access: R value when accessed (for FSRS)
+    """
+
+    __tablename__ = "memory_access_log"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    memory_id = Column(
+        String,
+        ForeignKey("memory_dynamics.memory_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(String, nullable=False, index=True)
+
+    # FSRS grade: 1=Again, 2=Hard, 3=Good, 4=Easy
+    grade = Column(Integer, nullable=False)
+
+    # Context about the access
+    signal_type = Column(String)  # "used_in_response", "user_correction", etc.
+    retrievability_at_access = Column(Float)  # R value when accessed
+    context = Column(Text, nullable=True)  # Optional JSON context
+
+    accessed_at = Column(DateTime, default=utcnow, index=True)
+
+    # Composite index for analytics queries
+    __table_args__ = (
+        Index("ix_memory_access_user_time", "user_id", "accessed_at"),
+    )
+
+
+class Intention(Base):
+    """Future triggers/reminders for proactive memory surfacing.
+
+    Intentions are conditional reminders that Clara stores to surface
+    information at the right time. They can be triggered by:
+    - Keywords in user messages
+    - Semantic similarity to topics
+    - Specific times
+    - Contextual conditions
+
+    Attributes:
+        user_id: User this intention is for
+        agent_id: Bot persona (default "clara")
+        content: What to remind about
+        trigger_conditions: JSON defining when to fire
+        fired: Whether this intention has been triggered
+        fire_once: If true, delete after firing
+    """
+
+    __tablename__ = "intentions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    agent_id = Column(String, default="clara")
+
+    # Content
+    content = Column(Text, nullable=False)  # What to remind about
+    source_memory_id = Column(String, nullable=True)  # Optional link to source memory
+
+    # Trigger conditions (JSON)
+    # Examples:
+    # {"type": "keyword", "keywords": ["meeting", "standup"]}
+    # {"type": "time", "at": "2024-01-15T09:00:00Z"}
+    # {"type": "topic", "topic": "project deadline", "threshold": 0.7}
+    # {"type": "context", "conditions": {"channel_name": "work", "time_of_day": "morning"}}
+    trigger_conditions = Column(Text, nullable=False)  # JSON string
+
+    # Priority for ordering when multiple intentions fire
+    priority = Column(Integer, default=0)  # Higher = more important
+
+    # State
+    fired = Column(Boolean, default=False)
+    fire_once = Column(Boolean, default=True)  # Delete after firing if true
+
+    # Lifecycle
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=True)  # Optional expiration
+    fired_at = Column(DateTime, nullable=True)
+
+    # Composite index for efficient unfired intention queries
+    __table_args__ = (
+        Index("ix_intention_user_unfired", "user_id", "fired"),
+        Index("ix_intention_expires", "expires_at"),
+    )
+
+
+class MemorySupersession(Base):
+    """Tracks when memories are superseded by newer information.
+
+    When prediction error gating detects a contradiction, the old
+    memory is marked as superseded and linked to the new one.
+
+    Attributes:
+        old_memory_id: The superseded memory
+        new_memory_id: The memory that replaced it
+        reason: Why the supersession occurred
+        confidence: How confident we are in the supersession
+    """
+
+    __tablename__ = "memory_supersessions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    old_memory_id = Column(String, nullable=False, index=True)
+    new_memory_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+
+    reason = Column(String, nullable=True)  # "contradiction", "update", "correction"
+    confidence = Column(Float, default=1.0)  # 0-1 confidence in supersession
+    details = Column(Text, nullable=True)  # JSON with additional context
+
+    created_at = Column(DateTime, default=utcnow)
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
@@ -399,6 +577,11 @@ __all__ = [
     "EmailAlert",
     # Guild config
     "GuildConfig",
+    # Memory dynamics (FSRS-6 + Intentions)
+    "MemoryDynamics",
+    "MemoryAccessLog",
+    "Intention",
+    "MemorySupersession",
     # MCP models
     "MCPServer",
     "MCPOAuthToken",

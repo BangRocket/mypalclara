@@ -445,6 +445,22 @@ class MessageProcessor:
         except Exception as e:
             logger.debug(f"Could not fetch recurring topics: {e}")
 
+        # Check intentions for this message
+        fired_intentions = []
+        try:
+            intention_context = {
+                "channel_name": request.channel.name or "",
+                "is_dm": is_dm,
+            }
+            fired_intentions = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._memory_manager.check_intentions(user_id, user_content, intention_context),
+            )
+            if fired_intentions:
+                logger.info(f"Fired {len(fired_intentions)} intentions for {user_id}")
+        except Exception as e:
+            logger.debug(f"Could not check intentions: {e}")
+
         # Get session summary if available
         session_summary = db_session.session_summary if db_session else None
 
@@ -463,6 +479,12 @@ class MessageProcessor:
         # Add gateway context
         gateway_context = self._build_gateway_context(request, is_dm, participants)
         messages.insert(1, {"role": "system", "content": gateway_context})
+
+        # Add fired intentions as reminders
+        if fired_intentions:
+            intention_text = self._memory_manager.format_intentions_for_prompt(fired_intentions)
+            if intention_text:
+                messages.insert(2, {"role": "system", "content": intention_text})
 
         # Add reply chain if present
         if request.reply_chain:
@@ -485,6 +507,7 @@ class MessageProcessor:
             "participants": participants,
             "db_session_id": db_session.id if db_session else None,
             "user_content": user_content,
+            "fired_intentions": fired_intentions,
         }
 
     def _format_text_attachments(self, attachments: list) -> str:
