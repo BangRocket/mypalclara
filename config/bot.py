@@ -57,17 +57,21 @@ def _load_personality() -> str:
     if personality_file:
         path = Path(personality_file)
         if path.exists():
-            logger.debug(f"Loading personality from {personality_file}")
-            return path.read_text(encoding="utf-8").strip()
-        logger.warning(f"BOT_PERSONALITY_FILE not found: {personality_file}")
+            content = path.read_text(encoding="utf-8").strip()
+            # Extract first line for log (usually "You are {Name}...")
+            first_line = content.split("\n")[0][:60]
+            print(f"[personality] Loaded from {personality_file} ({len(content)} chars): {first_line}...")
+            return content
+        print(f"[personality] WARNING: File not found: {personality_file}")
 
     # Priority 2: Inline env var
     personality_env = os.getenv("BOT_PERSONALITY")
     if personality_env:
-        logger.debug("Using personality from BOT_PERSONALITY env var")
+        print(f"[personality] Using BOT_PERSONALITY env var ({len(personality_env)} chars)")
         return personality_env.strip()
 
     # Priority 3: Default
+    print("[personality] Using default Clara personality")
     return DEFAULT_PERSONALITY
 
 
