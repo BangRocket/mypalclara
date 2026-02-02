@@ -10,14 +10,31 @@ connect to via WebSocket. This allows:
 - Built-in task scheduler (cron/interval)
 """
 
+from gateway.adapter_manager import (
+    AdapterConfig,
+    AdapterManager,
+    AdapterProcess,
+    AdapterState,
+    RestartPolicy,
+    get_adapter_manager,
+)
+from gateway.daemon import (
+    DEFAULT_ADAPTER_PIDFILE_PATTERN,
+    DEFAULT_GATEWAY_PIDFILE,
+    check_daemon_running,
+    daemonize,
+    get_adapter_pidfile,
+    get_daemon_status,
+    stop_daemon,
+)
 from gateway.events import (
     Event,
     EventEmitter,
     EventType,
     emit,
     get_event_emitter,
-    on,
     off,
+    on,
 )
 from gateway.hooks import (
     Hook,
@@ -54,6 +71,11 @@ from gateway.scheduler import (
 )
 from gateway.server import GatewayServer
 from gateway.session import NodeRegistry, SessionManager
+from gateway.channel_summaries import (
+    ChannelMessage,
+    ChannelSummaryManager,
+    get_summary_manager,
+)
 from gateway.tool_executor import ToolExecutor
 
 __all__ = [
@@ -105,4 +127,23 @@ __all__ = [
     "LLMOrchestrator",
     # Tools
     "ToolExecutor",
+    # Channel Summaries
+    "ChannelSummaryManager",
+    "ChannelMessage",
+    "get_summary_manager",
+    # Daemon
+    "daemonize",
+    "stop_daemon",
+    "get_daemon_status",
+    "check_daemon_running",
+    "get_adapter_pidfile",
+    "DEFAULT_GATEWAY_PIDFILE",
+    "DEFAULT_ADAPTER_PIDFILE_PATTERN",
+    # Adapter Manager
+    "AdapterConfig",
+    "AdapterManager",
+    "AdapterProcess",
+    "AdapterState",
+    "RestartPolicy",
+    "get_adapter_manager",
 ]

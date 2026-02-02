@@ -304,11 +304,18 @@ class SessionManager:
         async with self._lock:
             return [s for s in self._sessions.values() if s.node_id == node_id]
 
-    async def cleanup_stale_sessions(self, max_age_minutes: int = 60) -> int:
+    async def cleanup_stale_sessions(
+        self,
+        max_age_minutes: int = 60,
+        finalize_emotional: bool = True,
+    ) -> int:
         """Remove sessions that have been inactive too long.
+
+        Optionally finalizes emotional context for each stale session before removal.
 
         Args:
             max_age_minutes: Maximum inactivity in minutes
+            finalize_emotional: Whether to finalize emotional context
 
         Returns:
             Number of sessions removed
@@ -319,14 +326,166 @@ class SessionManager:
         removed = 0
 
         async with self._lock:
-            stale_keys = [key for key, session in self._sessions.items() if session.last_activity < cutoff]
+            stale_keys = [
+                key for key, session in self._sessions.items()
+                if session.last_activity < cutoff
+            ]
+
             for key in stale_keys:
+                session = self._sessions[key]
+
+                # Finalize emotional context before removing
+                if finalize_emotional:
+                    await self._finalize_session_emotional_context(session)
+
                 del self._sessions[key]
                 removed += 1
 
         if removed:
             logger.info(f"Cleaned up {removed} stale session(s)")
         return removed
+
+    async def _finalize_session_emotional_context(self, session: UserSession) -> None:
+        """Finalize emotional context for a session before removal.
+
+        Args:
+            session: The session being finalized
+        """
+        try:
+            from clara_core.emotional_context import (
+                finalize_conversation_emotional_context,
+                get_conversation_sentiments,
+                has_pending_emotional_context,
+            )
+
+            if not has_pending_emotional_context(session.user_id, session.channel_id):
+                return
+
+            # Get channel info from context if available
+            channel_name = session.context.get("channel_name", f"channel-{session.channel_id}")
+            is_dm = session.context.get("is_dm", False)
+
+            # Use placeholder energy and summary if not available
+            energy = session.context.get("energy", "neutral")
+            summary = session.context.get("last_topic", "general conversation")
+
+            finalize_conversation_emotional_context(
+                user_id=session.user_id,
+                channel_id=session.channel_id,
+                channel_name=channel_name,
+                is_dm=is_dm,
+                energy=energy,
+                summary=summary,
+            )
+
+            # Extract topics from conversation
+            await self._extract_session_topics(session, channel_name, is_dm)
+
+            logger.debug(
+                f"Finalized emotional context for user {session.user_id} "
+                f"in channel {session.channel_id}"
+            )
+
+        except ImportError:
+            logger.debug("Emotional context module not available")
+        except Exception as e:
+            logger.warning(f"Failed to finalize emotional context: {e}")
+
+    async def _extract_session_topics(
+        self,
+        session: UserSession,
+        channel_name: str,
+        is_dm: bool,
+    ) -> None:
+        """Extract and store topics from the session's conversation.
+
+        Args:
+            session: The session being finalized
+            channel_name: Human-readable channel name
+            is_dm: Whether this is a DM
+        """
+        try:
+            from clara_core.emotional_context import get_conversation_sentiments
+            from clara_core.topic_recurrence import extract_and_store_topics
+
+            # Fetch recent messages from database for this session
+            conversation_text = await self._fetch_session_conversation(session)
+            if not conversation_text or len(conversation_text) < 50:
+                return
+
+            # Get average sentiment
+            sentiments = get_conversation_sentiments(session.user_id, session.channel_id)
+            avg_sentiment = sum(sentiments) / len(sentiments) if sentiments else 0.0
+
+            # Create async LLM callable
+            async def llm_call(messages):
+                from clara_core import ModelTier, make_llm
+                llm = make_llm(tier=ModelTier.LOW)
+                return llm(messages)
+
+            await extract_and_store_topics(
+                user_id=session.user_id,
+                channel_id=session.channel_id,
+                channel_name=channel_name,
+                is_dm=is_dm,
+                conversation_text=conversation_text,
+                conversation_sentiment=avg_sentiment,
+                llm_call=llm_call,
+            )
+
+            logger.debug(f"Extracted topics for session {session.user_id}:{session.channel_id}")
+
+        except ImportError:
+            logger.debug("Topic extraction module not available")
+        except Exception as e:
+            logger.debug(f"Failed to extract topics: {e}")
+
+    async def _fetch_session_conversation(self, session: UserSession) -> str:
+        """Fetch recent conversation text for a session from the database.
+
+        Args:
+            session: The session to fetch conversation for
+
+        Returns:
+            Formatted conversation text
+        """
+        try:
+            from db import SessionLocal
+            from db.models import Message, Session as DBSession
+
+            db = SessionLocal()
+            try:
+                # Find the database session if we have a thread_id
+                if not session.thread_id:
+                    return ""
+
+                # Get recent messages from this session
+                messages = (
+                    db.query(Message)
+                    .filter(Message.session_id == session.thread_id)
+                    .order_by(Message.created_at.desc())
+                    .limit(20)
+                    .all()
+                )
+
+                if not messages:
+                    return ""
+
+                # Format as conversation text
+                lines = []
+                for msg in reversed(messages):  # Chronological order
+                    role = "Clara" if msg.role == "assistant" else "User"
+                    content = msg.content[:500] if msg.content else ""
+                    lines.append(f"{role}: {content}")
+
+                return "\n".join(lines)
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.debug(f"Failed to fetch conversation: {e}")
+            return ""
 
     async def get_stats(self) -> dict[str, Any]:
         """Get session statistics."""

@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from config.logging import get_logger
+from gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
 from gateway.llm_orchestrator import LLMOrchestrator
 from gateway.protocol import (
     MessageRequest,
@@ -39,6 +40,26 @@ BLOCKING_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="gateway-io-",
 )
 
+# Auto-tier configuration
+AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
+
+# Tier classification prompt (uses fast model to decide)
+TIER_CLASSIFICATION_PROMPT = """Analyze this message and recent context to determine complexity level.
+
+Message: {message}
+
+Recent context (last 4 messages):
+{context}
+
+Classify as:
+- LOW: Simple greetings, quick facts, basic questions, casual chat, yes/no answers
+- MID: Moderate tasks, explanations, summaries, most coding questions, follow-up discussions
+- HIGH: Complex reasoning, long-form writing, difficult coding, multi-step analysis, research
+
+IMPORTANT: Consider the conversation context. A short reply like "yes" or "ok" in an ongoing complex discussion should remain at the same tier as the discussion.
+
+Respond with only one word: LOW, MID, or HIGH"""
+
 
 class MessageProcessor:
     """Processes messages through the Clara pipeline.
@@ -56,6 +77,7 @@ class MessageProcessor:
         self._memory_manager: Any = None
         self._tool_executor: ToolExecutor | None = None
         self._llm_orchestrator: LLMOrchestrator | None = None
+        self._summary_manager: ChannelSummaryManager | None = None
 
     async def initialize(self) -> None:
         """Initialize the processor with required resources.
@@ -75,6 +97,10 @@ class MessageProcessor:
 
         # Initialize memory manager
         await self._init_memory_manager()
+
+        # Initialize channel summary manager
+        self._summary_manager = get_summary_manager()
+        await self._summary_manager.initialize()
 
         self._initialized = True
         logger.info("MessageProcessor initialized")
@@ -108,13 +134,19 @@ class MessageProcessor:
 
         logger.info(f"Processing message {request.id} from {request.user.id}: " f"{request.content[:50]}...")
 
+        # Determine model tier
+        tier = request.tier_override
+        if not tier and AUTO_TIER_ENABLED:
+            tier = await self._classify_tier(request)
+            logger.info(f"Auto-tier classification: {tier}")
+
         # Send response start
         await self._send(
             websocket,
             ResponseStart(
                 id=response_id,
                 request_id=request.id,
-                model_tier=request.tier_override,
+                model_tier=tier,
             ),
         )
 
@@ -122,6 +154,9 @@ class MessageProcessor:
             # Build context and process
             context = await self._build_context(request)
             tools = self._tool_executor.get_all_tools() if self._tool_executor else []
+
+            # Extract images from attachments
+            images = [att for att in request.attachments if att.type == "image"]
 
             # Generate response with tools
             full_text = ""
@@ -133,8 +168,9 @@ class MessageProcessor:
                 tools=tools,
                 user_id=request.user.id,
                 request_id=request.id,
-                tier=request.tier_override,
+                tier=tier,
                 websocket=websocket,
+                images=images if images else None,
             ):
                 event_type = event.get("type")
 
@@ -218,10 +254,17 @@ class MessageProcessor:
         channel_id = request.channel.id
         is_dm = request.channel.type == "dm"
 
-        # Prepare user content
+        # Prepare user content with text file attachments
         user_content = request.content
+        text_attachments = self._format_text_attachments(request.attachments)
+        if text_attachments:
+            user_content = f"{request.content}\n\n{text_attachments}"
+
         if not is_dm and request.user.display_name:
-            user_content = f"[{request.user.display_name}]: {request.content}"
+            user_content = f"[{request.user.display_name}]: {user_content}"
+
+        # Extract participants from reply chain
+        participants = self._extract_participants(request)
 
         # Fetch memories from mem0
         user_mems, proj_mems, graph_relations = await loop.run_in_executor(
@@ -230,10 +273,30 @@ class MessageProcessor:
                 user_id,
                 None,  # No project for now
                 user_content,
-                participants=[],
+                participants=participants,
                 is_dm=is_dm,
             ),
         )
+
+        # Fetch emotional context (last 3 sessions)
+        emotional_context = None
+        try:
+            emotional_context = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._memory_manager.fetch_emotional_context(user_id, limit=3),
+            )
+        except Exception as e:
+            logger.debug(f"Could not fetch emotional context: {e}")
+
+        # Fetch recurring topics (2+ mentions in 14 days)
+        recurring_topics = None
+        try:
+            recurring_topics = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._memory_manager.fetch_recurring_topics(user_id, min_mentions=2, lookback_days=14),
+            )
+        except Exception as e:
+            logger.debug(f"Could not fetch recurring topics: {e}")
 
         # Build base prompt with Clara's persona
         messages = self._memory_manager.build_prompt(
@@ -243,10 +306,12 @@ class MessageProcessor:
             [],  # recent_msgs
             user_content,
             graph_relations=graph_relations,
+            emotional_context=emotional_context,
+            recurring_topics=recurring_topics,
         )
 
         # Add gateway context
-        gateway_context = self._build_gateway_context(request, is_dm)
+        gateway_context = self._build_gateway_context(request, is_dm, participants)
         messages.insert(1, {"role": "system", "content": gateway_context})
 
         # Add reply chain if present
@@ -267,14 +332,76 @@ class MessageProcessor:
             "is_dm": is_dm,
             "user_mems": user_mems,
             "proj_mems": proj_mems,
+            "participants": participants,
         }
 
-    def _build_gateway_context(self, request: MessageRequest, is_dm: bool) -> str:
+    def _format_text_attachments(self, attachments: list) -> str:
+        """Format text file attachments for inclusion in user content.
+
+        Args:
+            attachments: List of AttachmentInfo objects
+
+        Returns:
+            Formatted string with file contents
+        """
+        if not attachments:
+            return ""
+
+        text_parts = []
+        for att in attachments:
+            if att.type == "text" and att.content:
+                text_parts.append(
+                    f"--- Attached file: {att.filename} ---\n{att.content}\n--- End of {att.filename} ---"
+                )
+
+        return "\n\n".join(text_parts)
+
+    def _extract_participants(self, request: MessageRequest) -> list[dict[str, str]]:
+        """Extract participant info from reply chain for cross-user memory.
+
+        Args:
+            request: The message request
+
+        Returns:
+            List of participant dicts with id and name
+        """
+        participants = []
+        seen_ids = set()
+
+        # Add current user
+        if request.user.id not in seen_ids:
+            participants.append(
+                {
+                    "id": request.user.id,
+                    "name": request.user.display_name or request.user.name,
+                }
+            )
+            seen_ids.add(request.user.id)
+
+        # Extract from reply chain
+        if request.reply_chain:
+            for msg in request.reply_chain:
+                # Reply chain messages might have user info in metadata
+                user_id = msg.get("user_id")
+                user_name = msg.get("user_name")
+                if user_id and user_id not in seen_ids:
+                    participants.append({"id": user_id, "name": user_name or user_id})
+                    seen_ids.add(user_id)
+
+        return participants
+
+    def _build_gateway_context(
+        self,
+        request: MessageRequest,
+        is_dm: bool,
+        participants: list[dict[str, str]] | None = None,
+    ) -> str:
         """Build gateway-specific context information.
 
         Args:
             request: The message request
             is_dm: Whether this is a DM
+            participants: List of participants in the conversation
 
         Returns:
             Context string
@@ -297,6 +424,24 @@ class MessageProcessor:
 
         parts.append(f"- User: {request.user.display_name or request.user.name or request.user.id}")
 
+        # Add participant context for group conversations
+        if participants and len(participants) > 1:
+            other_participants = [p["name"] for p in participants if p["id"] != request.user.id]
+            if other_participants:
+                parts.append(f"- Other participants: {', '.join(other_participants)}")
+
+        # Add attachment info
+        image_count = sum(1 for att in request.attachments if att.type == "image")
+        text_count = sum(1 for att in request.attachments if att.type == "text")
+        file_count = sum(1 for att in request.attachments if att.type == "file")
+
+        if image_count:
+            parts.append(f"- Images attached: {image_count}")
+        if text_count:
+            parts.append(f"- Text files attached: {text_count}")
+        if file_count:
+            parts.append(f"- Other files attached: {file_count}")
+
         return "\n".join(parts)
 
     async def _store_exchange(
@@ -315,6 +460,9 @@ class MessageProcessor:
         if not response:
             return
 
+        # Track sentiment for emotional context
+        await self._track_sentiment(request, context)
+
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -328,6 +476,30 @@ class MessageProcessor:
             )
         except Exception as e:
             logger.warning(f"Failed to store exchange: {e}")
+
+    async def _track_sentiment(
+        self,
+        request: MessageRequest,
+        context: dict[str, Any],
+    ) -> None:
+        """Track message sentiment for emotional context.
+
+        Args:
+            request: The message request
+            context: The context dict
+        """
+        try:
+            from clara_core.emotional_context import track_message_sentiment
+
+            track_message_sentiment(
+                user_id=context["user_id"],
+                channel_id=context["channel_id"],
+                message_content=request.content,
+            )
+        except ImportError:
+            pass  # Emotional context module not available
+        except Exception as e:
+            logger.debug(f"Failed to track sentiment: {e}")
 
     def _get_tool_emoji(self, tool_name: str) -> str:
         """Get emoji for a tool.
@@ -396,3 +568,55 @@ class MessageProcessor:
         except websockets.ConnectionClosed:
             logger.debug("Connection closed while sending")
             raise asyncio.CancelledError("Connection closed")
+
+    async def _classify_tier(self, request: MessageRequest) -> str:
+        """Classify message complexity to determine model tier.
+
+        Uses a fast/low-tier model to analyze the message and context
+        to determine the appropriate tier.
+
+        Args:
+            request: The message request
+
+        Returns:
+            Tier string: "high", "mid", or "low"
+        """
+        loop = asyncio.get_event_loop()
+
+        # Build context from reply chain (last 4 messages)
+        context_lines = []
+        if request.reply_chain:
+            for msg in request.reply_chain[-4:]:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")[:200]  # Truncate
+                context_lines.append(f"[{role}]: {content}")
+
+        context_str = "\n".join(context_lines) if context_lines else "(no prior context)"
+
+        prompt = TIER_CLASSIFICATION_PROMPT.format(
+            message=request.content[:500],  # Truncate long messages
+            context=context_str,
+        )
+
+        try:
+            from clara_core import ModelTier, make_llm
+
+            def classify():
+                # Use low-tier model for classification
+                llm = make_llm(tier=ModelTier.LOW)
+                response = llm([{"role": "user", "content": prompt}])
+                return response.strip().upper()
+
+            result = await loop.run_in_executor(BLOCKING_EXECUTOR, classify)
+
+            # Parse result
+            if "HIGH" in result:
+                return "high"
+            elif "LOW" in result:
+                return "low"
+            else:
+                return "mid"  # Default to mid
+
+        except Exception as e:
+            logger.warning(f"Tier classification failed: {e}, defaulting to mid")
+            return "mid"

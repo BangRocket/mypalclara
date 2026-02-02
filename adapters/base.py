@@ -18,6 +18,7 @@ from websockets.client import WebSocketClientProtocol
 
 from config.logging import get_logger
 from gateway.protocol import (
+    AttachmentInfo,
     CancelMessage,
     ChannelInfo,
     GatewayMessage,
@@ -219,14 +220,11 @@ class GatewayClient(ABC):
 
             attempt += 1
             if max_initial_attempts > 0 and attempt >= max_initial_attempts:
-                raise RuntimeError(
-                    f"Failed to connect to gateway after {attempt} attempts"
-                )
+                raise RuntimeError(f"Failed to connect to gateway after {attempt} attempts")
 
             delay = min(self._current_reconnect_delay, self.max_reconnect_delay)
             logger.info(
-                f"Gateway not ready, retrying in {delay:.1f}s "
-                f"(attempt {attempt}/{max_initial_attempts or '∞'})..."
+                f"Gateway not ready, retrying in {delay:.1f}s " f"(attempt {attempt}/{max_initial_attempts or '∞'})..."
             )
             await asyncio.sleep(delay)
 
@@ -358,12 +356,18 @@ class GatewayClient(ABC):
         if not self._ws or not self._connected:
             raise RuntimeError("Not connected to gateway")
 
+        # Convert attachment dicts to AttachmentInfo objects
+        attachment_infos = []
+        if attachments:
+            for att in attachments:
+                attachment_infos.append(AttachmentInfo(**att))
+
         request = MessageRequest(
             id=f"msg-{uuid.uuid4().hex[:8]}",
             user=user,
             channel=channel,
             content=content,
-            attachments=[],  # TODO: Convert attachments
+            attachments=attachment_infos,
             reply_chain=reply_chain or [],
             tier_override=tier_override,
             metadata=metadata or {"platform": self.platform},

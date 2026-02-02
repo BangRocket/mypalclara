@@ -31,6 +31,7 @@ load_dotenv()
 import discord
 from discord.ext import commands as discord_commands
 
+from adapters.discord.channel_modes import get_channel_mode
 from adapters.discord.gateway_client import DiscordGatewayClient
 from clara_core.discord import setup as setup_slash_commands
 from config.logging import get_logger, init_logging
@@ -41,6 +42,13 @@ logger = get_logger("adapters.discord")
 # Configuration
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
+STOP_PHRASES = [
+    p.strip().lower()
+    for p in os.getenv(
+        "DISCORD_STOP_PHRASES",
+        "clara stop,stop clara,nevermind,never mind",
+    ).split(",")
+]
 
 # Intents for Discord
 intents = discord.Intents.default()
@@ -117,12 +125,35 @@ class GatewayDiscordBot(discord_commands.Bot):
         if message.author == self.user:
             return
 
+        # Ignore bots
+        if message.author.bot:
+            return
+
         # Check if mentioned or in DM
         is_dm = message.guild is None
         is_mention = self.user in message.mentions if self.user else False
 
-        if not is_dm and not is_mention:
-            return  # Only respond to DMs or mentions
+        # Get channel mode
+        channel_id = str(message.channel.id)
+        channel_mode = get_channel_mode(channel_id)
+
+        # Check for stop phrase
+        content_lower = message.content.lower().strip()
+        if is_mention and any(phrase in content_lower for phrase in STOP_PHRASES):
+            await self._handle_stop(message)
+            return
+
+        # Determine if we should respond based on channel mode
+        should_respond = False
+        if is_dm:
+            should_respond = True
+        elif is_mention:
+            should_respond = channel_mode != "off"
+        elif channel_mode == "active":
+            should_respond = True
+
+        if not should_respond:
+            return
 
         # Check if gateway is connected
         if not self.gateway_client or not self.gateway_client.is_connected:
@@ -144,6 +175,24 @@ class GatewayDiscordBot(discord_commands.Bot):
                 "Sorry, I'm having trouble connecting right now.",
                 mention_author=False,
             )
+
+    async def _handle_stop(self, message: discord.Message) -> None:
+        """Handle a stop phrase to cancel current processing.
+
+        Args:
+            message: The message containing the stop phrase
+        """
+        logger.info(f"Stop phrase detected from {message.author.id}")
+
+        # Cancel any pending requests for this channel
+        if self.gateway_client:
+            channel_id = str(message.channel.id)
+            cancelled = self.gateway_client.cancel_pending_for_channel(channel_id)
+            if cancelled:
+                await message.add_reaction("🛑")
+                logger.info(f"Cancelled {len(cancelled)} pending requests")
+            else:
+                await message.add_reaction("👌")  # Nothing to cancel
 
     def _detect_tier(self, content: str) -> str | None:
         """Detect tier override from message prefix."""
@@ -209,5 +258,10 @@ async def main() -> None:
     logger.info("Bot stopped")
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Sync entry point for poetry scripts."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()

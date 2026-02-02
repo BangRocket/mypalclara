@@ -11,6 +11,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from adapters.base import GatewayClient
+from adapters.discord.attachment_handler import extract_attachments
+from adapters.discord.message_builder import (
+    DISCORD_MSG_LIMIT,
+    clean_content,
+    format_response,
+    split_message,
+)
 from config.logging import get_logger
 from gateway.protocol import ChannelInfo, UserInfo
 
@@ -18,9 +25,6 @@ if TYPE_CHECKING:
     import discord
 
 logger = get_logger("adapters.discord.gateway")
-
-# Discord message limit
-DISCORD_MSG_LIMIT = 2000
 
 
 @dataclass
@@ -96,16 +100,20 @@ class DiscordGatewayClient(GatewayClient):
             )
 
             # Clean content
-            content = self._clean_content(message.content)
+            content = clean_content(message.content, self.bot.user)
 
             # Build reply chain if present
             reply_chain = await self._build_reply_chain(message)
+
+            # Extract attachments (images and text files)
+            attachments = await extract_attachments(message)
 
             # Send to gateway
             request_id = await self.send_message(
                 user=user,
                 channel=channel,
                 content=content,
+                attachments=attachments,
                 tier_override=tier_override,
                 reply_chain=reply_chain,
                 metadata={
@@ -126,14 +134,6 @@ class DiscordGatewayClient(GatewayClient):
         except Exception as e:
             logger.exception(f"Failed to send message to gateway: {e}")
             return None
-
-    def _clean_content(self, content: str) -> str:
-        """Clean message content by removing bot mentions."""
-        import re
-
-        if self.bot.user:
-            content = re.sub(rf"<@!?{self.bot.user.id}>", "", content)
-        return content.strip()
 
     async def _build_reply_chain(
         self,
@@ -203,7 +203,7 @@ class DiscordGatewayClient(GatewayClient):
 
         # Update or send message
         try:
-            display_text = self._format_response(
+            display_text = format_response(
                 pending.accumulated_text,
                 in_progress=True,
             )
@@ -230,7 +230,7 @@ class DiscordGatewayClient(GatewayClient):
         # Send final response
         try:
             full_text = message.full_text
-            chunks = self._split_message(full_text)
+            chunks = split_message(full_text)
 
             if pending.status_message:
                 # Edit existing message with first chunk
@@ -303,57 +303,27 @@ class DiscordGatewayClient(GatewayClient):
             except Exception:
                 pass
 
-    def _format_response(
-        self,
-        text: str,
-        in_progress: bool = False,
-    ) -> str:
-        """Format response text for Discord.
+    def cancel_pending_for_channel(self, channel_id: str) -> list[str]:
+        """Cancel all pending requests for a channel.
 
         Args:
-            text: Response text
-            in_progress: Whether response is still streaming
+            channel_id: Discord channel ID
 
         Returns:
-            Formatted text
+            List of cancelled request IDs
         """
-        if in_progress:
-            # Add typing indicator
-            text = text + " ▌"
+        cancelled = []
+        to_remove = []
 
-        # Truncate if too long
-        if len(text) > DISCORD_MSG_LIMIT:
-            text = text[: DISCORD_MSG_LIMIT - 4] + "..."
+        for request_id, pending in self._pending.items():
+            if str(pending.message.channel.id) == channel_id:
+                to_remove.append(request_id)
+                cancelled.append(request_id)
 
-        return text
+        for request_id in to_remove:
+            del self._pending[request_id]
 
-    def _split_message(self, text: str) -> list[str]:
-        """Split a message into Discord-sized chunks.
-
-        Args:
-            text: The full text to split
-
-        Returns:
-            List of chunks, each under DISCORD_MSG_LIMIT
-        """
-        if len(text) <= DISCORD_MSG_LIMIT:
-            return [text]
-
-        chunks = []
-        current = ""
-
-        for line in text.split("\n"):
-            if len(current) + len(line) + 1 > DISCORD_MSG_LIMIT - 20:
-                if current:
-                    chunks.append(current.strip())
-                current = line + "\n"
-            else:
-                current += line + "\n"
-
-        if current.strip():
-            chunks.append(current.strip())
-
-        return chunks if chunks else [text[:DISCORD_MSG_LIMIT]]
+        return cancelled
 
     async def _send_files(
         self,

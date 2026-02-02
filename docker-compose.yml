@@ -260,6 +260,54 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Discord adapter (gateway-connected)
+  discord-adapter:
+    image: ${REGISTRY:-}mypalclara-discord:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.discord
+    container_name: mypalclara-discord-adapter
+    profiles:
+      - adapters
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-}
+      - DISCORD_ALLOWED_SERVERS=${DISCORD_ALLOWED_SERVERS:-}
+      - DISCORD_ALLOWED_CHANNELS=${DISCORD_ALLOWED_CHANNELS:-}
+      - DISCORD_ALLOWED_ROLES=${DISCORD_ALLOWED_ROLES:-}
+      - DISCORD_MAX_MESSAGES=${DISCORD_MAX_MESSAGES:-25}
+      - CLARA_GATEWAY_URL=ws://gateway:18789
+      - USE_GATEWAY=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # PostgreSQL (for channel modes)
+      - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Teams adapter (gateway-connected)
+  teams-adapter:
+    image: ${REGISTRY:-}mypalclara-teams:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.teams
+    container_name: mypalclara-teams-adapter
+    profiles:
+      - teams
+    ports:
+      - "3978:3978"
+    environment:
+      - TEAMS_APP_ID=${TEAMS_APP_ID}
+      - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD}
+      - TEAMS_PORT=3978
+      - CLARA_GATEWAY_URL=ws://gateway:18789
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mypalclara-data:
   mypalclara-files:

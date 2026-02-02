@@ -4,6 +4,8 @@ Handles:
 - LLM calls with tool support
 - Streaming response generation
 - Multi-turn tool execution
+- Multimodal image support
+- Auto-continue for permission-seeking questions
 """
 
 from __future__ import annotations
@@ -11,11 +13,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from config.logging import get_logger
-from gateway.protocol import ResponseChunk, ToolResult, ToolStart
+from gateway.protocol import AttachmentInfo, ResponseChunk, ToolResult, ToolStart
 
 if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol
@@ -31,6 +34,25 @@ LLM_EXECUTOR = ThreadPoolExecutor(
 # Configuration
 MAX_TOOL_ITERATIONS = int(os.getenv("GATEWAY_MAX_TOOL_ITERATIONS", "75"))
 MAX_TOOL_RESULT_CHARS = int(os.getenv("GATEWAY_MAX_TOOL_RESULT_CHARS", "50000"))
+
+# Auto-continue configuration
+AUTO_CONTINUE_ENABLED = os.getenv("AUTO_CONTINUE_ENABLED", "true").lower() == "true"
+AUTO_CONTINUE_MAX = int(os.getenv("AUTO_CONTINUE_MAX", "3"))
+
+# Permission-seeking patterns that trigger auto-continue
+AUTO_CONTINUE_PATTERNS = [
+    r"want me to .*\?",
+    r"should i .*\?",
+    r"shall i .*\?",
+    r"would you like me to .*\?",
+    r"ready to proceed\?",
+    r"proceed\?",
+    r"go ahead\?",
+    r"continue\?",
+    r"do you want me to .*\?",
+    r"i can .* if you('d)? like",
+    r"let me know if",
+]
 
 
 class LLMOrchestrator:
@@ -67,6 +89,8 @@ class LLMOrchestrator:
         request_id: str,
         tier: str | None = None,
         websocket: WebSocketServerProtocol | None = None,
+        images: list[AttachmentInfo] | None = None,
+        auto_continue_count: int = 0,
     ) -> AsyncIterator[dict[str, Any]]:
         """Generate response with tool calling support.
 
@@ -83,6 +107,8 @@ class LLMOrchestrator:
             request_id: Request ID for tracking
             tier: Optional model tier (high/mid/low)
             websocket: WebSocket for sending updates
+            images: Optional list of image attachments for vision
+            auto_continue_count: Current auto-continue iteration (internal use)
 
         Yields:
             Event dicts with type and data
@@ -94,6 +120,11 @@ class LLMOrchestrator:
         working_messages = list(messages)  # Copy to avoid mutation
         total_tools_run = 0
         files_to_send: list[str] = []
+
+        # Add images to the last user message if present
+        if images:
+            working_messages = self._add_images_to_messages(working_messages, images)
+            logger.info(f"[{request_id}] Added {len(images)} image(s) to context")
 
         # Add tool instruction
         tool_instruction = self._build_tool_instruction()
@@ -115,15 +146,81 @@ class LLMOrchestrator:
             if not tool_calls:
                 # No tools - return final response
                 content = response.get("content") or ""
+                messages_for_llm = [m for m in working_messages if m != tool_instruction]
+
+                # Check if auto-continue might be needed
+                might_auto_continue = (
+                    AUTO_CONTINUE_ENABLED
+                    and auto_continue_count < AUTO_CONTINUE_MAX
+                )
+
+                if iteration == 0 and not might_auto_continue:
+                    # First iteration, no auto-continue - use real streaming
+                    async for chunk in self._call_main_llm_streaming(
+                        messages_for_llm,
+                        tier,
+                    ):
+                        content += chunk
+                        yield {"type": "chunk", "text": chunk}
+
+                    yield {
+                        "type": "complete",
+                        "text": content,
+                        "tool_count": total_tools_run,
+                        "files": files_to_send,
+                    }
+                    return
+
+                # Need non-streaming for auto-continue check or tool iterations
                 if iteration == 0:
-                    # First iteration with no tools - use main LLM
                     content = await self._call_main_llm(
-                        [m for m in working_messages if m != tool_instruction],
+                        messages_for_llm,
                         tier,
                         loop,
+                        images=images,
                     )
 
-                # Stream the response
+                # Check for auto-continue (permission-seeking question)
+                if might_auto_continue and self._should_auto_continue(content):
+                    logger.info(
+                        f"[{request_id}] Auto-continue triggered "
+                        f"(iteration {auto_continue_count + 1}/{AUTO_CONTINUE_MAX})"
+                    )
+
+                    # Stream the response so far (simulated since we already have it)
+                    async for chunk in self._stream_text(content):
+                        yield {"type": "chunk", "text": chunk}
+
+                    # Add assistant response and user confirmation
+                    working_messages.append({"role": "assistant", "content": content})
+                    working_messages.append({"role": "user", "content": "Yes, please proceed."})
+
+                    # Recursive call for continuation
+                    async for event in self.generate_with_tools(
+                        messages=working_messages,
+                        tools=tools,
+                        user_id=user_id,
+                        request_id=request_id,
+                        tier=tier,
+                        websocket=websocket,
+                        images=None,  # Don't re-add images
+                        auto_continue_count=auto_continue_count + 1,
+                    ):
+                        if event["type"] == "chunk":
+                            yield event
+                        elif event["type"] == "complete":
+                            # Combine responses
+                            yield {
+                                "type": "complete",
+                                "text": content + "\n\n" + event["text"],
+                                "tool_count": total_tools_run + event.get("tool_count", 0),
+                                "files": files_to_send + event.get("files", []),
+                            }
+                        else:
+                            yield event
+                    return
+
+                # Stream the response (simulated since we already have content)
                 async for chunk in self._stream_text(content):
                     yield {"type": "chunk", "text": chunk}
 
@@ -257,15 +354,63 @@ class LLMOrchestrator:
 
         return await loop.run_in_executor(LLM_EXECUTOR, call)
 
+    async def _call_main_llm_streaming(
+        self,
+        messages: list[dict[str, Any]],
+        tier: str | None,
+    ) -> AsyncIterator[str]:
+        """Call main LLM with streaming and yield chunks.
+
+        Args:
+            messages: Conversation messages
+            tier: Optional model tier
+
+        Yields:
+            Response text chunks as they arrive
+        """
+        from clara_core import ModelTier, make_llm_streaming
+
+        model_tier = ModelTier(tier) if tier else None
+        loop = asyncio.get_event_loop()
+
+        # Create the streaming LLM
+        def get_stream():
+            llm = make_llm_streaming(tier=model_tier)
+            return llm(messages)
+
+        # Get the stream generator in executor
+        stream = await loop.run_in_executor(LLM_EXECUTOR, get_stream)
+
+        # Yield chunks from the stream (each in executor to not block)
+        def get_next_chunk(gen):
+            try:
+                return next(gen)
+            except StopIteration:
+                return None
+
+        while True:
+            chunk = await loop.run_in_executor(LLM_EXECUTOR, get_next_chunk, stream)
+            if chunk is None:
+                break
+            yield chunk
+
     async def _call_main_llm(
         self,
         messages: list[dict[str, Any]],
         tier: str | None,
         loop: asyncio.AbstractEventLoop,
+        images: list[AttachmentInfo] | None = None,
     ) -> str:
-        """Call main LLM without tools.
+        """Call main LLM without tools (non-streaming fallback).
 
-        Returns response text.
+        Args:
+            messages: Conversation messages
+            tier: Optional model tier
+            loop: Event loop for executor
+            images: Optional images (already added to messages if present)
+
+        Returns:
+            Response text.
         """
         from clara_core import ModelTier, make_llm
 
@@ -327,3 +472,97 @@ class LLMOrchestrator:
             f"Use pagination parameters (per_page, page) or more specific filters to get smaller results.]"
         )
         return truncated + msg
+
+    def _add_images_to_messages(
+        self,
+        messages: list[dict[str, Any]],
+        images: list[AttachmentInfo],
+    ) -> list[dict[str, Any]]:
+        """Add images to the last user message for vision processing.
+
+        Converts images to the appropriate format based on LLM provider.
+
+        Args:
+            messages: Conversation messages
+            images: List of image attachments
+
+        Returns:
+            Updated messages with images embedded
+        """
+        if not images:
+            return messages
+
+        provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+
+        # Find the last user message
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                user_msg = messages[i]
+
+                # Build multimodal content
+                content_parts = []
+
+                # Add existing text content
+                existing_content = user_msg.get("content", "")
+                if isinstance(existing_content, str):
+                    content_parts.append({"type": "text", "text": existing_content})
+                elif isinstance(existing_content, list):
+                    content_parts.extend(existing_content)
+
+                # Add images
+                for img in images:
+                    if img.type != "image" or not img.base64_data:
+                        continue
+
+                    if provider == "anthropic":
+                        # Anthropic native format
+                        content_parts.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": img.media_type or "image/jpeg",
+                                    "data": img.base64_data,
+                                },
+                            }
+                        )
+                    else:
+                        # OpenAI/OpenRouter format
+                        content_parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{img.media_type or 'image/jpeg'};base64,{img.base64_data}",
+                                },
+                            }
+                        )
+
+                # Update message with multimodal content
+                messages[i] = {
+                    **user_msg,
+                    "content": content_parts,
+                }
+                break
+
+        return messages
+
+    def _should_auto_continue(self, response: str) -> bool:
+        """Check if response ends with a permission-seeking question.
+
+        Args:
+            response: The LLM response text
+
+        Returns:
+            True if auto-continue should be triggered
+        """
+        if not response:
+            return False
+
+        # Get the last ~200 chars to check for patterns
+        tail = response[-200:].lower().strip()
+
+        for pattern in AUTO_CONTINUE_PATTERNS:
+            if re.search(pattern, tail, re.IGNORECASE):
+                return True
+
+        return False

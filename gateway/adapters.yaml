@@ -1,0 +1,60 @@
+# Clara Gateway Adapter Configuration
+#
+# This file configures which platform adapters the gateway daemon will manage.
+# Adapters are spawned as subprocesses and supervised for automatic restart.
+#
+# Environment variables can be referenced using ${VAR_NAME} syntax.
+# Missing environment variables will be replaced with empty strings.
+
+adapters:
+  # Discord adapter - connects to Discord via py-cord
+  discord:
+    enabled: true
+    module: adapters.discord
+    env:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      CLARA_GATEWAY_URL: ws://127.0.0.1:18789
+    restart_policy: always
+    restart_delay: 5
+    max_restarts: 10
+    reset_window: 300
+
+  # CLI adapter - interactive command line interface
+  cli:
+    enabled: false  # CLI is typically run manually, not as a daemon
+    module: adapters.cli
+    env:
+      CLARA_GATEWAY_URL: ws://127.0.0.1:18789
+      CLI_USER_ID: cli-user
+    restart_policy: never
+    restart_delay: 0
+
+  # Microsoft Teams adapter - connects to Teams via Bot Framework SDK
+  # Requires Azure Bot registration. See CLAUDE.md for setup instructions.
+  teams:
+    enabled: false  # Enable once TEAMS_APP_ID and TEAMS_APP_PASSWORD are configured
+    module: adapters.teams
+    env:
+      TEAMS_APP_ID: ${TEAMS_APP_ID}
+      TEAMS_APP_PASSWORD: ${TEAMS_APP_PASSWORD}
+      TEAMS_PORT: ${TEAMS_PORT:-3978}
+      CLARA_GATEWAY_URL: ws://127.0.0.1:18789
+    restart_policy: always
+    restart_delay: 5
+    max_restarts: 10
+    reset_window: 300
+
+# Notes:
+#
+# restart_policy options:
+#   - always: Restart whenever the adapter exits (default)
+#   - on_failure: Only restart if exit code is non-zero
+#   - never: Never automatically restart
+#
+# restart_delay: Seconds to wait before restarting (default: 5)
+#
+# max_restarts: Maximum restart attempts within reset_window (default: 10)
+#   If exceeded, adapter enters "failed" state and stops restarting.
+#
+# reset_window: Seconds after which restart count resets (default: 300)
+#   If adapter runs successfully for this long, restart count resets to 0.

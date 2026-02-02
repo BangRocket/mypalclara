@@ -5,13 +5,15 @@ Handles:
 - Request lifecycle (pending, active, completed)
 - Cancellation support
 - Batch processing for active mode
+- Message deduplication
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +24,10 @@ if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol
 
 logger = get_logger("gateway.router")
+
+# Deduplication settings
+DEDUP_WINDOW_SECONDS = 30  # Time window to check for duplicates
+DEDUP_MAX_ENTRIES = 1000  # Maximum entries in dedup cache
 
 
 class RequestStatus(str, Enum):
@@ -84,6 +90,7 @@ class MessageRouter:
 
     Provides channel-level locking to prevent concurrent tool execution
     within the same channel, while allowing parallel processing across channels.
+    Also provides message deduplication to prevent processing the same message twice.
     """
 
     def __init__(self) -> None:
@@ -95,6 +102,55 @@ class MessageRouter:
         self._requests: dict[str, RequestStatus] = {}
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
+        # Deduplication cache: fingerprint -> timestamp
+        self._seen_messages: dict[str, datetime] = {}
+        # Lock for dedup cache
+        self._dedup_lock = asyncio.Lock()
+
+    def _compute_fingerprint(self, request: MessageRequest) -> str:
+        """Compute a fingerprint for deduplication.
+
+        Args:
+            request: The message request
+
+        Returns:
+            Hash string identifying this message
+        """
+        # Create fingerprint from content + user + channel
+        data = f"{request.user.id}|{request.channel.id}|{request.content}"
+        return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+    async def is_duplicate(self, request: MessageRequest) -> bool:
+        """Check if a message is a duplicate within the dedup window.
+
+        Args:
+            request: The message request to check
+
+        Returns:
+            True if this message was seen recently
+        """
+        fingerprint = self._compute_fingerprint(request)
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=DEDUP_WINDOW_SECONDS)
+
+        async with self._dedup_lock:
+            # Clean old entries periodically
+            if len(self._seen_messages) > DEDUP_MAX_ENTRIES:
+                self._seen_messages = {
+                    fp: ts for fp, ts in self._seen_messages.items()
+                    if ts > cutoff
+                }
+
+            # Check if seen recently
+            if fingerprint in self._seen_messages:
+                last_seen = self._seen_messages[fingerprint]
+                if last_seen > cutoff:
+                    logger.debug(f"Duplicate message detected: {request.id}")
+                    return True
+
+            # Record this message
+            self._seen_messages[fingerprint] = now
+            return False
 
     async def submit(
         self,
@@ -102,6 +158,7 @@ class MessageRouter:
         websocket: WebSocketServerProtocol,
         node_id: str,
         is_batchable: bool = False,
+        skip_dedup: bool = False,
     ) -> tuple[bool, int]:
         """Submit a request for processing.
 
@@ -110,12 +167,18 @@ class MessageRouter:
             websocket: Originating WebSocket connection
             node_id: Originating node ID
             is_batchable: Whether this can be batched with other requests
+            skip_dedup: Skip deduplication check (for retries)
 
         Returns:
             Tuple of (acquired_immediately, queue_position)
             If acquired is True, caller should process immediately.
             If False, queue_position indicates position in queue (1-indexed).
+            If (False, -1), the message was rejected as a duplicate.
         """
+        # Check for duplicates first
+        if not skip_dedup and await self.is_duplicate(request):
+            return False, -1  # Rejected as duplicate
+
         channel_id = request.channel.id
 
         async with self._lock:
