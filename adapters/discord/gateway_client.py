@@ -185,42 +185,31 @@ class DiscordGatewayClient(GatewayClient):
         logger.debug(f"Response started for {request_id}")
 
     async def on_response_chunk(self, message: Any) -> None:
-        """Handle streaming response chunk."""
+        """Handle streaming response chunk - just maintain typing indicator."""
         request_id = message.request_id
         pending = self._pending.get(request_id)
         if not pending:
             logger.debug(f"No pending request for chunk {request_id}")
             return
 
+        # Accumulate text for final response
         pending.accumulated_text = message.accumulated or (pending.accumulated_text + message.chunk)
 
-        # Rate-limit edits to avoid Discord rate limits
+        # Keep typing indicator alive (Discord typing lasts ~10 seconds)
         now = datetime.now()
         if pending.last_edit:
             elapsed = (now - pending.last_edit).total_seconds()
-            if elapsed < self._edit_cooldown:
+            if elapsed < 8.0:  # Refresh typing every 8 seconds
                 return
 
-        # Update or send message
         try:
-            display_text = format_response(
-                pending.accumulated_text,
-                in_progress=True,
-            )
-
-            if pending.status_message:
-                await pending.status_message.edit(content=display_text)
-            else:
-                pending.status_message = await pending.message.reply(
-                    display_text,
-                    mention_author=False,
-                )
+            await pending.message.channel.trigger_typing()
             pending.last_edit = now
         except Exception as e:
-            logger.debug(f"Edit error: {e}")
+            logger.debug(f"Typing indicator error: {e}")
 
     async def on_response_end(self, message: Any) -> None:
-        """Handle response completion."""
+        """Handle response completion - send the full message."""
         request_id = message.request_id
         pending = self._pending.pop(request_id, None)
         if not pending:
@@ -232,19 +221,12 @@ class DiscordGatewayClient(GatewayClient):
             full_text = message.full_text
             chunks = split_message(full_text)
 
-            if pending.status_message:
-                # Edit existing message with first chunk
-                await pending.status_message.edit(content=chunks[0])
-                # Send additional chunks as new messages
-                for chunk in chunks[1:]:
+            # Send all chunks as replies
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    await pending.message.reply(chunk, mention_author=False)
+                else:
                     await pending.message.channel.send(chunk)
-            else:
-                # Send all chunks
-                for i, chunk in enumerate(chunks):
-                    if i == 0:
-                        await pending.message.reply(chunk, mention_author=False)
-                    else:
-                        await pending.message.channel.send(chunk)
 
             # Handle file attachments
             files_to_send = message.files
@@ -254,7 +236,7 @@ class DiscordGatewayClient(GatewayClient):
         except Exception as e:
             logger.exception(f"Failed to send final response: {e}")
 
-        logger.info(f"Response {request_id} complete: " f"{len(message.full_text)} chars, {message.tool_count} tools")
+        logger.info(f"Response {request_id} complete: {len(message.full_text)} chars, {message.tool_count} tools")
 
     async def on_tool_start(self, message: Any) -> None:
         """Handle tool execution start."""
