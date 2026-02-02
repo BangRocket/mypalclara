@@ -6,7 +6,9 @@ Manages adapter lifecycle: spawning, supervision, restart on failure.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -446,6 +448,12 @@ class AdapterManager:
         if process.stdout is None:
             return
 
+        # Pattern to match log format: "HH:MM:SS LEVEL     [logger] message"
+        log_pattern = re.compile(
+            r"^(\d{2}:\d{2}:\d{2})\s+(\w+)\s+\[[^\]]+\]\s*(.*)$"
+        )
+        adapter_logger = get_logger(f"adapter.{name}")
+
         try:
             while True:
                 line = await asyncio.get_event_loop().run_in_executor(
@@ -453,10 +461,20 @@ class AdapterManager:
                 )
                 if not line:
                     break
-                # Print adapter output directly (already formatted by adapter's logger)
                 line_str = line.decode("utf-8", errors="replace").rstrip()
-                if line_str:
-                    print(f"[{name}] {line_str}", flush=True)
+                if not line_str:
+                    continue
+
+                # Try to parse as a log line and re-log uniformly
+                match = log_pattern.match(line_str)
+                if match:
+                    level_str = match.group(2).upper()
+                    message = match.group(3)
+                    level = getattr(logging, level_str, logging.INFO)
+                    adapter_logger.log(level, message)
+                else:
+                    # Non-log output (like "[logging] Initializing...")
+                    adapter_logger.info(line_str)
         except Exception:
             pass  # Process likely terminated
 
