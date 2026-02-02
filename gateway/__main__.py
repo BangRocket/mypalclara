@@ -184,7 +184,8 @@ def cmd_start(args: argparse.Namespace) -> None:
         print(f"Gateway already running (PID: {pid})")
         sys.exit(1)
 
-    adapters = None if args.no_adapters else args.adapters
+    # [] = start no adapters, None = start all enabled, ["foo"] = start specific
+    adapters = [] if args.no_adapters else args.adapters
 
     if args.foreground:
         print(f"Starting gateway on {args.host}:{args.port}")
@@ -453,8 +454,9 @@ async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] 
     await server.start()
 
     # Initialize and start adapter manager
+    # None = start all enabled, [] = start none, ["foo"] = start specific
     adapter_manager = None
-    if adapter_names is not None or adapter_names != []:
+    if adapter_names is None or adapter_names:
         config_path = args.adapters_config or (Path(__file__).parent / "adapters.yaml")
         adapter_manager = get_adapter_manager(config_path)
         await adapter_manager.start(adapter_names)
