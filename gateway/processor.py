@@ -170,6 +170,8 @@ class MessageProcessor:
                 from db.models import utcnow
                 session.last_activity_at = utcnow()
                 db.commit()
+                db.refresh(session)
+                db.expunge(session)
                 return session
 
             # Create new session
@@ -181,6 +183,7 @@ class MessageProcessor:
             db.add(session)
             db.commit()
             db.refresh(session)
+            db.expunge(session)
             logger.debug(f"Created DB session {session.id} for {user_id}/{context_id}")
             return session
 
