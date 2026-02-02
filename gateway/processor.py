@@ -4,6 +4,7 @@ Handles:
 - Context building (memory fetch, history)
 - LLM orchestration with tool calling
 - Response streaming
+- Message persistence
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from config.logging import get_logger
+from db import SessionLocal
+from db.models import Message, Session as DBSession
 from gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
 from gateway.llm_orchestrator import LLMOrchestrator
 from gateway.protocol import (
@@ -116,6 +119,135 @@ class MessageProcessor:
         except Exception as e:
             logger.error(f"Failed to initialize MemoryManager: {e}")
             raise
+
+    def _get_or_create_db_session(
+        self,
+        user_id: str,
+        channel_id: str,
+        is_dm: bool = False,
+    ) -> DBSession:
+        """Get or create a database session for conversation persistence.
+
+        Args:
+            user_id: The user's ID
+            channel_id: The channel/context ID
+            is_dm: Whether this is a DM
+
+        Returns:
+            Database Session object
+        """
+        from db.models import Project
+
+        db = SessionLocal()
+        try:
+            # Build context_id from channel
+            context_id = f"dm-{user_id}" if is_dm else f"channel-{channel_id}"
+
+            # Get or create default project for this user
+            project = db.query(Project).filter_by(owner_id=user_id).first()
+            if not project:
+                project_name = os.getenv("DEFAULT_PROJECT", "Default Project")
+                project = Project(owner_id=user_id, name=project_name)
+                db.add(project)
+                db.commit()
+                db.refresh(project)
+
+            # Find existing active session
+            session = (
+                db.query(DBSession)
+                .filter(
+                    DBSession.user_id == user_id,
+                    DBSession.context_id == context_id,
+                    DBSession.project_id == project.id,
+                    DBSession.archived != "true",
+                )
+                .order_by(DBSession.last_activity_at.desc())
+                .first()
+            )
+
+            if session:
+                # Update activity timestamp
+                from db.models import utcnow
+                session.last_activity_at = utcnow()
+                db.commit()
+                return session
+
+            # Create new session
+            session = DBSession(
+                user_id=user_id,
+                context_id=context_id,
+                project_id=project.id,
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+            logger.debug(f"Created DB session {session.id} for {user_id}/{context_id}")
+            return session
+
+        finally:
+            db.close()
+
+    def _store_message(
+        self,
+        session_id: str,
+        user_id: str,
+        role: str,
+        content: str,
+    ) -> None:
+        """Store a message in the database.
+
+        Args:
+            session_id: Database session ID
+            user_id: User ID
+            role: Message role ('user' or 'assistant')
+            content: Message content
+        """
+        db = SessionLocal()
+        try:
+            msg = Message(
+                session_id=session_id,
+                user_id=user_id,
+                role=role,
+                content=content,
+            )
+            db.add(msg)
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to store message: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    def _get_recent_messages(
+        self,
+        session_id: str,
+        limit: int = 15,
+    ) -> list[Message]:
+        """Fetch recent messages from a database session.
+
+        Args:
+            session_id: Database session ID
+            limit: Maximum messages to fetch
+
+        Returns:
+            List of Message objects in chronological order
+        """
+        db = SessionLocal()
+        try:
+            messages = (
+                db.query(Message)
+                .filter(Message.session_id == session_id)
+                .order_by(Message.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            # Return in chronological order
+            return list(reversed(messages))
+        except Exception as e:
+            logger.warning(f"Failed to fetch messages: {e}")
+            return []
+        finally:
+            db.close()
 
     async def process(
         self,
@@ -254,6 +386,18 @@ class MessageProcessor:
         channel_id = request.channel.id
         is_dm = request.channel.type == "dm"
 
+        # Get or create database session for persistence
+        db_session = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._get_or_create_db_session(user_id, channel_id, is_dm),
+        )
+
+        # Fetch recent messages from database
+        recent_msgs = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._get_recent_messages(db_session.id),
+        )
+
         # Prepare user content with text file attachments
         user_content = request.content
         text_attachments = self._format_text_attachments(request.attachments)
@@ -298,12 +442,15 @@ class MessageProcessor:
         except Exception as e:
             logger.debug(f"Could not fetch recurring topics: {e}")
 
+        # Get session summary if available
+        session_summary = db_session.session_summary if db_session else None
+
         # Build base prompt with Clara's persona
         messages = self._memory_manager.build_prompt(
             user_mems,
             proj_mems,
-            None,  # session_summary
-            [],  # recent_msgs
+            session_summary,
+            recent_msgs,
             user_content,
             graph_relations=graph_relations,
             emotional_context=emotional_context,
@@ -333,6 +480,8 @@ class MessageProcessor:
             "user_mems": user_mems,
             "proj_mems": proj_mems,
             "participants": participants,
+            "db_session_id": db_session.id if db_session else None,
+            "user_content": user_content,
         }
 
     def _format_text_attachments(self, attachments: list) -> str:
@@ -450,7 +599,7 @@ class MessageProcessor:
         response: str,
         context: dict[str, Any],
     ) -> None:
-        """Store the exchange in Clara's memory.
+        """Store the exchange in Clara's memory and database.
 
         Args:
             request: The original request
@@ -460,11 +609,38 @@ class MessageProcessor:
         if not response:
             return
 
+        loop = asyncio.get_event_loop()
+
+        # Store messages in database for conversation history
+        db_session_id = context.get("db_session_id")
+        if db_session_id:
+            # Store user message
+            user_content = context.get("user_content", request.content)
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._store_message(
+                    db_session_id,
+                    context["user_id"],
+                    "user",
+                    user_content,
+                ),
+            )
+            # Store assistant response
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._store_message(
+                    db_session_id,
+                    context["user_id"],
+                    "assistant",
+                    response,
+                ),
+            )
+
         # Track sentiment for emotional context
         await self._track_sentiment(request, context)
 
+        # Store in mem0 for semantic memory
         try:
-            loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
                 lambda: self._memory_manager.add_to_memory(
@@ -475,7 +651,7 @@ class MessageProcessor:
                 ),
             )
         except Exception as e:
-            logger.warning(f"Failed to store exchange: {e}")
+            logger.warning(f"Failed to store in mem0: {e}")
 
     async def _track_sentiment(
         self,
