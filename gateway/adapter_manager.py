@@ -448,9 +448,13 @@ class AdapterManager:
         if process.stdout is None:
             return
 
+        # Pattern to strip ANSI color codes
+        ansi_pattern = re.compile(r"\x1b\[[0-9;]*m")
+
         # Pattern to match log format: "HH:MM:SS LEVEL     [logger] message"
+        # Level is padded to 8 chars, logger name is in brackets
         log_pattern = re.compile(
-            r"^(\d{2}:\d{2}:\d{2})\s+(\w+)\s+\[[^\]]+\]\s*(.*)$"
+            r"^(\d{2}:\d{2}:\d{2})\s+(\w+)\s+\[([^\]]+)\]\s*(.*)$"
         )
         adapter_logger = get_logger(f"adapter.{name}")
 
@@ -465,16 +469,21 @@ class AdapterManager:
                 if not line_str:
                     continue
 
+                # Strip ANSI color codes before parsing
+                clean_line = ansi_pattern.sub("", line_str)
+
                 # Try to parse as a log line and re-log uniformly
-                match = log_pattern.match(line_str)
+                match = log_pattern.match(clean_line)
                 if match:
                     level_str = match.group(2).upper()
-                    message = match.group(3)
+                    original_logger = match.group(3)
+                    message = match.group(4)
                     level = getattr(logging, level_str, logging.INFO)
-                    adapter_logger.log(level, message)
+                    # Include original logger name in message for context
+                    adapter_logger.log(level, f"[{original_logger}] {message}")
                 else:
                     # Non-log output (like "[logging] Initializing...")
-                    adapter_logger.info(line_str)
+                    adapter_logger.info(clean_line)
         except Exception:
             pass  # Process likely terminated
 
