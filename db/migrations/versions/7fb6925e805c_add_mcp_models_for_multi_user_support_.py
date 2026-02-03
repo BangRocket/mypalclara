@@ -138,10 +138,19 @@ def upgrade() -> None:
     op.create_index('ix_mcp_tool_call_user_time', 'mcp_tool_calls', ['user_id', 'started_at'], unique=False)
     op.create_index(op.f('ix_mcp_tool_calls_session_id'), 'mcp_tool_calls', ['session_id'], unique=False)
     op.create_index(op.f('ix_mcp_tool_calls_user_id'), 'mcp_tool_calls', ['user_id'], unique=False)
-    op.drop_index(op.f('ix_web_chat_messages_session_id'), table_name='web_chat_messages')
-    op.drop_table('web_chat_messages')
-    op.drop_index(op.f('ix_notes_owner_id'), table_name='notes')
-    op.drop_table('notes')
+
+    # Drop legacy tables if they exist (not present on fresh databases)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_tables = inspector.get_table_names()
+
+    if 'web_chat_messages' in existing_tables:
+        op.drop_index(op.f('ix_web_chat_messages_session_id'), table_name='web_chat_messages')
+        op.drop_table('web_chat_messages')
+
+    if 'notes' in existing_tables:
+        op.drop_index(op.f('ix_notes_owner_id'), table_name='notes')
+        op.drop_table('notes')
     # ### end Alembic commands ###
 
 
