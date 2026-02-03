@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 from config.logging import get_logger
 from db import SessionLocal
-from db.models import Message, Session as DBSession
+from db.models import Message
+from db.models import Session as DBSession
 from gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
 from gateway.llm_orchestrator import LLMOrchestrator
 from gateway.protocol import (

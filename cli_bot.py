@@ -15,11 +15,11 @@ Commands:
 from __future__ import annotations
 
 import asyncio
-import os
 
 # Configure logging FIRST - before any imports that trigger logging
 # This must happen before clara_core imports, which load mem0 at module level
 import logging
+import os
 
 from adapters.cli.logging import configure_cli_logging
 

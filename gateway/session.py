@@ -451,7 +451,8 @@ class SessionManager:
         """
         try:
             from db import SessionLocal
-            from db.models import Message, Session as DBSession
+            from db.models import Message
+            from db.models import Session as DBSession
 
             db = SessionLocal()
             try:

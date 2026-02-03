@@ -71,8 +71,8 @@ def run_alembic_migrations() -> None:
     """Run pending Alembic migrations."""
     from alembic import command
     from alembic.config import Config
-    from alembic.script import ScriptDirectory
     from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
 
     # Find alembic.ini
     project_root = Path(__file__).parent.parent
@@ -100,7 +100,7 @@ def run_alembic_migrations() -> None:
 
     logger.info(f"Running migrations: {current_rev or 'base'} -> {head_rev}")
     command.upgrade(cfg, "head")
-    logger.info(f"Migrations complete")
+    logger.info("Migrations complete")
 
 
 def get_engine():

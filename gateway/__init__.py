@@ -18,6 +18,11 @@ from gateway.adapter_manager import (
     RestartPolicy,
     get_adapter_manager,
 )
+from gateway.channel_summaries import (
+    ChannelMessage,
+    ChannelSummaryManager,
+    get_summary_manager,
+)
 from gateway.daemon import (
     DEFAULT_ADAPTER_PIDFILE_PATTERN,
     DEFAULT_GATEWAY_PIDFILE,
@@ -71,11 +76,6 @@ from gateway.scheduler import (
 )
 from gateway.server import GatewayServer
 from gateway.session import NodeRegistry, SessionManager
-from gateway.channel_summaries import (
-    ChannelMessage,
-    ChannelSummaryManager,
-    get_summary_manager,
-)
 from gateway.tool_executor import ToolExecutor
 
 __all__ = [
