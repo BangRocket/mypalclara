@@ -24,8 +24,9 @@ GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 GRAPH_BETA_URL = "https://graph.microsoft.com/beta"
 TOKEN_URL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
 
-# Default tenant for multi-tenant apps
-DEFAULT_TENANT = "botframework.com"
+# Graph API requires a real tenant ID, not botframework.com
+# Set TEAMS_GRAPH_TENANT_ID to enable Graph API features (conversation history, file uploads)
+DEFAULT_TENANT = None
 
 
 class GraphClient:
@@ -52,7 +53,15 @@ class GraphClient:
         """
         self.app_id = app_id or os.getenv("TEAMS_APP_ID", "")
         self.app_password = app_password or os.getenv("TEAMS_APP_PASSWORD", "")
-        self.tenant_id = tenant_id or os.getenv("TEAMS_TENANT_ID", DEFAULT_TENANT)
+        self.tenant_id = tenant_id or os.getenv("TEAMS_GRAPH_TENANT_ID", DEFAULT_TENANT)
+
+        # Graph API is disabled if no tenant is configured
+        self._enabled = bool(self.tenant_id)
+        if not self._enabled:
+            logger.info(
+                "Graph API disabled - set TEAMS_GRAPH_TENANT_ID to enable "
+                "conversation history and file uploads"
+            )
 
         self._access_token: str | None = None
         self._token_expiry: datetime | None = None
@@ -196,6 +205,9 @@ class GraphClient:
         Returns:
             List of message dicts with role, content, author
         """
+        if not self._enabled:
+            return []
+
         endpoint = f"/chats/{chat_id}/messages?$top={limit}&$orderby=createdDateTime desc"
 
         result = await self._request("GET", endpoint)
@@ -253,6 +265,9 @@ class GraphClient:
         Returns:
             List of message dicts
         """
+        if not self._enabled:
+            return []
+
         endpoint = f"/teams/{team_id}/channels/{channel_id}/messages?$top={limit}"
 
         result = await self._request("GET", endpoint)
@@ -302,6 +317,9 @@ class GraphClient:
         Returns:
             Dict with id, name, webUrl, or None on failure
         """
+        if not self._enabled:
+            return None
+
         path = Path(file_path)
         if not path.exists():
             logger.error(f"File not found: {file_path}")
@@ -430,6 +448,9 @@ class GraphClient:
         Returns:
             Sharing URL or None
         """
+        if not self._enabled:
+            return None
+
         endpoint = f"/drive/items/{item_id}/createLink"
 
         result = await self._request(
