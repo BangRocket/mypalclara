@@ -57,6 +57,10 @@ class TeamsBot(ActivityHandler):
             await turn_context.send_activity("I'm having trouble connecting right now. Please try again.")
             return
 
+        # Debug: log service URL for auth troubleshooting
+        logger.debug(f"Service URL: {turn_context.activity.service_url}")
+        logger.debug(f"Conversation ID: {turn_context.activity.conversation.id}")
+
         # Send typing indicator
         await turn_context.send_activity(Activity(type=ActivityTypes.typing))
 

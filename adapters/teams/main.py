@@ -99,6 +99,7 @@ async def on_startup(app: web.Application) -> None:
     settings = BotFrameworkAdapterSettings(
         app_id=APP_ID,
         app_password=APP_PASSWORD,
+        app_type="MultiTenant",
     )
 
     # Create Bot Framework adapter
