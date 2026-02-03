@@ -100,9 +100,21 @@ class TeamsGatewayClient(GatewayClient):
             conversation = activity.conversation
             is_group = conversation.is_group if hasattr(conversation, "is_group") else False
 
+            # Map Teams conversation types to gateway types:
+            # - Teams "personal" -> gateway "dm"
+            # - Teams "groupChat" -> gateway "group"
+            # - Teams "channel" -> gateway "server" (team channel)
+            conv_type = getattr(conversation, "conversation_type", None)
+            if conv_type == "channel":
+                channel_type = "server"
+            elif is_group or conv_type == "groupChat":
+                channel_type = "group"
+            else:
+                channel_type = "dm"  # Personal/1:1 chat
+
             channel = ChannelInfo(
                 id=conversation.id,
-                type="group" if is_group else "personal",
+                type=channel_type,
                 name=conversation.name if hasattr(conversation, "name") else None,
                 guild_id=activity.channel_id,
                 guild_name=None,  # Teams doesn't have guild names in the same way
