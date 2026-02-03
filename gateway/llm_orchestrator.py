@@ -35,6 +35,9 @@ LLM_EXECUTOR = ThreadPoolExecutor(
 MAX_TOOL_ITERATIONS = int(os.getenv("GATEWAY_MAX_TOOL_ITERATIONS", "75"))
 MAX_TOOL_RESULT_CHARS = int(os.getenv("GATEWAY_MAX_TOOL_RESULT_CHARS", "50000"))
 
+# Tool calling mode: "xml" (OpenClaw-style system prompt injection) or "native" (API-based)
+TOOL_CALL_MODE = os.getenv("TOOL_CALL_MODE", "xml").lower()
+
 # Auto-continue configuration
 AUTO_CONTINUE_ENABLED = os.getenv("AUTO_CONTINUE_ENABLED", "true").lower() == "true"
 AUTO_CONTINUE_MAX = int(os.getenv("AUTO_CONTINUE_MAX", "3"))
@@ -313,6 +316,26 @@ class LLMOrchestrator:
     ) -> dict[str, Any]:
         """Call LLM with tools.
 
+        Supports two modes (controlled by TOOL_CALL_MODE env var):
+        - "native": Uses API-native tool calling (OpenAI/Anthropic format)
+        - "xml": OpenClaw-style system prompt injection
+
+        Returns dict with content and optional tool_calls.
+        """
+        if TOOL_CALL_MODE == "xml":
+            return await self._call_llm_xml(messages, tools, tier, loop)
+        else:
+            return await self._call_llm_native(messages, tools, tier, loop)
+
+    async def _call_llm_native(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tier: str | None,
+        loop: asyncio.AbstractEventLoop,
+    ) -> dict[str, Any]:
+        """Call LLM with native API tool calling.
+
         Returns dict with content and optional tool_calls.
         """
         from clara_core import (
@@ -351,6 +374,30 @@ class LLMOrchestrator:
                     if msg.tool_calls
                     else None,
                 }
+
+        return await loop.run_in_executor(LLM_EXECUTOR, call)
+
+    async def _call_llm_xml(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tier: str | None,
+        loop: asyncio.AbstractEventLoop,
+    ) -> dict[str, Any]:
+        """Call LLM with OpenClaw-style XML tool injection.
+
+        Tools are serialized to XML and injected into the system prompt.
+        Function calls are parsed from the response text.
+
+        Returns dict with content and optional tool_calls.
+        """
+        from clara_core import ModelTier, make_llm_with_xml_tools
+
+        model_tier = ModelTier(tier) if tier else None
+
+        def call():
+            llm = make_llm_with_xml_tools(tools, tier=model_tier)
+            return llm(messages)
 
         return await loop.run_in_executor(LLM_EXECUTOR, call)
 
