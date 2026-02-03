@@ -41,6 +41,8 @@ class OpenAIEmbedding(EmbeddingBase):
         Returns:
             list: The embedding vector.
         """
+        if not text:
+            raise ValueError(f"Cannot embed empty or None text: {text!r}")
         text = text.replace("\n", " ")
         return (
             self.client.embeddings.create(input=[text], model=self.config.model, dimensions=self.config.embedding_dims)

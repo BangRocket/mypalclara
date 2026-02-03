@@ -431,6 +431,11 @@ class MemoryGraph:
             destination = item["destination"]
             relationship = item["relationship"]
 
+            # Skip entities with empty source, destination, or relationship
+            if not source or not destination or not relationship:
+                logger.warning(f"Skipping entity with empty field: source={source!r}, destination={destination!r}, relationship={relationship!r}")
+                continue
+
             # types
             source_type = entity_type_map.get(source, "__User__")
             source_label = self.node_label if self.node_label else f":`{source_type}`"
