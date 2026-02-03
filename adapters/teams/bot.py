@@ -57,14 +57,9 @@ class TeamsBot(ActivityHandler):
             await turn_context.send_activity("I'm having trouble connecting right now. Please try again.")
             return
 
-        # Debug: log service URL for auth troubleshooting
-        service_url = turn_context.activity.service_url
-        logger.info(f"Service URL: {service_url}")
+        # Debug: log service URL for troubleshooting
+        logger.debug(f"Service URL: {turn_context.activity.service_url}")
         logger.debug(f"Conversation ID: {turn_context.activity.conversation.id}")
-
-        # Trust the service URL for auth
-        from botframework.connector.auth import MicrosoftAppCredentials
-        MicrosoftAppCredentials.trust_service_url(service_url)
 
         # Send typing indicator
         await turn_context.send_activity(Activity(type=ActivityTypes.typing))

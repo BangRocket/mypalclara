@@ -9,6 +9,8 @@ Usage:
 Environment variables:
     TEAMS_APP_ID - Azure Bot registration App ID (required)
     TEAMS_APP_PASSWORD - Azure Bot registration password (required)
+    TEAMS_APP_TYPE - App type: MultiTenant, SingleTenant, or ManagedIdentity (default: MultiTenant)
+    TEAMS_APP_TENANT_ID - Tenant ID for SingleTenant apps (optional)
     TEAMS_PORT - Port to listen on (default: 3978)
     CLARA_GATEWAY_URL - Gateway WebSocket URL (default: ws://127.0.0.1:18789)
 """
@@ -29,9 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from aiohttp import web
-from botbuilder.core import BotFrameworkAdapterSettings
-from botbuilder.integration.aiohttp import BotFrameworkHttpAdapter
-from botbuilder.schema import Activity
+from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
 
 from adapters.teams.bot import TeamsBot
 from adapters.teams.gateway_client import TeamsGatewayClient
@@ -41,10 +41,21 @@ init_logging()
 logger = get_logger("adapters.teams")
 
 # Configuration
-APP_ID = os.getenv("TEAMS_APP_ID")
-APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD")
 GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL") or "ws://127.0.0.1:18789"
 PORT = int(os.getenv("TEAMS_PORT") or "3978")
+
+
+class BotConfig:
+    """Bot Framework configuration for CloudAdapter."""
+
+    PORT = PORT
+    MicrosoftAppId = os.getenv("TEAMS_APP_ID", "")
+    MicrosoftAppPassword = os.getenv("TEAMS_APP_PASSWORD", "")
+    MicrosoftAppType = os.getenv("TEAMS_APP_TYPE", "MultiTenant")
+    MicrosoftAppTenantId = os.getenv("TEAMS_APP_TENANT_ID", "")
+
+
+CONFIG = BotConfig()
 
 
 async def messages(req: web.Request) -> web.Response:
@@ -61,15 +72,13 @@ async def messages(req: web.Request) -> web.Response:
         )
 
     bot: TeamsBot = req.app["bot"]
-    adapter: BotFrameworkHttpAdapter = req.app["adapter"]
+    adapter: CloudAdapter = req.app["adapter"]
 
     if "application/json" not in req.headers.get("Content-Type", ""):
         return web.Response(status=415)
 
-    body = await req.json()
-    activity = Activity().deserialize(body)
-
-    response = await adapter.process(req, activity, bot)
+    # CloudAdapter handles activity deserialization internally
+    response = await adapter.process(req, bot)
     if response:
         return response
     return web.Response(status=200)
@@ -92,17 +101,13 @@ async def on_startup(app: web.Application) -> None:
     logger.info("Starting Teams adapter...")
 
     # Debug: log credential status
-    logger.info(f"TEAMS_APP_ID: {APP_ID}")
-    logger.info(f"TEAMS_APP_PASSWORD: {'*' * len(APP_PASSWORD) if APP_PASSWORD else '(not set)'}")
+    logger.info(f"MicrosoftAppId: {CONFIG.MicrosoftAppId}")
+    logger.info(f"MicrosoftAppPassword: {'*' * len(CONFIG.MicrosoftAppPassword) if CONFIG.MicrosoftAppPassword else '(not set)'}")
+    logger.info(f"MicrosoftAppType: {CONFIG.MicrosoftAppType}")
 
-    # Create adapter settings
-    settings = BotFrameworkAdapterSettings(
-        app_id=APP_ID,
-        app_password=APP_PASSWORD,
-    )
-
-    # Create Bot Framework adapter
-    adapter = BotFrameworkHttpAdapter(settings)
+    # Create CloudAdapter with ConfigurationBotFrameworkAuthentication
+    # This is the modern, recommended approach that handles auth properly
+    adapter = CloudAdapter(ConfigurationBotFrameworkAuthentication(CONFIG))
 
     # Create gateway client
     gateway_client = TeamsGatewayClient(gateway_url=GATEWAY_URL)
@@ -148,11 +153,11 @@ async def on_shutdown(app: web.Application) -> None:
 
 async def main() -> None:
     """Run the Teams adapter."""
-    if not APP_ID:
+    if not CONFIG.MicrosoftAppId:
         logger.error("TEAMS_APP_ID not set")
         sys.exit(1)
 
-    if not APP_PASSWORD:
+    if not CONFIG.MicrosoftAppPassword:
         logger.error("TEAMS_APP_PASSWORD not set")
         sys.exit(1)
 
