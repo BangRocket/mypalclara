@@ -10,15 +10,17 @@ from adapters.cli.shell_executor import (
     classify_command,
     execute_shell,
 )
+from adapters.cli.tools import TOOLS as CLI_TOOLS
 
 __all__ = [
+    "CLI_TOOLS",
     "CLIAdapter",
     "CLIGatewayClient",
+    "CommandSafety",
+    "ShellResult",
+    "classify_command",
     "configure_cli_logging",
+    "execute_shell",
     "get_write_approval",
     "show_write_preview",
-    "CommandSafety",
-    "classify_command",
-    "execute_shell",
-    "ShellResult",
 ]
