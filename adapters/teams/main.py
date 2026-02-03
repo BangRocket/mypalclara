@@ -49,6 +49,17 @@ PORT = int(os.getenv("TEAMS_PORT") or "3978")
 
 async def messages(req: web.Request) -> web.Response:
     """Handle incoming Bot Framework activities."""
+    # Handle CORS preflight
+    if req.method == "OPTIONS":
+        return web.Response(
+            status=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+        )
+
     bot: TeamsBot = req.app["bot"]
     adapter: BotFrameworkHttpAdapter = req.app["adapter"]
 
@@ -148,6 +159,7 @@ async def main() -> None:
 
     # Add routes
     app.router.add_post("/api/messages", messages)
+    app.router.add_options("/api/messages", messages)  # CORS preflight
     app.router.add_get("/health", health)
 
     # Set up signal handlers
