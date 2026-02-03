@@ -78,6 +78,18 @@ async def messages(req: web.Request) -> web.Response:
     if "application/json" not in req.headers.get("Content-Type", ""):
         return web.Response(status=415)
 
+    # Debug: log auth header (redacted)
+    auth_header = req.headers.get("Authorization", "")
+    if auth_header:
+        # Just log the type and length, not the actual token
+        parts = auth_header.split(" ", 1)
+        if len(parts) == 2:
+            logger.debug(f"Auth header: {parts[0]} (token length: {len(parts[1])})")
+        else:
+            logger.debug(f"Auth header format unexpected: {len(auth_header)} chars")
+    else:
+        logger.warning("No Authorization header in request")
+
     # CloudAdapter handles activity deserialization internally
     try:
         response = await adapter.process(req, bot)
@@ -114,6 +126,17 @@ async def on_startup(app: web.Application) -> None:
     # Create CloudAdapter with ConfigurationBotFrameworkAuthentication
     # This is the modern, recommended approach that handles auth properly
     adapter = CloudAdapter(ConfigurationBotFrameworkAuthentication(CONFIG))
+
+    # Add error handler to capture and log adapter-level errors
+    async def on_error(context, error):
+        logger.error(f"Adapter error: {error}", exc_info=True)
+        # Try to send error message to user
+        try:
+            await context.send_activity("Sorry, something went wrong.")
+        except Exception:
+            pass
+
+    adapter.on_turn_error = on_error
 
     # Create gateway client
     gateway_client = TeamsGatewayClient(gateway_url=GATEWAY_URL)
