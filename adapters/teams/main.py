@@ -47,13 +47,17 @@ PORT = int(os.getenv("TEAMS_PORT") or "3978")
 
 
 class BotConfig:
-    """Bot Framework configuration for CloudAdapter."""
+    """Bot Framework configuration for CloudAdapter.
+
+    Note: Attribute names must match what ConfigurationBotFrameworkAuthentication expects:
+    APP_ID, APP_PASSWORD, APP_TYPE, APP_TENANTID (not MicrosoftAppId, etc.)
+    """
 
     PORT = PORT
-    MicrosoftAppId = os.getenv("TEAMS_APP_ID", "")
-    MicrosoftAppPassword = os.getenv("TEAMS_APP_PASSWORD", "")
-    MicrosoftAppType = os.getenv("TEAMS_APP_TYPE", "MultiTenant")
-    MicrosoftAppTenantId = os.getenv("TEAMS_APP_TENANT_ID", "")
+    APP_ID = os.getenv("TEAMS_APP_ID", "")
+    APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD", "")
+    APP_TYPE = os.getenv("TEAMS_APP_TYPE", "MultiTenant")
+    APP_TENANTID = os.getenv("TEAMS_APP_TENANT_ID", "")
 
 
 CONFIG = BotConfig()
@@ -119,9 +123,11 @@ async def on_startup(app: web.Application) -> None:
     logger.info("Starting Teams adapter...")
 
     # Debug: log credential status
-    logger.info(f"MicrosoftAppId: {CONFIG.MicrosoftAppId}")
-    logger.info(f"MicrosoftAppPassword: {'*' * len(CONFIG.MicrosoftAppPassword) if CONFIG.MicrosoftAppPassword else '(not set)'}")
-    logger.info(f"MicrosoftAppType: {CONFIG.MicrosoftAppType}")
+    logger.info(f"APP_ID: {CONFIG.APP_ID}")
+    logger.info(f"APP_PASSWORD: {'*' * len(CONFIG.APP_PASSWORD) if CONFIG.APP_PASSWORD else '(not set)'}")
+    logger.info(f"APP_TYPE: {CONFIG.APP_TYPE}")
+    if CONFIG.APP_TENANTID:
+        logger.info(f"APP_TENANTID: {CONFIG.APP_TENANTID}")
 
     # Create CloudAdapter with ConfigurationBotFrameworkAuthentication
     # This is the modern, recommended approach that handles auth properly
@@ -182,11 +188,11 @@ async def on_shutdown(app: web.Application) -> None:
 
 async def main() -> None:
     """Run the Teams adapter."""
-    if not CONFIG.MicrosoftAppId:
+    if not CONFIG.APP_ID:
         logger.error("TEAMS_APP_ID not set")
         sys.exit(1)
 
-    if not CONFIG.MicrosoftAppPassword:
+    if not CONFIG.APP_PASSWORD:
         logger.error("TEAMS_APP_PASSWORD not set")
         sys.exit(1)
 
