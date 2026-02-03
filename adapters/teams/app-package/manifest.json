@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "YOUR_APP_ID_HERE",
+  "packageName": "com.mypalclara.bot",
+  "developer": {
+    "name": "Your Name",
+    "websiteUrl": "https://github.com/BangRocket/mypalclara",
+    "privacyUrl": "https://github.com/BangRocket/mypalclara",
+    "termsOfUseUrl": "https://github.com/BangRocket/mypalclara"
+  },
+  "name": {
+    "short": "Clara",
+    "full": "MyPalClara AI Assistant"
+  },
+  "description": {
+    "short": "Personal AI assistant",
+    "full": "Clara is a personal AI assistant with persistent memory and tool capabilities."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#5558AF",
+  "bots": [
+    {
+      "botId": "YOUR_APP_ID_HERE",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": []
+}
