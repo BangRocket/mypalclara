@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from aiohttp import web
+from botbuilder.core.integration import aiohttp_error_middleware
 from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
 
 from adapters.teams.bot import TeamsBot
@@ -78,10 +79,15 @@ async def messages(req: web.Request) -> web.Response:
         return web.Response(status=415)
 
     # CloudAdapter handles activity deserialization internally
-    response = await adapter.process(req, bot)
-    if response:
-        return response
-    return web.Response(status=200)
+    try:
+        response = await adapter.process(req, bot)
+        if response:
+            return response
+        return web.Response(status=200)
+    except Exception as e:
+        logger.error(f"Error processing message: {e}", exc_info=True)
+        # Return 500 with error details for debugging
+        return web.Response(status=500, text=str(e))
 
 
 async def health(req: web.Request) -> web.Response:
@@ -161,8 +167,8 @@ async def main() -> None:
         logger.error("TEAMS_APP_PASSWORD not set")
         sys.exit(1)
 
-    # Create aiohttp app
-    app = web.Application()
+    # Create aiohttp app with error middleware for better error visibility
+    app = web.Application(middlewares=[aiohttp_error_middleware])
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
