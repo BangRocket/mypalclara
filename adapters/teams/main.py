@@ -91,6 +91,10 @@ async def on_startup(app: web.Application) -> None:
     """Initialize components on server startup."""
     logger.info("Starting Teams adapter...")
 
+    # Debug: log credential status
+    logger.info(f"TEAMS_APP_ID: {APP_ID}")
+    logger.info(f"TEAMS_APP_PASSWORD: {'*' * len(APP_PASSWORD) if APP_PASSWORD else '(not set)'}")
+
     # Create adapter settings
     settings = BotFrameworkAdapterSettings(
         app_id=APP_ID,
