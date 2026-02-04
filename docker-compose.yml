@@ -155,12 +155,9 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-clara}
       # Web search
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      # Docker sandbox
+      # Sandbox
       - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
-      # Remote sandbox
       - SANDBOX_MODE=${SANDBOX_MODE:-auto}
-      - SANDBOX_API_URL=${SANDBOX_API_URL:-}
-      - SANDBOX_API_KEY=${SANDBOX_API_KEY:-}
       # GitHub integration
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       # MCP Plugin System
@@ -273,13 +270,9 @@ services:
       # Fast LLM (for quick operations)
       - FAST_LLM_PROVIDER=${FAST_LLM_PROVIDER:-}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
-      # Docker sandbox
+      # Sandbox
       - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
-      # Remote sandbox (VPS)
       - SANDBOX_MODE=${SANDBOX_MODE:-auto}
-      - SANDBOX_API_URL=${SANDBOX_API_URL:-}
-      - SANDBOX_API_KEY=${SANDBOX_API_KEY:-}
-      - SANDBOX_TIMEOUT=${SANDBOX_TIMEOUT:-60}
       # S3 storage (optional)
       - S3_ENABLED=${S3_ENABLED:-false}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}

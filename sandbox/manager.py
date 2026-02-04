@@ -1,6 +1,6 @@
 """Unified sandbox manager for Clara.
 
-Provides a single interface that can use Docker, Incus, or remote sandbox.
+Provides a single interface that can use Docker or Incus.
 Automatically selects the appropriate backend based on configuration.
 """
 
@@ -11,35 +11,30 @@ from typing import Any
 
 from .docker import DOCKER_AVAILABLE, DockerSandboxManager, ExecutionResult
 from .incus import INCUS_AVAILABLE, IncusSandboxManager
-from .remote_client import RemoteSandboxClient, get_remote_client
 
 # Mode configuration
 # - "docker" or "local": Use local Docker
-# - "incus": Use Incus containers/VMs
+# - "incus": Use Incus containers
 # - "incus-vm": Use Incus VMs (stronger isolation)
-# - "remote": Use remote sandbox API
-# - "auto": Use remote if configured, fall back to local Docker
+# - "auto": Use Incus if available, fall back to Docker
 SANDBOX_MODE = os.getenv("SANDBOX_MODE", "auto")
 
 
 class UnifiedSandboxManager:
-    """Unified sandbox manager that switches between Docker, Incus, and remote.
+    """Unified sandbox manager that switches between Docker and Incus.
 
     Mode selection:
     - "docker" or "local": Use local Docker containers
     - "incus": Use Incus containers (lighter, faster)
     - "incus-vm": Use Incus VMs (stronger isolation for untrusted code)
-    - "remote": Use remote sandbox API
-    - "auto" (default): Use remote if configured, fall back to Incus/Docker
+    - "auto" (default): Use Incus if available, fall back to Docker
 
     Usage:
         manager = get_sandbox_manager()
         result = await manager.execute_code("user123", "print('hello')")
 
     Environment variables:
-        SANDBOX_MODE: "docker", "incus", "incus-vm", "remote", or "auto"
-        SANDBOX_API_URL: Remote sandbox URL (required for remote mode)
-        SANDBOX_API_KEY: Remote sandbox API key (required for remote mode)
+        SANDBOX_MODE: "docker", "incus", "incus-vm", or "auto"
         INCUS_SANDBOX_IMAGE: Base image for Incus (default: images:debian/12/cloud)
         INCUS_SANDBOX_TYPE: "container" or "vm" (default: container)
     """
@@ -48,7 +43,6 @@ class UnifiedSandboxManager:
         self.mode = mode or SANDBOX_MODE
         self._docker: DockerSandboxManager | None = None
         self._incus: IncusSandboxManager | None = None
-        self._remote: RemoteSandboxClient | None = None
         self._active_backend: str | None = None
 
     @property
@@ -72,13 +66,6 @@ class UnifiedSandboxManager:
             self._incus = IncusSandboxManager(instance_type=instance_type)
         return self._incus
 
-    @property
-    def remote(self) -> RemoteSandboxClient:
-        """Get remote client (lazy initialization)."""
-        if self._remote is None:
-            self._remote = get_remote_client()
-        return self._remote
-
     def _select_backend(self) -> str:
         """Select which backend to use based on mode and availability."""
         if self.mode in ("local", "docker"):
@@ -91,16 +78,8 @@ class UnifiedSandboxManager:
                 return "incus"
             return "none"
 
-        elif self.mode == "remote":
-            if self.remote.is_available():
-                return "remote"
-            return "none"
-
         else:  # auto
-            # Prefer remote if configured
-            if self.remote.is_available():
-                return "remote"
-            # Try Incus next (if available)
+            # Try Incus first (if available)
             if INCUS_AVAILABLE and self.incus.is_available():
                 return "incus"
             # Fall back to Docker
@@ -115,21 +94,17 @@ class UnifiedSandboxManager:
     async def health_check(self) -> bool:
         """Check if the active backend is healthy."""
         backend = self._select_backend()
-        if backend == "remote":
-            return await self.remote.health_check()
-        elif backend == "docker":
+        if backend == "docker":
             return self.docker.is_available()
         elif backend == "incus":
             return self.incus.is_available()
         return False
 
-    def _get_manager(self) -> DockerSandboxManager | IncusSandboxManager | RemoteSandboxClient | None:
+    def _get_manager(self) -> DockerSandboxManager | IncusSandboxManager | None:
         """Get the active manager based on mode."""
         backend = self._select_backend()
         self._active_backend = backend
-        if backend == "remote":
-            return self.remote
-        elif backend == "docker":
+        if backend == "docker":
             return self.docker
         elif backend == "incus":
             return self.incus
@@ -190,10 +165,7 @@ class UnifiedSandboxManager:
         user_id: str,
         packages: list[str],
     ) -> ExecutionResult:
-        """Ensure multiple packages are installed (batch install).
-
-        Only installs packages that aren't already tracked.
-        """
+        """Ensure multiple packages are installed (batch install)."""
         manager = self._get_manager()
         if not manager:
             return ExecutionResult(
@@ -201,10 +173,9 @@ class UnifiedSandboxManager:
                 output="",
                 error="No sandbox backend available",
             )
-        # ensure_packages is only available on local backend
         if hasattr(manager, "ensure_packages"):
             return await manager.ensure_packages(user_id, packages)
-        # Fall back to individual installs for remote
+        # Fall back to individual installs
         for pkg in packages:
             result = await manager.install_package(user_id, pkg)
             if not result.success:
@@ -282,7 +253,7 @@ class UnifiedSandboxManager:
         max_results: int = 5,
         search_depth: str = "basic",
     ) -> ExecutionResult:
-        """Web search (only available on local backend)."""
+        """Web search (only available on Docker backend)."""
         manager = self._get_manager()
         if not manager:
             return ExecutionResult(
@@ -334,11 +305,9 @@ class UnifiedSandboxManager:
             await self._docker.cleanup_all()
         if self._incus:
             await self._incus.cleanup_all()
-        if self._remote:
-            await self._remote.close()
 
     async def cleanup_idle_sessions(self) -> int:
-        """Cleanup idle sessions (Docker and Incus)."""
+        """Cleanup idle sessions."""
         count = 0
         if self._active_backend == "docker" and self._docker:
             count += await self._docker.cleanup_idle_sessions()
@@ -366,7 +335,6 @@ _unified_manager: UnifiedSandboxManager | None = None
 def get_sandbox_manager() -> UnifiedSandboxManager:
     """Get the global unified sandbox manager.
 
-    This replaces the previous get_sandbox_manager() from docker.py.
     Uses SANDBOX_MODE environment variable to determine backend.
     """
     global _unified_manager

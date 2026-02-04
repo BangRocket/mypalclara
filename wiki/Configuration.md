@@ -188,7 +188,7 @@ CLARA_SCHEDULER_DIR=.
 ### Mode Selection
 
 ```bash
-SANDBOX_MODE=auto  # auto, docker, incus, incus-vm, remote
+SANDBOX_MODE=auto  # auto, docker, incus, incus-vm
 ```
 
 ### Docker
@@ -209,14 +209,6 @@ INCUS_SANDBOX_TIMEOUT=900
 INCUS_SANDBOX_MEMORY=512MiB
 INCUS_SANDBOX_CPU=1
 INCUS_REMOTE=local
-```
-
-### Remote Sandbox
-
-```bash
-SANDBOX_API_URL=https://sandbox.example.com
-SANDBOX_API_KEY=your-key
-SANDBOX_TIMEOUT=60
 ```
 
 ## Tool Execution

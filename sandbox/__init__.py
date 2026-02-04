@@ -2,7 +2,7 @@
 
 Provides sandboxed code execution via:
 - Local Docker containers
-- Remote sandbox API (self-hosted VPS)
+- Incus containers or VMs
 
 Usage:
     from sandbox import get_sandbox_manager
@@ -11,9 +11,10 @@ Usage:
     result = await manager.execute_code("user123", "print('hello')")
 
 The manager automatically selects the appropriate backend based on SANDBOX_MODE:
-- "local": Use local Docker only
-- "remote": Use remote sandbox API only
-- "auto" (default): Use remote if configured, fall back to local
+- "docker" or "local": Use local Docker
+- "incus": Use Incus containers
+- "incus-vm": Use Incus VMs (stronger isolation)
+- "auto" (default): Use Incus if available, fall back to Docker
 """
 
 from sandbox.docker import DOCKER_AVAILABLE, DOCKER_TOOLS, DockerSandboxManager
@@ -22,18 +23,14 @@ from sandbox.manager import (
     get_sandbox_manager,
     reset_sandbox_manager,
 )
-from sandbox.remote_client import RemoteSandboxClient, get_remote_client
 
 __all__ = [
     # Legacy exports (for backward compatibility)
     "DockerSandboxManager",
     "DOCKER_TOOLS",
     "DOCKER_AVAILABLE",
-    # New unified interface
+    # Unified interface
     "UnifiedSandboxManager",
     "get_sandbox_manager",
     "reset_sandbox_manager",
-    # Remote client
-    "RemoteSandboxClient",
-    "get_remote_client",
 ]

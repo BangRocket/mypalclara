@@ -22,7 +22,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 ### Tool Systems
 - [[MCP-Plugin-System]] - Model Context Protocol plugins
 - [[Tool-Development]] - Creating custom tools
-- [[Sandbox-System]] - Code execution (Docker, Incus, Remote)
+- [[Sandbox-System]] - Code execution (Docker, Incus)
 
 ### Integrations
 - [[API-Service]] - OAuth and external API endpoints
@@ -41,7 +41,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 | Multi-Platform | Discord, Teams, CLI adapters |
 | Persistent Memory | mem0 with vector + graph storage |
 | MCP Plugins | Install tools from Smithery, npm, GitHub |
-| Code Execution | Docker, Incus containers/VMs, remote API |
+| Code Execution | Docker, Incus containers/VMs |
 | Integrations | GitHub, Google Workspace, Email |
 | Model Tiers | Dynamic tier selection (!high, !mid, !low) |
 | Proactive | Organic conversations, follow-ups |

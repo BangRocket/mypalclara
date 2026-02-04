@@ -356,7 +356,7 @@ docker ps
    DOCKER_SANDBOX_TIMEOUT=1800  # 30 minutes
    ```
 2. Optimize code
-3. Use remote sandbox for long-running tasks
+3. Break long-running tasks into smaller chunks
 
 ### Permission Denied in Sandbox
 
