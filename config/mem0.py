@@ -1,51 +1,51 @@
-"""Backward compatibility layer for config.mem0.
+"""Backward compatibility shim for config.mem0.
 
-This module re-exports from clara_core.memory for backward compatibility.
-All memory functionality is now in clara_core.memory/.
+DEPRECATED: Use config.rook or clara_core.memory instead.
 
-New code should import directly from clara_core.memory:
-    from clara_core.memory import MEM0, ClaraMemory
+This module redirects all imports to config.rook while issuing a deprecation warning.
 """
 
 from __future__ import annotations
 
 import warnings
 
-# Re-export everything from clara_core.memory
-from clara_core.memory import (
+# Issue deprecation warning
+warnings.warn(
+    "config.mem0 is deprecated. Use config.rook or clara_core.memory instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+# Re-export everything from config.rook
+from config.rook import (
+    ROOK,
     MEM0,
     ClaraMemory,
     ClaraMemoryItem,
     ClaraMemoryConfig,
     ClaraMemoryValidationError,
     MemoryType,
-    Memory,  # Backward compatibility alias
+    Memory,
     MemoryManager,
     load_initial_profile,
     config,
-)
-
-from clara_core.memory.config import (
+    ROOK_PROVIDER,
+    ROOK_MODEL,
+    ROOK_DATABASE_URL,
     MEM0_PROVIDER,
     MEM0_MODEL,
+    MEM0_DATABASE_URL,
     ENABLE_GRAPH_MEMORY,
     GRAPH_STORE_PROVIDER,
     QDRANT_DATA_DIR,
     KUZU_DATA_DIR,
-    MEM0_DATABASE_URL,
     NEO4J_URL,
     NEO4J_USERNAME,
     NEO4J_PASSWORD,
 )
 
-# Issue a deprecation warning when this module is imported
-warnings.warn(
-    "config.mem0 is deprecated. Use clara_core.memory instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
 __all__ = [
+    "ROOK",
     "MEM0",
     "ClaraMemory",
     "ClaraMemoryItem",
@@ -54,13 +54,16 @@ __all__ = [
     "MemoryType",
     "Memory",
     "config",
+    "ROOK_PROVIDER",
+    "ROOK_MODEL",
+    "ROOK_DATABASE_URL",
     "MEM0_PROVIDER",
     "MEM0_MODEL",
+    "MEM0_DATABASE_URL",
     "ENABLE_GRAPH_MEMORY",
     "GRAPH_STORE_PROVIDER",
     "QDRANT_DATA_DIR",
     "KUZU_DATA_DIR",
-    "MEM0_DATABASE_URL",
     "NEO4J_URL",
     "NEO4J_USERNAME",
     "NEO4J_PASSWORD",
