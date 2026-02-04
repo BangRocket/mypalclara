@@ -142,6 +142,7 @@ services:
       # Redis cache (optional - for memory performance)
       - REDIS_URL=${REDIS_URL:-}
       - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
+      - GRAPH_CACHE_ENABLED=${GRAPH_CACHE_ENABLED:-true}
       # Vector store migration mode
       - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
       # Mem0 Provider
@@ -243,6 +244,7 @@ services:
       # Redis cache (optional - for memory performance)
       - REDIS_URL=${REDIS_URL:-}
       - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
+      - GRAPH_CACHE_ENABLED=${GRAPH_CACHE_ENABLED:-true}
       # Vector store migration mode
       - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
       # Mem0 Provider
