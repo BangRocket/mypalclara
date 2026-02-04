@@ -619,3 +619,6 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+    # Use os._exit() to skip Python's async generator finalization phase
+    # which causes noisy errors from MCP stdio_client cleanup
+    os._exit(0)
