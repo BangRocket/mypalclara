@@ -543,6 +543,41 @@ class MemorySupersession(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class MemoryHistory(Base):
+    """History of memory changes for Rook (Clara's memory system).
+
+    Tracks ADD, UPDATE, and DELETE events for memories stored in the
+    vector store. Used for auditing and debugging memory operations.
+
+    Attributes:
+        memory_id: The vector store memory ID this event relates to
+        old_memory: Previous memory content (null for ADD events)
+        new_memory: New memory content (null for DELETE events)
+        event: Event type (ADD, UPDATE, DELETE)
+        is_deleted: Whether the memory was deleted
+        actor_id: ID of the actor who triggered this change
+        role: Role associated with the memory (user, assistant)
+    """
+
+    __tablename__ = "memory_history"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    memory_id = Column(String, nullable=False, index=True)
+    old_memory = Column(Text, nullable=True)
+    new_memory = Column(Text, nullable=True)
+    event = Column(String, nullable=False)  # ADD, UPDATE, DELETE
+    is_deleted = Column(Boolean, default=False)
+    actor_id = Column(String, nullable=True)
+    role = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_memory_history_memory_id_created", "memory_id", "created_at"),
+    )
+
+
 # =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
@@ -582,6 +617,8 @@ __all__ = [
     "MemoryAccessLog",
     "Intention",
     "MemorySupersession",
+    # Memory history (Rook)
+    "MemoryHistory",
     # MCP models
     "MCPServer",
     "MCPOAuthToken",
