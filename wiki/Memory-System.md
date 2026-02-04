@@ -129,48 +129,6 @@ To manage context window:
 - Max 20 graph relations
 - Search query truncated to 6000 chars
 
-## Bootstrap Profile
-
-Load initial profile data from a text file:
-
-### Create Profile
-
-Create `inputs/user_profile.txt`:
-
-```
-# User Profile for Clara
-
-Name: Josh Heidorn
-Location: San Francisco, CA
-Occupation: Software Engineer at Anthropic
-
-## Work
-- Building AI assistants
-- Focus on memory and context systems
-- Uses Python and TypeScript
-
-## Preferences
-- Prefers technical, detailed explanations
-- Enjoys learning about new technologies
-- Values code quality and testing
-```
-
-### Generate and Apply
-
-```bash
-# Generate memory JSON (dry run)
-poetry run python -m src.bootstrap_memory
-
-# Review generated files in generated/
-ls generated/
-# profile_bio.json
-# interaction_style.json
-# project_seed.json
-
-# Apply to mem0
-poetry run python -m src.bootstrap_memory --apply
-```
-
 ## Clear Memory
 
 ```bash

@@ -305,7 +305,6 @@ services:
       - mypalclara-files:/app/clara_files
       - ${MCP_SERVERS_PATH:-./mcp_servers}:/app/mcp_servers  # MCP server files (cloned repos, etc.)
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock  # For Docker sandbox
-      - ./inputs/user_profile.txt:/app/inputs/user_profile.txt:ro
       - ./${BOT_PERSONALITY_FILE:-config/personality.txt}:/app/${BOT_PERSONALITY_FILE:-config/personality.txt}:ro
     depends_on:
       postgres:
