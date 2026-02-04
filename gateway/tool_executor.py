@@ -157,6 +157,38 @@ class ToolExecutor:
                 }
             )
 
+        # File attachment tool (requires attachments capability)
+        if "attachments" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "send_discord_file",
+                        "description": (
+                            "IMPORTANT: Use this tool to send files to Discord. Creates a file with the "
+                            "given content and sends it as a Discord attachment. Use this when: sharing "
+                            "code files, sending documents, sharing configuration files, or when content "
+                            "is too long for a message. The file will be attached to your response. "
+                            "Do NOT use write_file or save_to_local for sending files - use THIS tool."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name for the file with extension (e.g., 'code.py', 'notes.md', 'config.json')",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "The full text content to put in the file",
+                                },
+                            },
+                            "required": ["filename", "content"],
+                        },
+                    },
+                }
+            )
+
         # Embed tool (requires embeds capability)
         if "embeds" in caps or not caps:
             tools.append(
@@ -649,5 +681,21 @@ class ToolExecutor:
                     }
                 )
             return f"__BUTTONS__:{json.dumps(normalized)}"
+
+        if tool_name == "send_discord_file":
+            filename = arguments.get("filename", "file.txt")
+            content = arguments.get("content", "")
+
+            # Save file to local storage
+            result = self._file_manager.save_file(user_id, filename, content, channel_id)
+            if not result.success:
+                return f"Error saving file: {result.message}"
+
+            # Get the file path and add to files_to_send
+            file_path = self._file_manager.get_file_path(user_id, filename, channel_id)
+            if file_path:
+                files_to_send.append(str(file_path))
+                return f"File '{filename}' will be sent as an attachment."
+            return f"Error: Could not locate saved file '{filename}'"
 
         return f"Unknown tool: {tool_name}"
