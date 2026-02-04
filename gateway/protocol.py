@@ -195,6 +195,17 @@ class ResponseChunk(BaseModel):
     accumulated: str | None = Field(None, description="Full accumulated text so far")
 
 
+class ButtonInfo(BaseModel):
+    """Information about an interactive button."""
+
+    label: str = Field(..., description="Button display text")
+    style: Literal["primary", "secondary", "success", "danger"] = Field("secondary", description="Button style/color")
+    action: Literal["dismiss", "confirm"] = Field(
+        "dismiss", description="Button action: dismiss removes buttons, confirm updates message"
+    )
+    disabled: bool = Field(False, description="Whether button is disabled")
+
+
 class ResponseEnd(BaseModel):
     """Gateway -> Adapter: Response generation complete."""
 
@@ -205,6 +216,10 @@ class ResponseEnd(BaseModel):
     files: list[str] = Field(default_factory=list, description="File paths to attach")
     tool_count: int = Field(0, description="Number of tools executed")
     tokens_used: int | None = Field(None, description="Tokens used if available")
+    edit_target: str | None = Field(
+        None, description="'last' to edit last sent message, 'status' to edit status message"
+    )
+    components: list[ButtonInfo] = Field(default_factory=list, description="Interactive button components to add")
 
 
 # ============================================================================

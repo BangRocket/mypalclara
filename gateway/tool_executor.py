@@ -81,15 +81,20 @@ class ToolExecutor:
         except Exception as e:
             logger.error(f"Failed to initialize modular tools: {e}")
 
-    def _init_discord_tools(self) -> list[dict[str, Any]]:
+    def _init_discord_tools(self, capabilities: list[str] | None = None) -> list[dict[str, Any]]:
         """Initialize Discord-specific tools.
+
+        Args:
+            capabilities: List of adapter capabilities to filter tools
 
         Returns:
             List of Discord tool definitions in OpenAI format
         """
-        from clara_core.core_tools import discord_tool
+        caps = capabilities or []
+        tools = []
 
-        return [
+        # Basic formatting tool (always available)
+        tools.append(
             {
                 "type": "function",
                 "function": {
@@ -121,31 +126,200 @@ class ToolExecutor:
                         },
                     },
                 },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_discord_reaction",
-                    "description": (
-                        "Add an emoji reaction to the user's message or to Clara's own response. "
-                        "Use this for quick acknowledgments or to mark task completion. "
-                        "Available reactions: ✅ (success), ❌ (error), ⚠️ (warning), "
-                        "🎉 (celebration), 🤔 (thinking), 👍 (thumbs up), 👎 (thumbs down), "
-                        "🔥 (fire), 💯 (100), ❓ (question)."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "emoji": {
-                                "type": "string",
-                                "description": "Emoji to react with (e.g., '✅', '🎉', '👍')",
+            }
+        )
+
+        # Reaction tool (requires reactions capability)
+        if "reactions" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "add_discord_reaction",
+                        "description": (
+                            "Add an emoji reaction to the user's message or to Clara's own response. "
+                            "Use this for quick acknowledgments or to mark task completion. "
+                            "Available reactions: ✅ (success), ❌ (error), ⚠️ (warning), "
+                            "🎉 (celebration), 🤔 (thinking), 👍 (thumbs up), 👎 (thumbs down), "
+                            "🔥 (fire), 💯 (100), ❓ (question)."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "emoji": {
+                                    "type": "string",
+                                    "description": "Emoji to react with (e.g., '✅', '🎉', '👍')",
+                                },
                             },
+                            "required": ["emoji"],
                         },
-                        "required": ["emoji"],
                     },
-                },
-            },
-        ]
+                }
+            )
+
+        # Embed tool (requires embeds capability)
+        if "embeds" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "send_discord_embed",
+                        "description": (
+                            "Send a rich embedded message with title, description, fields, and color. "
+                            "Use embeds for structured information, status displays, or visually "
+                            "distinct content. Types: success (green), error (red), warning (yellow), "
+                            "info (blue), status (with fields), custom (specify color)."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["success", "error", "warning", "info", "status", "custom"],
+                                    "description": "Embed type determining color and styling",
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "description": "Embed title (required)",
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Main embed content/description",
+                                },
+                                "fields": {
+                                    "type": "array",
+                                    "description": "List of embed fields (for status type)",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "value": {"type": "string"},
+                                            "inline": {"type": "boolean", "default": False},
+                                        },
+                                        "required": ["name", "value"],
+                                    },
+                                },
+                                "color": {
+                                    "type": "integer",
+                                    "description": "Hex color as integer (only for custom type, e.g., 0xFF5733)",
+                                },
+                                "footer": {
+                                    "type": "string",
+                                    "description": "Footer text at bottom of embed",
+                                },
+                            },
+                            "required": ["type", "title"],
+                        },
+                    },
+                }
+            )
+
+        # Thread creation tool (requires threads capability)
+        if "threads" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "create_discord_thread",
+                        "description": (
+                            "Create a new thread for focused discussion. The thread will be created "
+                            "from the user's message, and Clara's response will be posted in the new thread. "
+                            "Use threads for in-depth topics, code reviews, or lengthy conversations."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Thread name (max 100 characters)",
+                                },
+                                "auto_archive_minutes": {
+                                    "type": "integer",
+                                    "enum": [60, 1440, 4320, 10080],
+                                    "description": "Auto-archive duration: 60 (1 hour), 1440 (1 day), 4320 (3 days), 10080 (1 week)",
+                                },
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                }
+            )
+
+        # Message editing tool (requires editing capability)
+        if "editing" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "edit_discord_message",
+                        "description": (
+                            "Edit a previously sent message instead of sending a new one. "
+                            "Use this for updating status messages, correcting mistakes, or "
+                            "replacing placeholder content with final results."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "target": {
+                                    "type": "string",
+                                    "enum": ["last", "status"],
+                                    "description": "'last' to edit the last sent message, 'status' to edit the status message",
+                                },
+                            },
+                            "required": ["target"],
+                        },
+                    },
+                }
+            )
+
+        # Button tool (requires buttons capability)
+        if "buttons" in caps or not caps:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "send_discord_buttons",
+                        "description": (
+                            "Add interactive buttons to the response message. Buttons can be used "
+                            "for confirmations, dismissals, or simple user choices. The message "
+                            "content will be sent along with the buttons."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "buttons": {
+                                    "type": "array",
+                                    "description": "List of buttons to add (max 5)",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "label": {
+                                                "type": "string",
+                                                "description": "Button text",
+                                            },
+                                            "style": {
+                                                "type": "string",
+                                                "enum": ["primary", "secondary", "success", "danger"],
+                                                "description": "Button style/color",
+                                            },
+                                            "action": {
+                                                "type": "string",
+                                                "enum": ["dismiss", "confirm"],
+                                                "description": "'dismiss' removes buttons, 'confirm' updates message to confirmed",
+                                            },
+                                        },
+                                        "required": ["label"],
+                                    },
+                                    "maxItems": 5,
+                                },
+                            },
+                            "required": ["buttons"],
+                        },
+                    },
+                }
+            )
+
+        return tools
 
     async def _init_mcp(self) -> None:
         """Initialize MCP plugin system."""
@@ -171,11 +345,16 @@ class ToolExecutor:
         except Exception as e:
             logger.error(f"Failed to initialize MCP: {e}")
 
-    def get_all_tools(self, include_docker: bool = True) -> list[dict[str, Any]]:
+    def get_all_tools(
+        self,
+        include_docker: bool = True,
+        adapter_capabilities: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Get all available tools in OpenAI format.
 
         Args:
             include_docker: Whether to include Docker sandbox tools
+            adapter_capabilities: Optional list of adapter capabilities to filter Discord tools
 
         Returns:
             List of tool definitions
@@ -207,8 +386,8 @@ class ToolExecutor:
             )
             tools.extend(native_tools)
 
-        # Add Discord-specific tools
-        discord_tools = self._init_discord_tools()
+        # Add Discord-specific tools (filtered by adapter capabilities)
+        discord_tools = self._init_discord_tools(adapter_capabilities)
         tools.extend(discord_tools)
 
         # Get MCP tools
@@ -430,5 +609,45 @@ class ToolExecutor:
 
             # Return special marker that Discord adapter can use
             return f"__REACTION__:{emoji}"
+
+        if tool_name == "send_discord_embed":
+            import json
+
+            embed_data = {
+                "type": arguments.get("type", "info"),
+                "title": arguments.get("title", ""),
+                "description": arguments.get("description"),
+                "fields": arguments.get("fields"),
+                "color": arguments.get("color"),
+                "footer": arguments.get("footer"),
+            }
+            # Remove None values
+            embed_data = {k: v for k, v in embed_data.items() if v is not None}
+            return f"__EMBED__:{json.dumps(embed_data)}"
+
+        if tool_name == "create_discord_thread":
+            name = arguments.get("name", "Discussion")[:100]  # Max 100 chars
+            auto_archive = arguments.get("auto_archive_minutes", 1440)  # Default 1 day
+            return f"__THREAD__:{name}:{auto_archive}"
+
+        if tool_name == "edit_discord_message":
+            target = arguments.get("target", "last")
+            return f"__EDIT__:{target}"
+
+        if tool_name == "send_discord_buttons":
+            import json
+
+            buttons = arguments.get("buttons", [])
+            # Normalize button data
+            normalized = []
+            for btn in buttons[:5]:  # Max 5 buttons
+                normalized.append(
+                    {
+                        "label": btn.get("label", "Button"),
+                        "style": btn.get("style", "secondary"),
+                        "action": btn.get("action", "dismiss"),
+                    }
+                )
+            return f"__BUTTONS__:{json.dumps(normalized)}"
 
         return f"Unknown tool: {tool_name}"

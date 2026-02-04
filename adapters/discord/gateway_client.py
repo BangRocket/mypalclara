@@ -39,6 +39,8 @@ class PendingResponse:
     last_edit: datetime | None = None
     status_message: discord.Message | None = None
     typing_task: asyncio.Task[None] | None = None
+    sent_messages: list[discord.Message] = field(default_factory=list)
+    thread: discord.Thread | None = None
 
 
 class DiscordGatewayClient(GatewayClient):
@@ -60,7 +62,7 @@ class DiscordGatewayClient(GatewayClient):
         """
         super().__init__(
             platform="discord",
-            capabilities=["streaming", "attachments", "reactions"],
+            capabilities=["streaming", "attachments", "reactions", "embeds", "threads", "editing", "buttons"],
             gateway_url=gateway_url,
         )
         self.bot = bot
@@ -211,37 +213,240 @@ class DiscordGatewayClient(GatewayClient):
         try:
             full_text = message.full_text
 
-            # Check for reaction marker
-            reaction_emoji = None
-            for line in full_text.split("\n"):
-                if line.startswith("__REACTION__:"):
-                    reaction_emoji = line.replace("__REACTION__:", "").strip()
-                    full_text = full_text.replace(line, "").strip()
-                    break
+            # Parse markers from text
+            parsed = self._parse_markers(full_text)
+            full_text = parsed["text"]
 
-            chunks = split_message(full_text)
+            # Determine target channel (may be thread)
+            target_channel = pending.thread or pending.message.channel
 
-            # Send all chunks as replies
-            sent_message = None
-            for i, chunk in enumerate(chunks):
-                if i == 0:
-                    sent_message = await pending.message.reply(chunk, mention_author=False)
-                else:
-                    sent_message = await pending.message.channel.send(chunk)
+            # Handle thread creation marker
+            if parsed.get("thread"):
+                thread_info = parsed["thread"]
+                try:
+                    pending.thread = await pending.message.create_thread(
+                        name=thread_info["name"],
+                        auto_archive_duration=thread_info.get("auto_archive", 1440),
+                    )
+                    target_channel = pending.thread
+                    logger.debug(f"Created thread: {pending.thread.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to create thread: {e}")
 
-            # Add reaction if requested
-            if reaction_emoji and sent_message:
-                await self._send_reaction(sent_message, reaction_emoji)
+            # Handle edit_target from protocol
+            edit_target = getattr(message, "edit_target", None) or parsed.get("edit_target")
+
+            # Get button components
+            components = getattr(message, "components", []) or []
+            if parsed.get("buttons"):
+                components = parsed["buttons"]
+
+            # Build view with buttons if any
+            view = None
+            if components:
+                view = await self._create_button_view(components)
+
+            # Handle embeds
+            embeds = []
+            if parsed.get("embed"):
+                embed = self._create_embed_from_data(parsed["embed"])
+                if embed:
+                    embeds.append(embed)
+
+            # Determine if we should edit or send new
+            if edit_target == "last" and pending.sent_messages:
+                # Edit the last sent message
+                last_msg = pending.sent_messages[-1]
+                try:
+                    await last_msg.edit(
+                        content=full_text if full_text else None,
+                        embeds=embeds if embeds else None,
+                        view=view,
+                    )
+                    logger.debug(f"Edited last message {last_msg.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to edit message: {e}")
+            elif edit_target == "status" and pending.status_message:
+                # Edit the status message
+                try:
+                    await pending.status_message.edit(
+                        content=full_text if full_text else None,
+                        embeds=embeds if embeds else None,
+                        view=view,
+                    )
+                    logger.debug(f"Edited status message {pending.status_message.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to edit status: {e}")
+            else:
+                # Send new message(s)
+                chunks = split_message(full_text) if full_text else [""]
+
+                sent_message = None
+                for i, chunk in enumerate(chunks):
+                    # First chunk gets embeds and view
+                    kwargs: dict[str, Any] = {"mention_author": False}
+                    if i == 0:
+                        if embeds:
+                            kwargs["embeds"] = embeds
+                        if view:
+                            kwargs["view"] = view
+
+                    if i == 0 and target_channel == pending.message.channel:
+                        sent_message = await pending.message.reply(chunk or None, **kwargs)
+                    else:
+                        sent_message = await target_channel.send(chunk or None, **kwargs)
+
+                    if sent_message:
+                        pending.sent_messages.append(sent_message)
+
+                # Add reaction if requested
+                if parsed.get("reaction") and sent_message:
+                    await self._send_reaction(sent_message, parsed["reaction"])
 
             # Handle file attachments
             files_to_send = message.files
             if files_to_send:
-                await self._send_files(pending.message.channel, files_to_send)
+                await self._send_files(target_channel, files_to_send)
 
         except Exception as e:
             logger.exception(f"Failed to send final response: {e}")
 
         logger.info(f"Response {request_id} complete: {len(message.full_text)} chars, {message.tool_count} tools")
+
+    def _parse_markers(self, text: str) -> dict[str, Any]:
+        """Parse special markers from response text.
+
+        Args:
+            text: Full response text
+
+        Returns:
+            Dict with parsed data and cleaned text
+        """
+        import json
+
+        result: dict[str, Any] = {"text": text}
+        lines_to_remove = []
+
+        for line in text.split("\n"):
+            line_stripped = line.strip()
+
+            # Reaction marker
+            if line_stripped.startswith("__REACTION__:"):
+                result["reaction"] = line_stripped.replace("__REACTION__:", "").strip()
+                lines_to_remove.append(line)
+
+            # Embed marker
+            elif line_stripped.startswith("__EMBED__:"):
+                try:
+                    json_str = line_stripped.replace("__EMBED__:", "").strip()
+                    result["embed"] = json.loads(json_str)
+                    lines_to_remove.append(line)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse embed JSON: {e}")
+
+            # Thread marker
+            elif line_stripped.startswith("__THREAD__:"):
+                parts = line_stripped.replace("__THREAD__:", "").strip().split(":")
+                result["thread"] = {
+                    "name": parts[0] if parts else "Discussion",
+                    "auto_archive": int(parts[1]) if len(parts) > 1 else 1440,
+                }
+                lines_to_remove.append(line)
+
+            # Edit marker
+            elif line_stripped.startswith("__EDIT__:"):
+                result["edit_target"] = line_stripped.replace("__EDIT__:", "").strip()
+                lines_to_remove.append(line)
+
+            # Buttons marker
+            elif line_stripped.startswith("__BUTTONS__:"):
+                try:
+                    json_str = line_stripped.replace("__BUTTONS__:", "").strip()
+                    result["buttons"] = json.loads(json_str)
+                    lines_to_remove.append(line)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse buttons JSON: {e}")
+
+        # Remove marker lines from text
+        for line in lines_to_remove:
+            text = text.replace(line, "")
+
+        result["text"] = text.strip()
+        return result
+
+    def _create_embed_from_data(self, data: dict[str, Any]) -> discord.Embed | None:
+        """Create a Discord embed from parsed data.
+
+        Args:
+            data: Embed data dict with type, title, description, etc.
+
+        Returns:
+            Discord Embed or None
+        """
+        import discord
+
+        from clara_core.discord.embeds import (
+            EMBED_COLOR_ERROR,
+            EMBED_COLOR_INFO,
+            EMBED_COLOR_PRIMARY,
+            EMBED_COLOR_SUCCESS,
+            EMBED_COLOR_WARNING,
+        )
+
+        embed_type = data.get("type", "info")
+        title = data.get("title", "")
+        description = data.get("description")
+
+        # Determine color based on type
+        color_map = {
+            "success": EMBED_COLOR_SUCCESS,
+            "error": EMBED_COLOR_ERROR,
+            "warning": EMBED_COLOR_WARNING,
+            "info": EMBED_COLOR_INFO,
+            "status": EMBED_COLOR_PRIMARY,
+            "custom": data.get("color", EMBED_COLOR_PRIMARY),
+        }
+        color = color_map.get(embed_type, EMBED_COLOR_INFO)
+
+        # Add emoji prefix for success/error/warning
+        emoji_map = {"success": "✅ ", "error": "❌ ", "warning": "⚠️ "}
+        if embed_type in emoji_map:
+            title = emoji_map[embed_type] + title
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+        )
+
+        # Add fields
+        fields = data.get("fields", [])
+        for field_data in fields:
+            embed.add_field(
+                name=field_data.get("name", ""),
+                value=field_data.get("value", ""),
+                inline=field_data.get("inline", False),
+            )
+
+        # Add footer
+        footer = data.get("footer")
+        if footer:
+            embed.set_footer(text=footer)
+
+        return embed
+
+    async def _create_button_view(self, buttons: list[dict[str, Any]]) -> discord.ui.View:
+        """Create a Discord View with buttons.
+
+        Args:
+            buttons: List of button configurations
+
+        Returns:
+            Discord View with buttons
+        """
+        from clara_core.discord.views import GatewayButtonView
+
+        return GatewayButtonView(buttons)
 
     async def on_tool_start(self, message: Any) -> None:
         """Handle tool execution start."""

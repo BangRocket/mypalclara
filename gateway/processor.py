@@ -169,6 +169,7 @@ class MessageProcessor:
             if session:
                 # Update activity timestamp
                 from db.models import utcnow
+
                 session.last_activity_at = utcnow()
                 db.commit()
                 db.refresh(session)
@@ -289,7 +290,18 @@ class MessageProcessor:
         try:
             # Build context and process
             context = await self._build_context(request)
-            tools = self._tool_executor.get_all_tools() if self._tool_executor else []
+
+            # Get adapter capabilities for tool filtering
+            adapter_capabilities: list[str] = []
+            node = await server.node_registry.get_node_by_websocket(websocket)
+            if node:
+                adapter_capabilities = node.capabilities
+
+            tools = (
+                self._tool_executor.get_all_tools(adapter_capabilities=adapter_capabilities)
+                if self._tool_executor
+                else []
+            )
 
             # Extract images from attachments
             images = [att for att in request.attachments if att.type == "image"]
