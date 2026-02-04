@@ -76,7 +76,20 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove context_id column from sessions table."""
-    op.drop_index('ix_session_user_context_project', 'sessions')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
 
-    with op.batch_alter_table('sessions') as batch_op:
-        batch_op.drop_column('context_id')
+    # Check if table exists
+    if 'sessions' not in inspector.get_table_names():
+        return
+
+    # Check if index exists before dropping
+    indexes = {idx['name'] for idx in inspector.get_indexes('sessions')}
+    if 'ix_session_user_context_project' in indexes:
+        op.drop_index('ix_session_user_context_project', 'sessions')
+
+    # Check if column exists before dropping
+    columns = [c['name'] for c in inspector.get_columns('sessions')]
+    if 'context_id' in columns:
+        with op.batch_alter_table('sessions') as batch_op:
+            batch_op.drop_column('context_id')
