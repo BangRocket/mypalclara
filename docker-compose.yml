@@ -36,6 +36,44 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Qdrant vector database (for memory vectors - replaces pgvector)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mypalclara-qdrant
+    profiles:
+      - qdrant
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis cache (for memory performance optimization)
+  redis:
+    image: redis:7-alpine
+    container_name: mypalclara-redis
+    profiles:
+      - redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # Neo4j graph database (for graph memory)
   neo4j:
     image: neo4j:5-community
@@ -98,6 +136,14 @@ services:
       # PostgreSQL
       - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
       - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
+      # Qdrant (optional - takes priority over pgvector when set)
+      - QDRANT_URL=${QDRANT_URL:-}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Redis cache (optional - for memory performance)
+      - REDIS_URL=${REDIS_URL:-}
+      - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
+      # Vector store migration mode
+      - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
       # Mem0 Provider
       - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
       - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
@@ -194,6 +240,14 @@ services:
       # PostgreSQL (hardcoded for Docker - ignores .env localhost values)
       - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
       - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
+      # Qdrant (optional - takes priority over pgvector when set)
+      - QDRANT_URL=${QDRANT_URL:-}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Redis cache (optional - for memory performance)
+      - REDIS_URL=${REDIS_URL:-}
+      - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
+      # Vector store migration mode
+      - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
       # Mem0 Provider
       - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
       - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
@@ -313,6 +367,8 @@ volumes:
   mypalclara-files:
   postgres-data:
   postgres-vectors-data:
+  qdrant-data:
+  redis-data:
   neo4j-data:
   neo4j-logs:
 
