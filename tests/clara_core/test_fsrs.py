@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from clara_core.fsrs import (
+from clara_core.memory.dynamics.fsrs import (
     FsrsParams,
     Grade,
     MemoryState,

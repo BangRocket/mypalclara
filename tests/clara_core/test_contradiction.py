@@ -2,7 +2,7 @@
 
 import pytest
 
-from clara_core.contradiction import (
+from clara_core.memory.dynamics.contradiction import (
     ContradictionResult,
     ContradictionType,
     _check_antonyms,
