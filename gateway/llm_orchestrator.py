@@ -133,6 +133,16 @@ class LLMOrchestrator:
         tool_instruction = self._build_tool_instruction()
         working_messages.insert(0, tool_instruction)
 
+        # Log system prompt content summary on first iteration
+        system_msgs = [m for m in working_messages if m.get("role") == "system"]
+        if system_msgs:
+            total_system_len = sum(len(m.get("content", "")) for m in system_msgs)
+            first_sys = system_msgs[0].get("content", "")[:100]
+            logger.info(
+                f"[{request_id}] Sending {len(system_msgs)} system messages "
+                f"({total_system_len} chars total). First: {first_sys}..."
+            )
+
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.debug(f"[{request_id}] Iteration {iteration + 1}/{MAX_TOOL_ITERATIONS}")
 
@@ -152,10 +162,7 @@ class LLMOrchestrator:
                 messages_for_llm = [m for m in working_messages if m != tool_instruction]
 
                 # Check if auto-continue might be needed
-                might_auto_continue = (
-                    AUTO_CONTINUE_ENABLED
-                    and auto_continue_count < AUTO_CONTINUE_MAX
-                )
+                might_auto_continue = AUTO_CONTINUE_ENABLED and auto_continue_count < AUTO_CONTINUE_MAX
 
                 if iteration == 0 and not might_auto_continue:
                     # First iteration, no auto-continue - use real streaming
@@ -496,25 +503,28 @@ class LLMOrchestrator:
         return {
             "role": "system",
             "content": (
-                "FILE ATTACHMENT RULES:\n"
-                "To share files (HTML, JSON, code, CSV, etc.) use the `send_local_file` tool.\n"
-                "The `send_local_file` tool ATTACHES the file directly to the Discord chat message.\n"
-                "When you call `send_local_file(filename='result.csv')`, the file will be uploaded and visible to the user.\n"
-                "For saving intermediate results to download later, use `save_to_local`.\n"
-                "NEVER paste raw HTML, large JSON, or long code directly into chat - save as a file and send it.\n\n"
-                "DISCORD-SPECIFIC CAPABILITIES:\n"
-                "- File attachments: Any file you send via `send_local_file` will appear as an attachment\n"
+                "TOOL USAGE GUIDELINES:\n\n"
+                "FILE SENDING (Discord):\n"
+                "- Use `send_discord_file` to create and send files directly to Discord chat\n"
+                "- This is the PRIMARY tool for sharing code, documents, configs, or any text content\n"
+                "- Do NOT use write_file or save_to_local for sending files - use send_discord_file\n"
+                "- For very large outputs, save to a file and send it instead of pasting in chat\n\n"
+                "FILE STORAGE:\n"
+                "- `save_to_local` saves files persistently for later retrieval\n"
+                "- `send_local_file` sends a previously saved file to Discord\n"
+                "- `list_local_files`, `read_local_file`, `delete_local_file` for file management\n\n"
+                "CODE EXECUTION:\n"
+                "- `execute_python` for Python code execution and calculations\n"
+                "- `run_shell` for shell commands\n"
+                "- `install_package` to install Python packages\n"
+                "- Use these for any math, data analysis, or computational tasks\n\n"
+                "OTHER CAPABILITIES:\n"
                 "- Image vision: Users can send images and you can analyze them\n"
-                "- Code execution: Use `execute_python`, `run_shell`, `install_package` for computational tasks\n"
-                "- File storage: `save_to_local` saves files persistently, `send_local_file` shares them in chat\n"
-                "- GitHub integration: `github_*` tools for repos, issues, PRs, workflows\n"
                 "- Web search: `web_search` for current information\n"
+                "- GitHub: `github_*` tools for repos, issues, PRs, workflows\n"
                 "- S3 storage: `s3_save`, `s3_list`, `s3_read`, `s3_delete` for cloud storage\n\n"
-                "GUIDELINES:\n"
-                "- When users ask for calculations, code execution, or data analysis - USE THE TOOLS, don't just explain\n"
-                "- For any math beyond basic arithmetic, USE execute_python\n"
-                "- For large outputs (HTML, JSON, code, data), save to a file and send it\n"
-                "- Summarize key findings in text and attach full results as files"
+                "IMPORTANT: Your personality and context is defined in subsequent system messages. "
+                "Follow those guidelines for tone, style, and behavior."
             ),
         }
 
