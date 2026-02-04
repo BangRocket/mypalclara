@@ -2,7 +2,7 @@
 
 Implements the PlatformAdapter interface for command-line interaction.
 Uses Rich for formatted console output and integrates with prompt_toolkit
-for input handling in cli_bot.py.
+for input handling.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class CLIAdapter(PlatformAdapter):
 
     Provides a simple, clean interface for Clara in the terminal:
     - Renders responses as formatted Markdown via Rich
-    - Exposes console for streaming output in cli_bot.py
+    - Exposes console for streaming output
     - No typing indicators (not needed in CLI)
 
     Attributes:
@@ -137,7 +137,7 @@ class CLIAdapter(PlatformAdapter):
         """Context manager for streaming output.
 
         Provides access to the console for live streaming output
-        during LLM response generation in cli_bot.py.
+        during LLM response generation.
 
         Usage:
             async with adapter.streaming_context() as console:

@@ -35,7 +35,7 @@ def configure_cli_logging() -> Path:
     # Suppress console output from these loggers
     # Set handlers to file-only and disable propagation
     noisy_loggers = [
-        "cli_bot",
+        "adapters.cli",
         "config",
         "config.bot",
         "mem0",

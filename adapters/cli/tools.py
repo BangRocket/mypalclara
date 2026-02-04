@@ -99,7 +99,7 @@ async def cli_write_file(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Error: No content provided"
 
     # Get console and session from context extra
-    # These are passed by cli_bot.py during initialization
+    # These are passed during CLI initialization
     console = ctx.extra.get("console")
     session = ctx.extra.get("session")
 
