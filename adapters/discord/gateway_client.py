@@ -38,6 +38,7 @@ class PendingResponse:
     tool_count: int = 0
     last_edit: datetime | None = None
     status_message: discord.Message | None = None
+    typing_task: asyncio.Task[None] | None = None
 
 
 class DiscordGatewayClient(GatewayClient):
@@ -65,6 +66,7 @@ class DiscordGatewayClient(GatewayClient):
         self.bot = bot
         self._pending: dict[str, PendingResponse] = {}
         self._edit_cooldown = 0.5  # Seconds between edits
+        self._typing_interval = 8.0  # Discord typing lasts ~10 seconds
 
     async def send_discord_message(
         self,
@@ -180,8 +182,9 @@ class DiscordGatewayClient(GatewayClient):
         if not pending:
             return
 
-        # Show typing indicator
+        # Show typing indicator immediately and keep it alive until completion
         await pending.message.channel.trigger_typing()
+        self._start_typing_loop(pending)
         logger.debug(f"Response started for {request_id}")
 
     async def on_response_chunk(self, message: Any) -> None:
@@ -195,19 +198,6 @@ class DiscordGatewayClient(GatewayClient):
         # Accumulate text for final response
         pending.accumulated_text = message.accumulated or (pending.accumulated_text + message.chunk)
 
-        # Keep typing indicator alive (Discord typing lasts ~10 seconds)
-        now = datetime.now()
-        if pending.last_edit:
-            elapsed = (now - pending.last_edit).total_seconds()
-            if elapsed < 8.0:  # Refresh typing every 8 seconds
-                return
-
-        try:
-            await pending.message.channel.trigger_typing()
-            pending.last_edit = now
-        except Exception as e:
-            logger.debug(f"Typing indicator error: {e}")
-
     async def on_response_end(self, message: Any) -> None:
         """Handle response completion - send the full message."""
         request_id = message.request_id
@@ -215,6 +205,7 @@ class DiscordGatewayClient(GatewayClient):
         if not pending:
             logger.debug(f"No pending request for response end {request_id}")
             return
+        self._stop_typing_loop(pending)
 
         # Send final response
         try:
@@ -267,6 +258,7 @@ class DiscordGatewayClient(GatewayClient):
         request_id = message.request_id
         pending = self._pending.pop(request_id, None)
         if pending:
+            self._stop_typing_loop(pending)
             try:
                 error_msg = f"Sorry, I encountered an error: {message.message[:100]}"
                 await pending.message.reply(error_msg, mention_author=False)
@@ -280,6 +272,7 @@ class DiscordGatewayClient(GatewayClient):
         request_id = message.request_id
         pending = self._pending.pop(request_id, None)
         if pending:
+            self._stop_typing_loop(pending)
             try:
                 await pending.message.add_reaction("🛑")
             except Exception:
@@ -303,9 +296,34 @@ class DiscordGatewayClient(GatewayClient):
                 cancelled.append(request_id)
 
         for request_id in to_remove:
+            pending = self._pending.get(request_id)
+            if pending:
+                self._stop_typing_loop(pending)
             del self._pending[request_id]
 
         return cancelled
+
+    def _start_typing_loop(self, pending: PendingResponse) -> None:
+        if pending.typing_task and not pending.typing_task.done():
+            return
+
+        async def _loop() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(self._typing_interval)
+                    await pending.message.channel.trigger_typing()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.debug(f"Typing indicator error: {e}")
+
+        pending.typing_task = asyncio.create_task(_loop())
+
+    def _stop_typing_loop(self, pending: PendingResponse) -> None:
+        task = pending.typing_task
+        if task and not task.done():
+            task.cancel()
+        pending.typing_task = None
 
     async def _send_files(
         self,
