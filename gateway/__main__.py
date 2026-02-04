@@ -410,6 +410,9 @@ def _run_gateway(args: argparse.Namespace, adapter_names: list[str] | None) -> N
                 os.remove(args.pidfile)
             except OSError:
                 pass
+        # Use os._exit() to skip Python's async generator finalization phase
+        # which causes noisy errors from MCP stdio_client cleanup
+        os._exit(0)
 
 
 async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] | None) -> None:

@@ -257,6 +257,10 @@ async def main() -> None:
 
     logger.info("Bot stopped")
 
+    # Use os._exit() to skip Python's async generator finalization phase
+    # which causes noisy errors from MCP stdio_client cleanup
+    os._exit(0)
+
 
 def run() -> None:
     """Sync entry point for poetry scripts."""
