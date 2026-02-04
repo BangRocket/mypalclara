@@ -210,14 +210,28 @@ class DiscordGatewayClient(GatewayClient):
         # Send final response
         try:
             full_text = message.full_text
+
+            # Check for reaction marker
+            reaction_emoji = None
+            for line in full_text.split("\n"):
+                if line.startswith("__REACTION__:"):
+                    reaction_emoji = line.replace("__REACTION__:", "").strip()
+                    full_text = full_text.replace(line, "").strip()
+                    break
+
             chunks = split_message(full_text)
 
             # Send all chunks as replies
+            sent_message = None
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    await pending.message.reply(chunk, mention_author=False)
+                    sent_message = await pending.message.reply(chunk, mention_author=False)
                 else:
-                    await pending.message.channel.send(chunk)
+                    sent_message = await pending.message.channel.send(chunk)
+
+            # Add reaction if requested
+            if reaction_emoji and sent_message:
+                await self._send_reaction(sent_message, reaction_emoji)
 
             # Handle file attachments
             files_to_send = message.files
@@ -351,3 +365,20 @@ class DiscordGatewayClient(GatewayClient):
                 await channel.send(files=files)
             except Exception as e:
                 logger.warning(f"Failed to send files: {e}")
+
+    async def _send_reaction(
+        self,
+        message: discord.Message,
+        emoji: str,
+    ) -> None:
+        """Add a reaction to a Discord message.
+
+        Args:
+            message: Discord message to react to
+            emoji: Emoji string to react with
+        """
+        try:
+            await message.add_reaction(emoji)
+            logger.debug(f"Added reaction {emoji} to message {message.id}")
+        except Exception as e:
+            logger.warning(f"Failed to add reaction: {e}")

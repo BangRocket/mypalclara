@@ -496,18 +496,25 @@ class LLMOrchestrator:
         return {
             "role": "system",
             "content": (
-                "CRITICAL FILE ATTACHMENT RULES:\n"
-                "To share files (HTML, JSON, code, etc.) use `create_file_attachment` tool.\n"
-                "This is the MOST RELIABLE method - it saves AND attaches in one step.\n"
-                "NEVER paste raw HTML, large JSON, or long code directly into chat.\n\n"
-                "You have access to tools for code execution, file management, and developer integrations. "
-                "When the user asks you to calculate, run code, analyze data, "
-                "fetch URLs, install packages, or do anything computational - "
-                "USE THE TOOLS. Do not just explain what you would do - actually "
-                "call the execute_python or other tools to do it. "
-                "For any math beyond basic arithmetic, USE execute_python. "
-                "For GitHub tasks (repos, issues, PRs, workflows), use the github_* tools. "
-                "Summarize results conversationally and attach full output as a file."
+                "FILE ATTACHMENT RULES:\n"
+                "To share files (HTML, JSON, code, CSV, etc.) use the `send_local_file` tool.\n"
+                "The `send_local_file` tool ATTACHES the file directly to the Discord chat message.\n"
+                "When you call `send_local_file(filename='result.csv')`, the file will be uploaded and visible to the user.\n"
+                "For saving intermediate results to download later, use `save_to_local`.\n"
+                "NEVER paste raw HTML, large JSON, or long code directly into chat - save as a file and send it.\n\n"
+                "DISCORD-SPECIFIC CAPABILITIES:\n"
+                "- File attachments: Any file you send via `send_local_file` will appear as an attachment\n"
+                "- Image vision: Users can send images and you can analyze them\n"
+                "- Code execution: Use `execute_python`, `run_shell`, `install_package` for computational tasks\n"
+                "- File storage: `save_to_local` saves files persistently, `send_local_file` shares them in chat\n"
+                "- GitHub integration: `github_*` tools for repos, issues, PRs, workflows\n"
+                "- Web search: `web_search` for current information\n"
+                "- S3 storage: `s3_save`, `s3_list`, `s3_read`, `s3_delete` for cloud storage\n\n"
+                "GUIDELINES:\n"
+                "- When users ask for calculations, code execution, or data analysis - USE THE TOOLS, don't just explain\n"
+                "- For any math beyond basic arithmetic, USE execute_python\n"
+                "- For large outputs (HTML, JSON, code, data), save to a file and send it\n"
+                "- Summarize key findings in text and attach full results as files"
             ),
         }
 

@@ -65,7 +65,7 @@ class ToolExecutor:
         logger.info("ToolExecutor initialized")
 
     async def _init_modular_tools(self) -> None:
-        """Initialize the modular tools system."""
+        """Initialize modular tools system."""
         try:
             from tools import init_tools
 
@@ -80,6 +80,72 @@ class ToolExecutor:
             self._modular_initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize modular tools: {e}")
+
+    def _init_discord_tools(self) -> list[dict[str, Any]]:
+        """Initialize Discord-specific tools.
+
+        Returns:
+            List of Discord tool definitions in OpenAI format
+        """
+        from clara_core.core_tools import discord_tool
+
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "format_discord_message",
+                    "description": (
+                        "Format a Discord message with Discord-specific markdown features. "
+                        "Use this for: code blocks with syntax highlighting, spoilers, or "
+                        "special formatting. This ensures proper Discord rendering."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Plain text content of the message",
+                            },
+                            "code_block": {
+                                "type": "string",
+                                "description": "Code to format as a code block (used instead of content)",
+                            },
+                            "language": {
+                                "type": "string",
+                                "description": "Programming language for syntax highlighting (e.g., 'python', 'javascript', 'bash')",
+                            },
+                            "spoiler": {
+                                "type": "string",
+                                "description": "Text to hide behind spoiler tags (click to reveal)",
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_discord_reaction",
+                    "description": (
+                        "Add an emoji reaction to the user's message or to Clara's own response. "
+                        "Use this for quick acknowledgments or to mark task completion. "
+                        "Available reactions: ✅ (success), ❌ (error), ⚠️ (warning), "
+                        "🎉 (celebration), 🤔 (thinking), 👍 (thumbs up), 👎 (thumbs down), "
+                        "🔥 (fire), 💯 (100), ❓ (question)."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "emoji": {
+                                "type": "string",
+                                "description": "Emoji to react with (e.g., '✅', '🎉', '👍')",
+                            },
+                        },
+                        "required": ["emoji"],
+                    },
+                },
+            },
+        ]
 
     async def _init_mcp(self) -> None:
         """Initialize MCP plugin system."""
@@ -140,6 +206,10 @@ class ToolExecutor:
                 format="openai",
             )
             tools.extend(native_tools)
+
+        # Add Discord-specific tools
+        discord_tools = self._init_discord_tools()
+        tools.extend(discord_tools)
 
         # Get MCP tools
         if self._mcp_initialized and self._mcp_manager:
@@ -337,5 +407,28 @@ class ToolExecutor:
                 },
             )
             return await self._tool_registry.execute(tool_name, arguments, ctx)
+
+        # Discord-specific tools
+        if tool_name == "format_discord_message":
+            content = arguments.get("content", "")
+            code_block = arguments.get("code_block", "")
+            language = arguments.get("language", "")
+            spoiler = arguments.get("spoiler", "")
+
+            if code_block:
+                formatted = f"```{language}\n{code_block}\n```"
+            else:
+                formatted = content
+
+            if spoiler:
+                formatted = f"||{spoiler}||\n\n{formatted}"
+
+            return formatted
+
+        if tool_name == "add_discord_reaction":
+            emoji = arguments.get("emoji", "✅")
+
+            # Return special marker that Discord adapter can use
+            return f"__REACTION__:{emoji}"
 
         return f"Unknown tool: {tool_name}"
