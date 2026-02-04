@@ -579,6 +579,39 @@ class MemoryHistory(Base):
 
 
 # =============================================================================
+# Tool Audit Log Model
+# =============================================================================
+
+
+class ToolAuditLog(Base):
+    """Audit log for tool executions.
+
+    Records every tool call for compliance, debugging, and analytics.
+    """
+
+    __tablename__ = "tool_audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=utcnow, nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    tool_name = Column(String, nullable=False, index=True)
+    platform = Column(String, nullable=False)
+    parameters = Column(Text, nullable=True)  # JSON string of parameters
+    result_status = Column(String, nullable=False)  # success, error, denied
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+    risk_level = Column(String, nullable=True)  # safe, moderate, dangerous
+    intent = Column(String, nullable=True)  # read, write, execute, network
+    channel_id = Column(String, nullable=True, index=True)
+
+    # Composite index for efficient queries
+    __table_args__ = (
+        Index("ix_tool_audit_user_time", "user_id", "timestamp"),
+        Index("ix_tool_audit_tool_time", "tool_name", "timestamp"),
+    )
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
@@ -619,6 +652,8 @@ __all__ = [
     "MemorySupersession",
     # Memory history (Rook)
     "MemoryHistory",
+    # Tool audit log
+    "ToolAuditLog",
     # MCP models
     "MCPServer",
     "MCPOAuthToken",

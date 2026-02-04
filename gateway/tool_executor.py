@@ -51,7 +51,7 @@ class ToolExecutor:
         self._sandbox_manager = get_sandbox_manager()
 
         # Import and initialize file storage
-        from storage.local_files import get_file_manager
+        from clara_core.core_tools.files_tool import get_file_manager
 
         self._file_manager = get_file_manager()
 
