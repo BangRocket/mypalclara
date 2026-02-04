@@ -303,10 +303,15 @@ class DiscordGatewayClient(GatewayClient):
                 if parsed.get("reaction") and sent_message:
                     await self._send_reaction(sent_message, parsed["reaction"])
 
-            # Handle file attachments
-            files_to_send = message.files
-            if files_to_send:
-                await self._send_files(target_channel, files_to_send)
+            # Handle file attachments (prefer file_data over files)
+            file_data = getattr(message, "file_data", []) or []
+            if file_data:
+                logger.info(f"[response_end] Sending {len(file_data)} files from file_data")
+                await self._send_files_from_data(target_channel, file_data)
+            elif message.files:
+                # Fallback to file paths (deprecated)
+                logger.info(f"[response_end] Sending {len(message.files)} files from paths")
+                await self._send_files(target_channel, message.files)
 
         except Exception as e:
             logger.exception(f"Failed to send final response: {e}")
@@ -562,14 +567,55 @@ class DiscordGatewayClient(GatewayClient):
         files = []
         for path_str in file_paths:
             path = Path(path_str)
+            logger.info(f"[_send_files] Checking path: {path} (exists: {path.exists()})")
             if path.exists():
                 files.append(discord.File(path))
+            else:
+                logger.warning(f"[_send_files] File not found: {path}")
 
+        logger.info(f"[_send_files] Prepared {len(files)} Discord files to send")
         if files:
             try:
                 await channel.send(files=files)
             except Exception as e:
                 logger.warning(f"Failed to send files: {e}")
+
+    async def _send_files_from_data(
+        self,
+        channel: Any,
+        file_data: list[dict[str, str]],
+    ) -> None:
+        """Send files to Discord from base64-encoded data.
+
+        Args:
+            channel: Discord channel
+            file_data: List of FileData dicts with filename, content_base64, media_type
+        """
+        import base64
+        from io import BytesIO
+
+        import discord
+
+        files = []
+        for fd in file_data:
+            try:
+                filename = fd.get("filename", "file")
+                content_b64 = fd.get("content_base64", "")
+                content = base64.b64decode(content_b64)
+
+                # Create Discord file from bytes
+                file_obj = discord.File(BytesIO(content), filename=filename)
+                files.append(file_obj)
+                logger.info(f"[_send_files_from_data] Prepared file: {filename} ({len(content)} bytes)")
+            except Exception as e:
+                logger.error(f"[_send_files_from_data] Failed to prepare {fd.get('filename')}: {e}")
+
+        if files:
+            try:
+                await channel.send(files=files)
+                logger.info(f"[_send_files_from_data] Sent {len(files)} files to Discord")
+            except Exception as e:
+                logger.error(f"[_send_files_from_data] Failed to send files: {e}")
 
     async def _send_reaction(
         self,

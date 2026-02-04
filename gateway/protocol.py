@@ -206,6 +206,14 @@ class ButtonInfo(BaseModel):
     disabled: bool = Field(False, description="Whether button is disabled")
 
 
+class FileData(BaseModel):
+    """File data for sending as attachment over WebSocket."""
+
+    filename: str = Field(..., description="Original filename")
+    content_base64: str = Field(..., description="Base64-encoded file content")
+    media_type: str = Field("application/octet-stream", description="MIME type")
+
+
 class ResponseEnd(BaseModel):
     """Gateway -> Adapter: Response generation complete."""
 
@@ -213,7 +221,8 @@ class ResponseEnd(BaseModel):
     id: str = Field(..., description="Response ID")
     request_id: str = Field(..., description="Original request message ID")
     full_text: str = Field(..., description="Complete response text")
-    files: list[str] = Field(default_factory=list, description="File paths to attach")
+    files: list[str] = Field(default_factory=list, description="File paths (deprecated, use file_data)")
+    file_data: list[FileData] = Field(default_factory=list, description="Files with content to attach")
     tool_count: int = Field(0, description="Number of tools executed")
     tokens_used: int | None = Field(None, description="Tokens used if available")
     edit_target: str | None = Field(

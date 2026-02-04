@@ -695,6 +695,10 @@ class ToolExecutor:
             file_path = self._file_manager.get_file_path(user_id, filename, channel_id)
             if file_path:
                 files_to_send.append(str(file_path))
+                logger.info(
+                    f"[send_discord_file] Added file to send: {file_path} (exists: {file_path.exists() if hasattr(file_path, 'exists') else 'unknown'})"
+                )
+                logger.info(f"[send_discord_file] files_to_send now has {len(files_to_send)} files: {files_to_send}")
                 return f"File '{filename}' will be sent as an attachment."
             return f"Error: Could not locate saved file '{filename}'"
 

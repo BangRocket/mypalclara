@@ -367,6 +367,9 @@ class MessageProcessor:
             # Store in memory
             await self._store_exchange(request, full_text, context)
 
+            # Convert file paths to FileData with content
+            file_data_list = await self._prepare_file_data(files)
+
             # Send response end
             await self._send(
                 websocket,
@@ -374,7 +377,8 @@ class MessageProcessor:
                     id=response_id,
                     request_id=request.id,
                     full_text=full_text,
-                    files=files,
+                    files=files,  # Keep for backwards compatibility
+                    file_data=file_data_list,
                     tool_count=tool_count,
                 ),
             )
@@ -631,6 +635,51 @@ class MessageProcessor:
             parts.append(f"- Other files attached: {file_count}")
 
         return "\n".join(parts)
+
+    async def _prepare_file_data(self, file_paths: list[str]) -> list[dict[str, str]]:
+        """Read files and prepare FileData for sending over WebSocket.
+
+        Args:
+            file_paths: List of local file paths
+
+        Returns:
+            List of FileData dicts with filename, content_base64, media_type
+        """
+        import base64
+        import mimetypes
+        from pathlib import Path
+
+        file_data_list = []
+
+        for path_str in file_paths:
+            path = Path(path_str)
+            if not path.exists():
+                logger.warning(f"[file_data] File not found: {path}")
+                continue
+
+            try:
+                # Read file content
+                content = path.read_bytes()
+                content_b64 = base64.b64encode(content).decode("utf-8")
+
+                # Determine MIME type
+                mime_type, _ = mimetypes.guess_type(path.name)
+                if not mime_type:
+                    mime_type = "application/octet-stream"
+
+                file_data_list.append(
+                    {
+                        "filename": path.name,
+                        "content_base64": content_b64,
+                        "media_type": mime_type,
+                    }
+                )
+                logger.info(f"[file_data] Prepared file: {path.name} ({len(content)} bytes, {mime_type})")
+
+            except Exception as e:
+                logger.error(f"[file_data] Failed to read {path}: {e}")
+
+        return file_data_list
 
     async def _store_exchange(
         self,
