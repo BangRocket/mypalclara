@@ -140,7 +140,7 @@ class LLMOrchestrator:
         system_msgs = [m for m in working_messages if m.get("role") == "system"]
         if system_msgs:
             total_system_len = sum(len(m.get("content", "")) for m in system_msgs)
-            first_sys = system_msgs[0].get("content", "")[:100]
+            first_sys = system_msgs[0].get("content", "")[:100].replace("\n", "\\n")
             logger.info(
                 f"[{request_id}] Sending {len(system_msgs)} system messages "
                 f"({total_system_len} chars total). First: {first_sys}..."
