@@ -28,44 +28,46 @@ MAX_TEXT_FILE_SIZE = int(os.getenv("DISCORD_MAX_TEXT_FILE_SIZE", str(100 * 1024)
 # Supported file extensions
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 
-TEXT_EXTENSIONS = frozenset({
-    ".txt",
-    ".md",
-    ".py",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".json",
-    ".yaml",
-    ".yml",
-    ".html",
-    ".css",
-    ".scss",
-    ".xml",
-    ".csv",
-    ".log",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".c",
-    ".cpp",
-    ".h",
-    ".hpp",
-    ".java",
-    ".go",
-    ".rs",
-    ".rb",
-    ".php",
-    ".sql",
-    ".toml",
-    ".ini",
-    ".cfg",
-    ".conf",
-    ".env",
-    ".gitignore",
-    ".dockerfile",
-})
+TEXT_EXTENSIONS = frozenset(
+    {
+        ".txt",
+        ".md",
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".html",
+        ".css",
+        ".scss",
+        ".xml",
+        ".csv",
+        ".log",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".java",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+        ".sql",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".env",
+        ".gitignore",
+        ".dockerfile",
+    }
+)
 
 
 def get_file_extension(filename: str) -> str:
@@ -140,12 +142,14 @@ async def extract_attachments(message: discord.Message) -> list[dict[str, Any]]:
 
             else:
                 # Generic file - metadata only
-                attachments.append({
-                    "type": "file",
-                    "filename": attachment.filename,
-                    "media_type": attachment.content_type,
-                    "size": attachment.size,
-                })
+                attachments.append(
+                    {
+                        "type": "file",
+                        "filename": attachment.filename,
+                        "media_type": attachment.content_type,
+                        "size": attachment.size,
+                    }
+                )
 
         except Exception as e:
             logger.warning(f"Failed to process attachment {attachment.filename}: {e}")

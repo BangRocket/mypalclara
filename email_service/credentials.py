@@ -26,7 +26,7 @@ def _get_fernet() -> Fernet:
         if not EMAIL_ENCRYPTION_KEY:
             raise ValueError(
                 "EMAIL_ENCRYPTION_KEY environment variable is required for IMAP credentials. "
-                "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
             )
         _fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
     return _fernet

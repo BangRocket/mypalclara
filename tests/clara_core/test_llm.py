@@ -18,6 +18,7 @@ from clara_core.llm import (
     make_llm,
     make_llm_streaming,
 )
+from clara_core.llm.messages import SystemMessage, UserMessage
 from clara_core.llm.providers import (
     DirectAnthropicProvider,
     DirectOpenAIProvider,
@@ -510,6 +511,7 @@ class TestLangChainProviderIntegration:
     def clear_model_cache(self):
         """Clear model cache before each test."""
         from clara_core.llm.providers import langchain
+
         langchain._model_cache.clear()
         yield
         langchain._model_cache.clear()
@@ -536,7 +538,7 @@ class TestLangChainProviderIntegration:
             )
 
             result = provider.complete(
-                [{"role": "user", "content": "Hello"}],
+                [UserMessage(content="Hello")],
                 config,
             )
 
@@ -564,7 +566,7 @@ class TestLangChainProviderIntegration:
             )
 
             result = provider.complete(
-                [{"role": "user", "content": "Hello"}],
+                [UserMessage(content="Hello")],
                 config,
             )
 
@@ -615,7 +617,7 @@ class TestLangChainProviderIntegration:
             ]
 
             response = provider.complete_with_tools(
-                [{"role": "user", "content": "Search for python tutorials"}],
+                [UserMessage(content="Search for python tutorials")],
                 tools,
                 config,
             )
@@ -652,7 +654,7 @@ class TestLangChainProviderIntegration:
 
             chunks = list(
                 provider.stream(
-                    [{"role": "user", "content": "Hello"}],
+                    [UserMessage(content="Hello")],
                     config,
                 )
             )
@@ -688,7 +690,7 @@ class TestLangChainProviderIntegration:
 
             chunks = list(
                 provider.stream_with_tools(
-                    [{"role": "user", "content": "Search"}],
+                    [UserMessage(content="Search")],
                     tools,
                     config,
                 )
@@ -722,7 +724,7 @@ class TestDirectAnthropicProvider:
         )
 
         result = provider.complete(
-            [{"role": "user", "content": "Hello"}],
+            [UserMessage(content="Hello")],
             config,
         )
 
@@ -750,8 +752,8 @@ class TestDirectAnthropicProvider:
 
         provider.complete(
             [
-                {"role": "system", "content": "You are helpful"},
-                {"role": "user", "content": "Hello"},
+                SystemMessage(content="You are helpful"),
+                UserMessage(content="Hello"),
             ],
             config,
         )
@@ -792,7 +794,7 @@ class TestDirectAnthropicProvider:
         ]
 
         response = provider.complete_with_tools(
-            [{"role": "user", "content": "Search"}],
+            [UserMessage(content="Search")],
             tools,
             config,
         )
@@ -823,7 +825,7 @@ class TestDirectAnthropicProvider:
 
         chunks = list(
             provider.stream(
-                [{"role": "user", "content": "Hi"}],
+                [UserMessage(content="Hi")],
                 config,
             )
         )
@@ -854,7 +856,7 @@ class TestDirectOpenAIProvider:
         )
 
         result = provider.complete(
-            [{"role": "user", "content": "Hello"}],
+            [UserMessage(content="Hello")],
             config,
         )
 
@@ -883,7 +885,7 @@ class TestDirectOpenAIProvider:
         tools = [{"type": "function", "function": {"name": "search"}}]
 
         response = provider.complete_with_tools(
-            [{"role": "user", "content": "Search"}],
+            [UserMessage(content="Search")],
             tools,
             config,
         )
@@ -918,7 +920,7 @@ class TestDirectOpenAIProvider:
 
         chunks = list(
             provider.stream(
-                [{"role": "user", "content": "Hi"}],
+                [UserMessage(content="Hi")],
                 config,
             )
         )
@@ -942,7 +944,7 @@ class TestDirectOpenAIProvider:
 
         chunks = list(
             provider.stream(
-                [{"role": "user", "content": "Hi"}],
+                [UserMessage(content="Hi")],
                 config,
             )
         )
@@ -960,7 +962,7 @@ class TestAsyncMethods:
 
         with patch.object(provider, "complete", return_value="Async result") as mock_complete:
             config = LLMConfig(provider="openrouter", model="gpt-4", api_key="key")
-            result = await provider.acomplete([{"role": "user", "content": "Hi"}], config)
+            result = await provider.acomplete([UserMessage(content="Hi")], config)
 
             assert result == "Async result"
             mock_complete.assert_called_once()
@@ -977,10 +979,125 @@ class TestAsyncMethods:
         with patch.object(provider, "stream", side_effect=mock_stream):
             config = LLMConfig(provider="openrouter", model="gpt-4", api_key="key")
             chunks = []
-            async for chunk in provider.astream([{"role": "user", "content": "Hi"}], config):
+            async for chunk in provider.astream([UserMessage(content="Hi")], config):
                 chunks.append(chunk)
 
             assert chunks == ["chunk1", "chunk2"]
+
+
+class TestUnifiedLLM:
+    """Tests for the UnifiedLLM bridge between memory system and providers."""
+
+    def test_generate_response_converts_dicts_to_typed_messages(self):
+        """Test that generate_response converts dict messages before calling provider."""
+        from unittest.mock import MagicMock, patch
+
+        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+
+        config = UnifiedLLMConfig(
+            provider="openrouter",
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+
+        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.complete.return_value = "test response"
+            mock_get_provider.return_value = mock_provider
+
+            llm = UnifiedLLM(config)
+            llm._provider = mock_provider
+
+            # Call with dict messages (what memory system sends)
+            result = llm.generate_response([
+                {"role": "system", "content": "You are a helper."},
+                {"role": "user", "content": "Extract facts."},
+            ])
+
+            assert result == "test response"
+
+            # Verify provider.complete was called with typed Messages, not dicts
+            call_args = mock_provider.complete.call_args
+            messages_arg = call_args[0][0]
+            assert len(messages_arg) == 2
+            assert isinstance(messages_arg[0], SystemMessage)
+            assert isinstance(messages_arg[1], UserMessage)
+            assert messages_arg[0].content == "You are a helper."
+            assert messages_arg[1].content == "Extract facts."
+
+    def test_generate_response_passes_typed_messages_through(self):
+        """Test that already-typed messages pass through without conversion."""
+        from unittest.mock import MagicMock, patch
+
+        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+
+        config = UnifiedLLMConfig(
+            provider="openrouter",
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+
+        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.complete.return_value = "typed response"
+            mock_get_provider.return_value = mock_provider
+
+            llm = UnifiedLLM(config)
+            llm._provider = mock_provider
+
+            # Call with typed Messages directly
+            typed_messages = [
+                SystemMessage(content="system prompt"),
+                UserMessage(content="user input"),
+            ]
+            result = llm.generate_response(typed_messages)
+
+            assert result == "typed response"
+
+            # Verify the same typed messages were passed through
+            call_args = mock_provider.complete.call_args
+            messages_arg = call_args[0][0]
+            assert messages_arg is typed_messages
+
+    def test_generate_response_with_tools_converts_dicts(self):
+        """Test that generate_response converts dicts when tools are provided."""
+        from unittest.mock import MagicMock, patch
+
+        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+
+        config = UnifiedLLMConfig(
+            provider="openrouter",
+            model="gpt-4o-mini",
+            api_key="test-key",
+        )
+
+        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_tool_response = MagicMock()
+            mock_tool_response.has_tool_calls = True
+            mock_tool_response.tool_calls = [
+                MagicMock(name="test_tool", arguments={"key": "value"}),
+            ]
+            mock_tool_response.tool_calls[0].name = "test_tool"
+            mock_tool_response.tool_calls[0].arguments = {"key": "value"}
+            mock_provider.complete_with_tools.return_value = mock_tool_response
+            mock_get_provider.return_value = mock_provider
+
+            llm = UnifiedLLM(config)
+            llm._provider = mock_provider
+
+            tools = [{"type": "function", "function": {"name": "test_tool"}}]
+            result = llm.generate_response(
+                [{"role": "user", "content": "use tool"}],
+                tools=tools,
+            )
+
+            assert result == {"tool_calls": [{"name": "test_tool", "arguments": {"key": "value"}}]}
+
+            # Verify typed messages were passed to provider
+            call_args = mock_provider.complete_with_tools.call_args
+            messages_arg = call_args[0][0]
+            assert isinstance(messages_arg[0], UserMessage)
 
 
 class TestToolResponseConversions:

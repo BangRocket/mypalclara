@@ -60,9 +60,7 @@ class TestTeamsBot:
         assert teams_bot._detect_tier("What is !high used for?") is None
 
     @pytest.mark.asyncio
-    async def test_on_message_sends_to_gateway(
-        self, teams_bot, mock_turn_context, mock_gateway_client
-    ):
+    async def test_on_message_sends_to_gateway(self, teams_bot, mock_turn_context, mock_gateway_client):
         """Should send message to gateway."""
         await teams_bot.on_message_activity(mock_turn_context)
 
@@ -72,9 +70,7 @@ class TestTeamsBot:
         assert call_kwargs.kwargs["tier_override"] is None
 
     @pytest.mark.asyncio
-    async def test_on_message_with_tier(
-        self, teams_bot, mock_turn_context, mock_gateway_client
-    ):
+    async def test_on_message_with_tier(self, teams_bot, mock_turn_context, mock_gateway_client):
         """Should pass tier override to gateway."""
         mock_turn_context.activity.text = "!high Complex question"
 
@@ -84,9 +80,7 @@ class TestTeamsBot:
         assert call_kwargs.kwargs["tier_override"] == "high"
 
     @pytest.mark.asyncio
-    async def test_on_message_gateway_disconnected(
-        self, teams_bot, mock_turn_context, mock_gateway_client
-    ):
+    async def test_on_message_gateway_disconnected(self, teams_bot, mock_turn_context, mock_gateway_client):
         """Should send error when gateway disconnected."""
         mock_gateway_client.is_connected = False
 
@@ -192,9 +186,7 @@ class TestTeamsGatewayClient:
         mock_graph_client.get_channel_messages.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_send_files_uploads_to_onedrive(
-        self, gateway_client, mock_graph_client, tmp_path
-    ):
+    async def test_send_files_uploads_to_onedrive(self, gateway_client, mock_graph_client, tmp_path):
         """Should upload files to OneDrive and send cards."""
         # Create a test file
         test_file = tmp_path / "test.txt"

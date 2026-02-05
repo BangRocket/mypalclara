@@ -242,9 +242,7 @@ class TestFormatIntentions:
 
     def test_single_intention(self):
         """Single intention should format correctly."""
-        intentions = [
-            {"content": "Remember to follow up on the interview"}
-        ]
+        intentions = [{"content": "Remember to follow up on the interview"}]
         result = format_intentions_for_prompt(intentions)
 
         assert "Reminders" in result
@@ -263,9 +261,7 @@ class TestFormatIntentions:
 
     def test_max_intentions(self):
         """Should respect max_intentions limit."""
-        intentions = [
-            {"content": f"Reminder {i}"} for i in range(10)
-        ]
+        intentions = [{"content": f"Reminder {i}"} for i in range(10)]
         result = format_intentions_for_prompt(intentions, max_intentions=2)
 
         assert "Reminder 0" in result

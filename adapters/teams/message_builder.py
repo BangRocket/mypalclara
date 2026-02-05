@@ -43,8 +43,9 @@ def parse_markers(text: str) -> ParsedMarkers:
     if button_match:
         try:
             import json
+
             result.buttons = json.loads(button_match.group(1))
-            result.text = text[:button_match.start()] + text[button_match.end():]
+            result.text = text[: button_match.start()] + text[button_match.end() :]
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -53,14 +54,14 @@ def parse_markers(text: str) -> ParsedMarkers:
     title_match = re.search(title_pattern, result.text)
     if title_match:
         result.card_title = title_match.group(1).strip()
-        result.text = result.text[:title_match.start()] + result.text[title_match.end():]
+        result.text = result.text[: title_match.start()] + result.text[title_match.end() :]
 
     # Extract card style
     style_pattern = r"__CARD_STYLE__(\w+)__CARD_STYLE__"
     style_match = re.search(style_pattern, result.text)
     if style_match:
         result.card_style = style_match.group(1)
-        result.text = result.text[:style_match.start()] + result.text[style_match.end():]
+        result.text = result.text[: style_match.start()] + result.text[style_match.end() :]
 
     result.text = result.text.strip()
     return result

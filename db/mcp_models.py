@@ -279,9 +279,7 @@ class MCPRateLimit(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     # Indexes
-    __table_args__ = (
-        Index("ix_mcp_rate_limit_scope", "user_id", "server_name", "tool_name"),
-    )
+    __table_args__ = (Index("ix_mcp_rate_limit_scope", "user_id", "server_name", "tool_name"),)
 
 
 # Export models for import in db/models.py

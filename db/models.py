@@ -55,9 +55,7 @@ class Session(Base):
     session_summary = Column(Text, nullable=True)  # LLM-generated summary
 
     # Index for efficient session lookups by user_id + context_id + project_id
-    __table_args__ = (
-        Index('ix_session_user_context_project', 'user_id', 'context_id', 'project_id'),
-    )
+    __table_args__ = (Index("ix_session_user_context_project", "user_id", "context_id", "project_id"),)
 
     project = relationship("Project", back_populates="sessions")
     messages = relationship("Message", back_populates="session")
@@ -413,9 +411,7 @@ class MemoryDynamics(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     # Composite index for efficient user+recency queries
-    __table_args__ = (
-        Index("ix_memory_dynamics_user_accessed", "user_id", "last_accessed_at"),
-    )
+    __table_args__ = (Index("ix_memory_dynamics_user_accessed", "user_id", "last_accessed_at"),)
 
 
 class MemoryAccessLog(Base):
@@ -455,9 +451,7 @@ class MemoryAccessLog(Base):
     accessed_at = Column(DateTime, default=utcnow, index=True)
 
     # Composite index for analytics queries
-    __table_args__ = (
-        Index("ix_memory_access_user_time", "user_id", "accessed_at"),
-    )
+    __table_args__ = (Index("ix_memory_access_user_time", "user_id", "accessed_at"),)
 
 
 class Intention(Base):
@@ -573,9 +567,7 @@ class MemoryHistory(Base):
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, nullable=True)
 
-    __table_args__ = (
-        Index("ix_memory_history_memory_id_created", "memory_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_memory_history_memory_id_created", "memory_id", "created_at"),)
 
 
 # =============================================================================

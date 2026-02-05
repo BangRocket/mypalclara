@@ -252,10 +252,12 @@ class TeamsGatewayClient(GatewayClient):
                 if msg.get("content", "").strip() == current_text:
                     continue
 
-                reply_chain.append({
-                    "role": msg["role"],
-                    "content": msg["content"],
-                })
+                reply_chain.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                )
 
                 if len(reply_chain) >= max_messages:
                     break
