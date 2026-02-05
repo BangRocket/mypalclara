@@ -8,16 +8,20 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any, Callable
 
 import websockets
 from websockets.client import WebSocketClientProtocol
 
+from adapters.protocols import CAPABILITY_PROTOCOLS
 from config.logging import get_logger
-from gateway.protocol import (
+from mypalclara.gateway.protocol import (
     AttachmentInfo,
     CancelMessage,
     ChannelInfo,
@@ -43,6 +47,160 @@ from gateway.protocol import (
 )
 
 logger = get_logger("adapters.base")
+
+
+# =============================================================================
+# Error Recovery System
+# =============================================================================
+
+
+class ErrorCategory(Enum):
+    """Categories for error recovery decisions."""
+
+    TRANSIENT = "transient"  # Network timeout, rate limit → retry with backoff
+    CONNECTION = "connection"  # WebSocket closed, auth fail → reconnect
+    CONFIGURATION = "configuration"  # Missing env, bad creds → stop, alert
+    FATAL = "fatal"  # Unrecoverable → stop, alert
+
+
+def classify_error(error: Exception) -> ErrorCategory:
+    """Classify an exception for recovery decisions.
+
+    Args:
+        error: The exception to classify
+
+    Returns:
+        ErrorCategory indicating how to handle the error
+    """
+    error_str = str(error).lower()
+    error_type = type(error).__name__
+
+    # Configuration errors - stop and alert
+    if any(
+        term in error_str
+        for term in [
+            "missing env",
+            "invalid api key",
+            "authentication failed",
+            "unauthorized",
+            "403",
+            "invalid token",
+            "permission denied",
+        ]
+    ):
+        return ErrorCategory.CONFIGURATION
+
+    # Connection errors - reconnect with backoff
+    if any(
+        term in error_type
+        for term in [
+            "ConnectionClosed",
+            "ConnectionRefused",
+            "ConnectionReset",
+            "WebSocketException",
+        ]
+    ) or any(
+        term in error_str
+        for term in [
+            "connection closed",
+            "connection refused",
+            "connection reset",
+            "websocket",
+            "disconnect",
+        ]
+    ):
+        return ErrorCategory.CONNECTION
+
+    # Transient errors - retry with backoff
+    if any(
+        term in error_str
+        for term in [
+            "timeout",
+            "rate limit",
+            "429",
+            "503",
+            "502",
+            "504",
+            "temporary",
+            "try again",
+            "overloaded",
+        ]
+    ):
+        return ErrorCategory.TRANSIENT
+
+    # TimeoutError is transient
+    if isinstance(error, (asyncio.TimeoutError, TimeoutError)):
+        return ErrorCategory.TRANSIENT
+
+    # OSError with errno is usually transient network issues
+    if isinstance(error, OSError):
+        return ErrorCategory.TRANSIENT
+
+    # Unknown errors are treated as fatal to avoid infinite retry loops
+    return ErrorCategory.FATAL
+
+
+# =============================================================================
+# Health Check System
+# =============================================================================
+
+
+class HealthStatus(Enum):
+    """Health status levels for adapters."""
+
+    HEALTHY = "healthy"  # Fully operational
+    DEGRADED = "degraded"  # Functional but with issues
+    UNHEALTHY = "unhealthy"  # Not functional
+
+
+@dataclass
+class HealthCheckResult:
+    """Result of a health check."""
+
+    status: HealthStatus
+    latency_ms: float | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    checked_at: datetime = field(default_factory=datetime.now)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "status": self.status.value,
+            "latency_ms": self.latency_ms,
+            "details": self.details,
+            "checked_at": self.checked_at.isoformat(),
+            "error": self.error,
+        }
+
+
+def get_capabilities(adapter_class: type) -> list[str]:
+    """Get the capabilities supported by an adapter class.
+
+    Checks which protocol interfaces the adapter class implements
+    and returns the corresponding capability names.
+
+    Args:
+        adapter_class: The adapter class to check
+
+    Returns:
+        List of capability names (e.g., ["streaming", "attachments", "reactions"])
+    """
+    capabilities = []
+    for capability_name, protocol_class in CAPABILITY_PROTOCOLS.items():
+        if isinstance(adapter_class, type):
+            # Check if class implements the protocol
+            try:
+                if issubclass(adapter_class, protocol_class):
+                    capabilities.append(capability_name)
+            except TypeError:
+                # Protocol check may fail for non-classes
+                pass
+        else:
+            # Check instance
+            if isinstance(adapter_class, protocol_class):
+                capabilities.append(capability_name)
+    return capabilities
 
 
 class GatewayClient(ABC):
@@ -267,11 +425,11 @@ class GatewayClient(ABC):
                     await self._handle_message(parsed)
                 except Exception as e:
                     logger.warning(f"Error handling message: {e}")
-        except websockets.ConnectionClosed:
+        except websockets.ConnectionClosed as e:
             logger.info("Gateway connection closed")
             self._connected = False
-            # Trigger reconnection if enabled
-            if self._running and self.auto_reconnect:
+            # Use error classification for reconnection decision
+            if self._running and self._should_reconnect(e):
                 self._reconnect_task = asyncio.create_task(self._reconnect())
                 await self._reconnect_task
                 if self._connected:
@@ -280,8 +438,8 @@ class GatewayClient(ABC):
         except Exception as e:
             logger.exception(f"Receive loop error: {e}")
             self._connected = False
-            # Trigger reconnection if enabled
-            if self._running and self.auto_reconnect:
+            # Use error classification for reconnection decision
+            if self._running and self._should_reconnect(e):
                 self._reconnect_task = asyncio.create_task(self._reconnect())
                 await self._reconnect_task
                 if self._connected:
@@ -392,7 +550,7 @@ class GatewayClient(ABC):
     # Abstract methods for subclasses to implement
     @abstractmethod
     async def on_response_start(self, message: Any) -> None:
-        """Handle response start from gateway."""
+        """Handle response start from mypalclara.gateway."""
         ...
 
     @abstractmethod
@@ -416,7 +574,7 @@ class GatewayClient(ABC):
         ...
 
     async def on_error(self, message: Any) -> None:
-        """Handle error from gateway."""
+        """Handle error from mypalclara.gateway."""
         logger.error(f"Gateway error: {message.code}: {message.message}")
 
     async def on_cancelled(self, message: Any) -> None:
@@ -622,6 +780,95 @@ class GatewayClient(ABC):
         )
         response = await self._send_mcp_request(request, timeout)
         return response  # type: ignore
+
+    # =========================================================================
+    # Error Recovery and Health Check
+    # =========================================================================
+
+    def _should_reconnect(self, error: Exception) -> bool:
+        """Determine if we should attempt reconnection based on error type.
+
+        Args:
+            error: The exception that caused disconnection
+
+        Returns:
+            True if reconnection should be attempted, False otherwise
+        """
+        if not self.auto_reconnect:
+            return False
+
+        category = classify_error(error)
+
+        if category in (ErrorCategory.TRANSIENT, ErrorCategory.CONNECTION):
+            return True
+        elif category == ErrorCategory.CONFIGURATION:
+            logger.error(f"Configuration error, not reconnecting: {error}")
+            return False
+        elif category == ErrorCategory.FATAL:
+            logger.error(f"Fatal error, not reconnecting: {error}")
+            return False
+
+        return False
+
+    async def health_check(self) -> HealthCheckResult:
+        """Check the health of the gateway connection.
+
+        Override in subclasses for platform-specific health checks.
+
+        Returns:
+            HealthCheckResult with connection status
+        """
+        start = time.time()
+
+        # Check basic connection state
+        if not self._ws or not self._connected:
+            return HealthCheckResult(
+                status=HealthStatus.UNHEALTHY,
+                error="Not connected to gateway",
+                details={
+                    "connected": False,
+                    "node_id": self.node_id,
+                    "platform": self.platform,
+                },
+            )
+
+        # Try to send a ping and measure latency
+        try:
+            await self._ws.send(PingMessage().model_dump_json())
+            latency = (time.time() - start) * 1000  # Convert to ms
+
+            # Determine health based on latency
+            if latency < 100:
+                status = HealthStatus.HEALTHY
+            elif latency < 500:
+                status = HealthStatus.DEGRADED
+            else:
+                status = HealthStatus.DEGRADED
+
+            return HealthCheckResult(
+                status=status,
+                latency_ms=latency,
+                details={
+                    "connected": True,
+                    "node_id": self.node_id,
+                    "session_id": self.session_id,
+                    "platform": self.platform,
+                    "reconnect_attempts": self._reconnect_attempts,
+                },
+            )
+
+        except Exception as e:
+            return HealthCheckResult(
+                status=HealthStatus.UNHEALTHY,
+                latency_ms=(time.time() - start) * 1000,
+                error=str(e),
+                details={
+                    "connected": self._connected,
+                    "node_id": self.node_id,
+                    "platform": self.platform,
+                    "error_category": classify_error(e).value,
+                },
+            )
 
     @property
     def is_connected(self) -> bool:

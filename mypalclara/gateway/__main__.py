@@ -169,7 +169,7 @@ Examples:
 
 def cmd_start(args: argparse.Namespace) -> None:
     """Handle start command."""
-    from gateway.daemon import (
+    from mypalclara.gateway.daemon import (
         DEFAULT_GATEWAY_PIDFILE,
         check_daemon_running,
         daemonize,
@@ -206,7 +206,7 @@ def cmd_start(args: argparse.Namespace) -> None:
 
 def cmd_stop(args: argparse.Namespace) -> None:
     """Handle stop command."""
-    from gateway.daemon import stop_daemon
+    from mypalclara.gateway.daemon import stop_daemon
 
     if stop_daemon(args.pidfile):
         sys.exit(0)
@@ -216,7 +216,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Handle status command."""
-    from gateway.daemon import get_adapter_pidfile, get_daemon_status
+    from mypalclara.gateway.daemon import get_adapter_pidfile, get_daemon_status
 
     # Check gateway status
     running, pid = get_daemon_status(args.pidfile)
@@ -254,7 +254,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_restart(args: argparse.Namespace) -> None:
     """Handle restart command."""
-    from gateway.daemon import check_daemon_running, stop_daemon
+    from mypalclara.gateway.daemon import check_daemon_running, stop_daemon
 
     # Stop if running
     if check_daemon_running(args.pidfile):
@@ -271,7 +271,7 @@ def cmd_restart(args: argparse.Namespace) -> None:
 
 def cmd_adapter(args: argparse.Namespace) -> None:
     """Handle adapter subcommand."""
-    from gateway.daemon import get_adapter_pidfile, get_daemon_status
+    from mypalclara.gateway.daemon import get_adapter_pidfile, get_daemon_status
 
     name = args.name
     action = args.action
@@ -298,7 +298,7 @@ def cmd_adapter(args: argparse.Namespace) -> None:
         _start_adapter_directly(name, args)
 
     elif action == "stop":
-        from gateway.daemon import stop_daemon as stop_adapter_daemon
+        from mypalclara.gateway.daemon import stop_daemon as stop_adapter_daemon
 
         if stop_adapter_daemon(pidfile):
             print(f"Adapter {name} stopped")
@@ -306,7 +306,7 @@ def cmd_adapter(args: argparse.Namespace) -> None:
             print(f"Adapter {name} was not running")
 
     elif action == "restart":
-        from gateway.daemon import stop_daemon as stop_adapter_daemon
+        from mypalclara.gateway.daemon import stop_daemon as stop_adapter_daemon
 
         stop_adapter_daemon(pidfile)
         import time
@@ -388,7 +388,7 @@ def _start_adapter_directly(name: str, args: argparse.Namespace) -> None:
     )
 
     # Write PID file
-    from gateway.daemon import get_adapter_pidfile
+    from mypalclara.gateway.daemon import get_adapter_pidfile
 
     pidfile = get_adapter_pidfile(name)
     with open(pidfile, "w") as f:
@@ -418,12 +418,12 @@ def _run_gateway(args: argparse.Namespace, adapter_names: list[str] | None) -> N
 async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] | None) -> None:
     """Async main function for running gateway with adapters."""
     from config.logging import get_logger, init_logging
-    from gateway.adapter_manager import get_adapter_manager
-    from gateway.events import Event, EventType, emit
-    from gateway.hooks import get_hook_manager
-    from gateway.processor import MessageProcessor
-    from gateway.scheduler import get_scheduler
-    from gateway.server import GatewayServer
+    from mypalclara.gateway.adapter_manager import get_adapter_manager
+    from mypalclara.gateway.events import Event, EventType, emit
+    from mypalclara.gateway.hooks import get_hook_manager
+    from mypalclara.gateway.processor import MessageProcessor
+    from mypalclara.gateway.scheduler import get_scheduler
+    from mypalclara.gateway.server import GatewayServer
 
     init_logging()
     logger = get_logger("gateway")

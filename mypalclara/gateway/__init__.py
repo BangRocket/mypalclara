@@ -10,7 +10,7 @@ connect to via WebSocket. This allows:
 - Built-in task scheduler (cron/interval)
 """
 
-from gateway.adapter_manager import (
+from mypalclara.gateway.adapter_manager import (
     AdapterConfig,
     AdapterManager,
     AdapterProcess,
@@ -18,12 +18,12 @@ from gateway.adapter_manager import (
     RestartPolicy,
     get_adapter_manager,
 )
-from gateway.channel_summaries import (
+from mypalclara.gateway.channel_summaries import (
     ChannelMessage,
     ChannelSummaryManager,
     get_summary_manager,
 )
-from gateway.daemon import (
+from mypalclara.gateway.daemon import (
     DEFAULT_ADAPTER_PIDFILE_PATTERN,
     DEFAULT_GATEWAY_PIDFILE,
     check_daemon_running,
@@ -32,7 +32,7 @@ from gateway.daemon import (
     get_daemon_status,
     stop_daemon,
 )
-from gateway.events import (
+from mypalclara.gateway.events import (
     Event,
     EventEmitter,
     EventType,
@@ -41,7 +41,7 @@ from gateway.events import (
     off,
     on,
 )
-from gateway.hooks import (
+from mypalclara.gateway.hooks import (
     Hook,
     HookManager,
     HookResult,
@@ -49,9 +49,9 @@ from gateway.hooks import (
     get_hook_manager,
     hook,
 )
-from gateway.llm_orchestrator import LLMOrchestrator
-from gateway.processor import MessageProcessor
-from gateway.protocol import (
+from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
+from mypalclara.gateway.processor import MessageProcessor
+from mypalclara.gateway.protocol import (
     GatewayMessage,
     MessageRequest,
     MessageType,
@@ -64,8 +64,8 @@ from gateway.protocol import (
     ToolResult,
     ToolStart,
 )
-from gateway.router import MessageRouter
-from gateway.scheduler import (
+from mypalclara.gateway.router import MessageRouter
+from mypalclara.gateway.scheduler import (
     CronParser,
     ScheduledTask,
     Scheduler,
@@ -74,9 +74,9 @@ from gateway.scheduler import (
     get_scheduler,
     scheduled,
 )
-from gateway.server import GatewayServer
-from gateway.session import NodeRegistry, SessionManager
-from gateway.tool_executor import ToolExecutor
+from mypalclara.gateway.server import GatewayServer
+from mypalclara.gateway.session import NodeRegistry, SessionManager
+from mypalclara.gateway.tool_executor import ToolExecutor
 
 __all__ = [
     # Events

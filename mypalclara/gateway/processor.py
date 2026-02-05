@@ -19,9 +19,9 @@ from config.logging import get_logger
 from db import SessionLocal
 from db.models import Message
 from db.models import Session as DBSession
-from gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
-from gateway.llm_orchestrator import LLMOrchestrator
-from gateway.protocol import (
+from mypalclara.gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
+from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
+from mypalclara.gateway.protocol import (
     MessageRequest,
     ResponseChunk,
     ResponseEnd,
@@ -29,12 +29,12 @@ from gateway.protocol import (
     ToolResult,
     ToolStart,
 )
-from gateway.tool_executor import ToolExecutor
+from mypalclara.gateway.tool_executor import ToolExecutor
 
 if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol
 
-    from gateway.server import GatewayServer
+    from mypalclara.gateway.server import GatewayServer
 
 logger = get_logger("gateway.processor")
 

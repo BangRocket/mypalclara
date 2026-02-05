@@ -111,7 +111,7 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 poetry run python discord_bot.py
 
 # Or run via gateway (multi-platform support)
-poetry run python -m gateway
+poetry run python -m mypalclara.gateway
 ```
 
 ### Production

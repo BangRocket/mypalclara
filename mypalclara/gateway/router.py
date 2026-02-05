@@ -18,7 +18,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from config.logging import get_logger
-from gateway.protocol import MessageRequest
+from mypalclara.gateway.protocol import MessageRequest
 
 if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol

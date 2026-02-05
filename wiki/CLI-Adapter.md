@@ -23,7 +23,7 @@ poetry run python -m adapters.cli
 
 ```bash
 # Terminal 1: Start gateway
-poetry run python -m gateway
+poetry run python -m mypalclara.gateway
 
 # Terminal 2: Start CLI
 poetry run python -m adapters.cli

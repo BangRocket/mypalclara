@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from config.logging import get_logger
-from gateway.protocol import AttachmentInfo, ResponseChunk, ToolResult, ToolStart
+from mypalclara.gateway.protocol import AttachmentInfo, ResponseChunk, ToolResult, ToolStart
 
 if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol

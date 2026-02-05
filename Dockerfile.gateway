@@ -57,7 +57,7 @@ COPY db/ ./db/
 COPY sandbox/ ./sandbox/
 COPY storage/ ./storage/
 COPY tools/ ./tools/
-COPY gateway/ ./gateway/
+COPY mypalclara/ ./mypalclara/
 COPY adapters/ ./adapters/
 COPY email_service/ ./email_service/
 COPY vendor/ ./vendor/
@@ -73,4 +73,4 @@ ENV MCP_SERVERS_DIR=/app/mcp_servers
 EXPOSE 18789
 
 # Run the gateway
-CMD ["python", "-m", "gateway"]
+CMD ["python", "-m", "mypalclara.gateway"]

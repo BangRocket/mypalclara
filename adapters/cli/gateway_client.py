@@ -17,12 +17,28 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from adapters.base import GatewayClient
+from adapters.manifest import AdapterManifest, adapter
 from config.logging import get_logger
-from gateway.protocol import ChannelInfo, UserInfo
+from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 logger = get_logger("adapters.cli.gateway")
 
 
+@adapter(
+    AdapterManifest(
+        name="cli",
+        platform="cli",
+        version="1.0.0",
+        display_name="CLI",
+        description="Terminal interface with Rich formatting",
+        icon="💻",
+        capabilities=["streaming"],
+        required_env=[],
+        optional_env=["CLARA_GATEWAY_URL"],
+        python_packages=["rich>=13.0.0"],
+        tags=["terminal", "development", "local"],
+    )
+)
 class CLIGatewayClient(GatewayClient):
     """CLI-specific gateway client.
 

@@ -16,10 +16,12 @@ from adapters.discord.message_builder import (
     DISCORD_MSG_LIMIT,
     clean_content,
     format_response,
+    parse_markers,
     split_message,
 )
+from adapters.manifest import AdapterManifest, adapter
 from config.logging import get_logger
-from gateway.protocol import ChannelInfo, UserInfo
+from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     import discord
@@ -43,6 +45,35 @@ class PendingResponse:
     thread: discord.Thread | None = None
 
 
+@adapter(
+    AdapterManifest(
+        name="discord",
+        platform="discord",
+        version="1.0.0",
+        display_name="Discord",
+        description="Full-featured Discord bot with threads, embeds, and buttons",
+        icon="🎮",
+        capabilities=[
+            "streaming",
+            "attachments",
+            "reactions",
+            "embeds",
+            "threads",
+            "editing",
+            "buttons",
+        ],
+        required_env=["DISCORD_BOT_TOKEN"],
+        optional_env=[
+            "DISCORD_CLIENT_ID",
+            "DISCORD_ALLOWED_SERVERS",
+            "DISCORD_ALLOWED_CHANNELS",
+            "DISCORD_ALLOWED_ROLES",
+            "DISCORD_MAX_MESSAGES",
+        ],
+        python_packages=["py-cord>=2.6.1"],
+        tags=["chat", "gaming", "community"],
+    )
+)
 class DiscordGatewayClient(GatewayClient):
     """Discord-specific gateway client.
 
@@ -321,63 +352,15 @@ class DiscordGatewayClient(GatewayClient):
     def _parse_markers(self, text: str) -> dict[str, Any]:
         """Parse special markers from response text.
 
+        Delegates to parse_markers() in message_builder for reusability.
+
         Args:
             text: Full response text
 
         Returns:
             Dict with parsed data and cleaned text
         """
-        import json
-
-        result: dict[str, Any] = {"text": text}
-        lines_to_remove = []
-
-        for line in text.split("\n"):
-            line_stripped = line.strip()
-
-            # Reaction marker
-            if line_stripped.startswith("__REACTION__:"):
-                result["reaction"] = line_stripped.replace("__REACTION__:", "").strip()
-                lines_to_remove.append(line)
-
-            # Embed marker
-            elif line_stripped.startswith("__EMBED__:"):
-                try:
-                    json_str = line_stripped.replace("__EMBED__:", "").strip()
-                    result["embed"] = json.loads(json_str)
-                    lines_to_remove.append(line)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse embed JSON: {e}")
-
-            # Thread marker
-            elif line_stripped.startswith("__THREAD__:"):
-                parts = line_stripped.replace("__THREAD__:", "").strip().split(":")
-                result["thread"] = {
-                    "name": parts[0] if parts else "Discussion",
-                    "auto_archive": int(parts[1]) if len(parts) > 1 else 1440,
-                }
-                lines_to_remove.append(line)
-
-            # Edit marker
-            elif line_stripped.startswith("__EDIT__:"):
-                result["edit_target"] = line_stripped.replace("__EDIT__:", "").strip()
-                lines_to_remove.append(line)
-
-            # Buttons marker
-            elif line_stripped.startswith("__BUTTONS__:"):
-                try:
-                    json_str = line_stripped.replace("__BUTTONS__:", "").strip()
-                    result["buttons"] = json.loads(json_str)
-                    lines_to_remove.append(line)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse buttons JSON: {e}")
-
-        # Remove marker lines from text
-        for line in lines_to_remove:
-            text = text.replace(line, "")
-
-        result["text"] = text.strip()
-        return result
+        return parse_markers(text)
 
     def _create_embed_from_data(self, data: dict[str, Any]) -> discord.Embed | None:
         """Create a Discord embed from parsed data.
@@ -634,3 +617,128 @@ class DiscordGatewayClient(GatewayClient):
             logger.debug(f"Added reaction {emoji} to message {message.id}")
         except Exception as e:
             logger.warning(f"Failed to add reaction: {e}")
+
+    # =========================================================================
+    # Protocol Methods - Explicit implementations for capability protocols
+    # =========================================================================
+
+    async def show_typing(self, channel: Any) -> None:
+        """Show typing indicator in a channel (StreamingAdapter protocol).
+
+        Args:
+            channel: Discord channel object
+        """
+        try:
+            await channel.trigger_typing()
+        except Exception as e:
+            logger.debug(f"Failed to show typing: {e}")
+
+    async def add_reaction(
+        self,
+        message: Any,
+        emoji: str,
+    ) -> None:
+        """Add a reaction to a message (ReactionAdapter protocol).
+
+        Args:
+            message: Discord message object
+            emoji: Emoji string to react with
+        """
+        await self._send_reaction(message, emoji)
+
+    async def edit_message(
+        self,
+        message: Any,
+        new_content: str,
+        **kwargs: Any,
+    ) -> None:
+        """Edit a previously sent message (EditableAdapter protocol).
+
+        Args:
+            message: Discord message object to edit
+            new_content: New message content
+            **kwargs: Additional options (embed, view, etc.)
+        """
+        try:
+            await message.edit(content=new_content, **kwargs)
+            logger.debug(f"Edited message {message.id}")
+        except Exception as e:
+            logger.warning(f"Failed to edit message: {e}")
+
+    async def create_thread(
+        self,
+        message: Any,
+        name: str,
+        auto_archive_duration: int = 1440,
+    ) -> Any:
+        """Create a thread from a message (ThreadAdapter protocol).
+
+        Args:
+            message: Discord message to create thread from
+            name: Thread name
+            auto_archive_duration: Minutes until auto-archive (60, 1440, 4320, 10080)
+
+        Returns:
+            Created thread object or None
+        """
+        try:
+            thread = await message.create_thread(
+                name=name,
+                auto_archive_duration=auto_archive_duration,
+            )
+            logger.info(f"Created thread '{name}' from message {message.id}")
+            return thread
+        except Exception as e:
+            logger.warning(f"Failed to create thread: {e}")
+            return None
+
+    async def send_file(
+        self,
+        channel: Any,
+        file_path: str,
+        filename: str | None = None,
+    ) -> Any:
+        """Send a file to a channel (AttachmentAdapter protocol).
+
+        Args:
+            channel: Discord channel object
+            file_path: Path to the file to send
+            filename: Optional filename override
+
+        Returns:
+            Sent message object or None
+        """
+        import discord
+
+        try:
+            file = discord.File(file_path, filename=filename)
+            msg = await channel.send(file=file)
+            logger.info(f"Sent file {filename or file_path} to channel")
+            return msg
+        except Exception as e:
+            logger.error(f"Failed to send file: {e}")
+            return None
+
+    async def send_buttons(
+        self,
+        channel: Any,
+        content: str,
+        buttons: list[dict[str, Any]],
+    ) -> Any:
+        """Send a message with interactive buttons (ButtonAdapter protocol).
+
+        Args:
+            channel: Discord channel object
+            content: Message content
+            buttons: List of button configs with label, style, custom_id, optional url
+
+        Returns:
+            Sent message object or None
+        """
+        view = self._create_button_view(buttons) if buttons else None
+        try:
+            msg = await channel.send(content=content, view=view)
+            return msg
+        except Exception as e:
+            logger.error(f"Failed to send buttons: {e}")
+            return None

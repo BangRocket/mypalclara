@@ -38,7 +38,7 @@ from typing import Any, Callable, Coroutine
 import yaml
 
 from config.logging import get_logger
-from gateway.events import Event, EventEmitter, EventType, get_event_emitter
+from mypalclara.gateway.events import Event, EventEmitter, EventType, get_event_emitter
 
 logger = get_logger("gateway.hooks")
 
