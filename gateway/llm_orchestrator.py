@@ -35,8 +35,11 @@ LLM_EXECUTOR = ThreadPoolExecutor(
 MAX_TOOL_ITERATIONS = int(os.getenv("GATEWAY_MAX_TOOL_ITERATIONS", "75"))
 MAX_TOOL_RESULT_CHARS = int(os.getenv("GATEWAY_MAX_TOOL_RESULT_CHARS", "50000"))
 
-# Tool calling mode: "xml" (OpenClaw-style system prompt injection) or "native" (API-based)
-TOOL_CALL_MODE = os.getenv("TOOL_CALL_MODE", "xml").lower()
+# Tool calling mode:
+#   "langchain" (default) - LangChain bind_tools() for unified tool calling across all providers
+#   "native" - Direct API-based tool calling (OpenAI/Anthropic format)
+#   "xml" - OpenClaw-style system prompt injection (fallback for providers without tool support)
+TOOL_CALL_MODE = os.getenv("TOOL_CALL_MODE", "langchain").lower()
 
 # Auto-continue configuration
 AUTO_CONTINUE_ENABLED = os.getenv("AUTO_CONTINUE_ENABLED", "true").lower() == "true"
@@ -323,7 +326,8 @@ class LLMOrchestrator:
     ) -> dict[str, Any]:
         """Call LLM with tools.
 
-        Supports two modes (controlled by TOOL_CALL_MODE env var):
+        Supports three modes (controlled by TOOL_CALL_MODE env var):
+        - "langchain": LangChain bind_tools() for unified tool calling (default)
         - "native": Uses API-native tool calling (OpenAI/Anthropic format)
         - "xml": OpenClaw-style system prompt injection
 
@@ -331,8 +335,35 @@ class LLMOrchestrator:
         """
         if TOOL_CALL_MODE == "xml":
             return await self._call_llm_xml(messages, tools, tier, loop)
-        else:
+        elif TOOL_CALL_MODE == "native":
             return await self._call_llm_native(messages, tools, tier, loop)
+        else:
+            # Default to langchain
+            return await self._call_llm_langchain(messages, tools, tier, loop)
+
+    async def _call_llm_langchain(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tier: str | None,
+        loop: asyncio.AbstractEventLoop,
+    ) -> dict[str, Any]:
+        """Call LLM with LangChain's unified tool calling.
+
+        Uses LangChain's bind_tools() which handles tool format conversion
+        automatically for all providers (OpenAI, Anthropic, etc.).
+
+        Returns dict with content and optional tool_calls.
+        """
+        from clara_core import ModelTier, make_llm_with_tools_langchain
+
+        model_tier = ModelTier(tier) if tier else None
+
+        def call():
+            llm = make_llm_with_tools_langchain(tools, tier=model_tier)
+            return llm(messages)
+
+        return await loop.run_in_executor(LLM_EXECUTOR, call)
 
     async def _call_llm_native(
         self,
