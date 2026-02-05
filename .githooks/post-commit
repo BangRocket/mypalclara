@@ -1,7 +1,15 @@
 #!/bin/bash
 # Auto-bump version after each commit (CalVer: YYYY.WW.N)
-# Skips if:
-# - Last commit was a version bump
+#
+# Only bumps for significant commits (conventional commit types):
+#   feat:, fix:, perf:, breaking:
+#
+# Skips for maintenance commits:
+#   chore:, docs:, style:, refactor:, test:, ci:, build:
+#
+# Also skips if:
+# - [skip-version] in commit message
+# - [bump] forces a bump for any commit type
 # - We're in the middle of a rebase/merge
 # - SKIP_VERSION_BUMP env var is set
 
@@ -20,10 +28,24 @@ fi
 # Get last commit message
 LAST_MSG=$(git log -1 --pretty=%B)
 
-# Skip if last commit was a version bump
+# Skip if last commit was a version bump or explicitly skipped
 if [[ "$LAST_MSG" == chore:\ bump\ version* ]] || \
    [[ "$LAST_MSG" == *"[skip-version]"* ]]; then
     exit 0
+fi
+
+# Force bump if [bump] tag is present
+FORCE_BUMP=0
+if [[ "$LAST_MSG" == *"[bump]"* ]]; then
+    FORCE_BUMP=1
+fi
+
+# Only bump for significant commit types (unless forced)
+if [ "$FORCE_BUMP" -eq 0 ]; then
+    # Check if commit starts with a significant type
+    if ! [[ "$LAST_MSG" =~ ^(feat|fix|perf|breaking)(\(.+\))?: ]]; then
+        exit 0
+    fi
 fi
 
 # Find the bump script
