@@ -228,11 +228,10 @@ services:
       - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
       - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-https://api.openai.com/v1}
       - CUSTOM_OPENAI_MODEL=${CUSTOM_OPENAI_MODEL:-gpt-4o}
-      # Tool calling (set TOOL_FORMAT=claude for Claude proxies like clewdr)
+      # Tool calling overrides (optional)
       - TOOL_API_KEY=${TOOL_API_KEY:-}
       - TOOL_BASE_URL=${TOOL_BASE_URL:-}
       - TOOL_MODEL=${TOOL_MODEL:-}
-      - TOOL_FORMAT=${TOOL_FORMAT:-openai}
       # OpenAI (for embeddings)
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # PostgreSQL (hardcoded for Docker - ignores .env localhost values)
