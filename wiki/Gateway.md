@@ -17,34 +17,34 @@ The gateway provides:
 ### Foreground Mode
 
 ```bash
-poetry run python -m gateway --host 127.0.0.1 --port 18789
+poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
 ```
 
 ### Daemon Mode
 
 ```bash
 # Start gateway with all enabled adapters
-poetry run python -m gateway start
-poetry run python -m gateway start --logfile /var/log/clara-gateway.log
+poetry run python -m mypalclara.gateway start
+poetry run python -m mypalclara.gateway start --logfile /var/log/clara-gateway.log
 
 # Start with specific adapter(s) only
-poetry run python -m gateway start --adapter discord
-poetry run python -m gateway start --adapter discord --adapter teams
+poetry run python -m mypalclara.gateway start --adapter discord
+poetry run python -m mypalclara.gateway start --adapter discord --adapter teams
 
 # Start gateway without spawning adapters
-poetry run python -m gateway start --no-adapters
+poetry run python -m mypalclara.gateway start --no-adapters
 
 # Run in foreground with adapters (for development)
-poetry run python -m gateway start -f
+poetry run python -m mypalclara.gateway start -f
 
 # Check status
-poetry run python -m gateway status
+poetry run python -m mypalclara.gateway status
 
 # Stop
-poetry run python -m gateway stop
+poetry run python -m mypalclara.gateway stop
 
 # Restart
-poetry run python -m gateway restart
+poetry run python -m mypalclara.gateway restart
 ```
 
 ### Adapter Management
@@ -53,14 +53,14 @@ The gateway spawns and supervises platform adapters as subprocesses.
 
 ```bash
 # Check adapter status
-poetry run python -m gateway adapter discord status
+poetry run python -m mypalclara.gateway adapter discord status
 
 # Start/stop individual adapters
-poetry run python -m gateway adapter discord start
-poetry run python -m gateway adapter discord stop
+poetry run python -m mypalclara.gateway adapter discord start
+poetry run python -m mypalclara.gateway adapter discord stop
 
 # Restart an adapter
-poetry run python -m gateway adapter discord restart
+poetry run python -m mypalclara.gateway adapter discord restart
 ```
 
 ### Adapter Configuration

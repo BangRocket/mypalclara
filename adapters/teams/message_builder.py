@@ -6,7 +6,64 @@ and error messages.
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass
+class ParsedMarkers:
+    """Parsed markers from response text."""
+
+    text: str
+    buttons: list[dict[str, str]] | None = None
+    card_title: str | None = None
+    card_style: str | None = None
+
+
+def parse_markers(text: str) -> ParsedMarkers:
+    """Parse special markers from response text.
+
+    Supported markers:
+    - __BUTTONS__[{"title": "...", "action": "..."}]__BUTTONS__
+    - __CARD_TITLE__Title Text__CARD_TITLE__
+    - __CARD_STYLE__emphasis|accent|good|warning|attention__CARD_STYLE__
+
+    Args:
+        text: Response text potentially containing markers
+
+    Returns:
+        ParsedMarkers with extracted data
+    """
+    result = ParsedMarkers(text=text)
+
+    # Extract buttons
+    button_pattern = r"__BUTTONS__(\[.*?\])__BUTTONS__"
+    button_match = re.search(button_pattern, text, re.DOTALL)
+    if button_match:
+        try:
+            import json
+            result.buttons = json.loads(button_match.group(1))
+            result.text = text[:button_match.start()] + text[button_match.end():]
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Extract card title
+    title_pattern = r"__CARD_TITLE__(.+?)__CARD_TITLE__"
+    title_match = re.search(title_pattern, result.text)
+    if title_match:
+        result.card_title = title_match.group(1).strip()
+        result.text = result.text[:title_match.start()] + result.text[title_match.end():]
+
+    # Extract card style
+    style_pattern = r"__CARD_STYLE__(\w+)__CARD_STYLE__"
+    style_match = re.search(style_pattern, result.text)
+    if style_match:
+        result.card_style = style_match.group(1)
+        result.text = result.text[:style_match.start()] + result.text[style_match.end():]
+
+    result.text = result.text.strip()
+    return result
 
 
 class AdaptiveCardBuilder:
@@ -397,3 +454,109 @@ class AdaptiveCardBuilder:
                 return f"{size_bytes:.1f} {unit}"
             size_bytes /= 1024
         return f"{size_bytes:.1f} TB"
+
+    def build_button_card(
+        self,
+        text: str,
+        buttons: list[dict[str, str]],
+        title: str | None = None,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Build an Adaptive Card with action buttons.
+
+        Args:
+            text: Card body text
+            buttons: List of button dicts with "title" and "action" or "url"
+            title: Optional card title
+            style: Optional container style (emphasis, accent, good, warning, attention)
+
+        Returns:
+            Adaptive Card JSON structure
+        """
+        body = []
+
+        if title:
+            body.append(
+                {
+                    "type": "TextBlock",
+                    "text": title,
+                    "weight": "Bolder",
+                    "size": "Medium",
+                    "wrap": True,
+                }
+            )
+
+        container_items = [
+            {
+                "type": "TextBlock",
+                "text": text,
+                "wrap": True,
+            }
+        ]
+
+        if style:
+            body.append(
+                {
+                    "type": "Container",
+                    "style": style,
+                    "items": container_items,
+                }
+            )
+        else:
+            body.extend(container_items)
+
+        # Build actions
+        actions = []
+        for btn in buttons[:5]:  # Max 5 buttons
+            if "url" in btn:
+                actions.append(
+                    {
+                        "type": "Action.OpenUrl",
+                        "title": btn.get("title", "Link"),
+                        "url": btn["url"],
+                    }
+                )
+            else:
+                actions.append(
+                    {
+                        "type": "Action.Submit",
+                        "title": btn.get("title", "Action"),
+                        "data": {"action": btn.get("action", "")},
+                    }
+                )
+
+        return {
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": self.SCHEMA_VERSION,
+            "body": body,
+            "actions": actions,
+        }
+
+    def build_from_parsed(
+        self,
+        parsed: ParsedMarkers,
+        tool_count: int = 0,
+    ) -> dict[str, Any]:
+        """Build an Adaptive Card from parsed markers.
+
+        Args:
+            parsed: ParsedMarkers from parse_markers()
+            tool_count: Number of tools used
+
+        Returns:
+            Adaptive Card JSON structure
+        """
+        if parsed.buttons:
+            return self.build_button_card(
+                text=parsed.text,
+                buttons=parsed.buttons,
+                title=parsed.card_title,
+                style=parsed.card_style,
+            )
+        else:
+            return self.build_response_card(
+                text=parsed.text,
+                tool_count=tool_count,
+                title=parsed.card_title,
+            )

@@ -3,7 +3,7 @@
 Re-exports gateway protocol types for adapter use.
 """
 
-from gateway.protocol import (
+from mypalclara.gateway.protocol import (
     AttachmentInfo,
     ChannelInfo,
     GatewayMessage,

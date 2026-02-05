@@ -20,8 +20,9 @@ from typing import Any
 
 import yaml
 
+from adapters.manifest import get_adapter, list_adapters
 from config.logging import get_logger
-from gateway.daemon import get_adapter_pidfile
+from mypalclara.gateway.daemon import get_adapter_pidfile
 
 logger = get_logger("adapter_manager")
 
@@ -37,6 +38,68 @@ class AdapterState(Enum):
     STOPPING = "stopping"
     FAILED = "failed"
     DISABLED = "disabled"
+
+
+@dataclass
+class AdapterMetrics:
+    """Metrics for tracking adapter lifecycle and performance."""
+
+    total_starts: int = 0
+    total_restarts: int = 0
+    total_failures: int = 0
+    last_start_time: float | None = None
+    last_failure_time: float | None = None
+    last_error_category: str | None = None
+    total_uptime_seconds: float = 0.0
+    current_uptime_start: float | None = None
+
+    def record_start(self) -> None:
+        """Record an adapter start."""
+        self.total_starts += 1
+        self.last_start_time = time.time()
+        self.current_uptime_start = time.time()
+
+    def record_restart(self) -> None:
+        """Record an adapter restart."""
+        self.total_restarts += 1
+        self._accumulate_uptime()
+        self.current_uptime_start = time.time()
+
+    def record_failure(self, error_category: str | None = None) -> None:
+        """Record an adapter failure."""
+        self.total_failures += 1
+        self.last_failure_time = time.time()
+        self.last_error_category = error_category
+        self._accumulate_uptime()
+
+    def record_stop(self) -> None:
+        """Record a clean adapter stop."""
+        self._accumulate_uptime()
+
+    def _accumulate_uptime(self) -> None:
+        """Accumulate uptime from current session."""
+        if self.current_uptime_start is not None:
+            self.total_uptime_seconds += time.time() - self.current_uptime_start
+            self.current_uptime_start = None
+
+    def get_current_uptime(self) -> float:
+        """Get current uptime including active session."""
+        uptime = self.total_uptime_seconds
+        if self.current_uptime_start is not None:
+            uptime += time.time() - self.current_uptime_start
+        return uptime
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "total_starts": self.total_starts,
+            "total_restarts": self.total_restarts,
+            "total_failures": self.total_failures,
+            "last_start_time": self.last_start_time,
+            "last_failure_time": self.last_failure_time,
+            "last_error_category": self.last_error_category,
+            "total_uptime_seconds": self.get_current_uptime(),
+        }
 
 
 class RestartPolicy(Enum):
@@ -104,6 +167,7 @@ class AdapterManager:
         """
         self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self.adapters: dict[str, AdapterProcess] = {}
+        self._metrics: dict[str, AdapterMetrics] = {}
         self._running = False
         self._supervisor_task: asyncio.Task | None = None
 
@@ -144,6 +208,81 @@ class AdapterManager:
             logger.error(f"Failed to load adapter config: {e}")
 
         return configs
+
+    def discover_from_manifest(self) -> dict[str, dict[str, Any]]:
+        """Discover available adapters from the manifest registry.
+
+        Returns:
+            Dictionary of adapter name to manifest info
+        """
+        discovered: dict[str, dict[str, Any]] = {}
+
+        try:
+            registered_adapters = list_adapters()
+            for adapter_name in registered_adapters:
+                result = get_adapter(adapter_name)
+                if result:
+                    adapter_cls, manifest = result
+                    discovered[adapter_name] = {
+                        "class": adapter_cls,
+                        "manifest": manifest,
+                        "module": f"adapters.{adapter_name}",
+                        "capabilities": manifest.capabilities,
+                        "required_env": manifest.required_env,
+                        "optional_env": manifest.optional_env,
+                    }
+            logger.info(f"Discovered {len(discovered)} adapters from manifest registry")
+        except Exception as e:
+            logger.warning(f"Failed to discover adapters from manifest: {e}")
+
+        return discovered
+
+    def check_adapter_env(self, name: str) -> tuple[bool, list[str]]:
+        """Check if required environment variables are set for an adapter.
+
+        Args:
+            name: Adapter name
+
+        Returns:
+            Tuple of (all_set, missing_vars)
+        """
+        result = get_adapter(name)
+        if not result:
+            return True, []  # Unknown adapter, assume OK
+
+        _, manifest = result
+        missing = []
+        for env_var in manifest.required_env:
+            if not os.environ.get(env_var):
+                missing.append(env_var)
+
+        return len(missing) == 0, missing
+
+    def get_adapter_manifest(self, name: str) -> dict[str, Any] | None:
+        """Get manifest info for a specific adapter.
+
+        Args:
+            name: Adapter name
+
+        Returns:
+            Manifest data dict or None if not found
+        """
+        result = get_adapter(name)
+        if not result:
+            return None
+
+        _, manifest = result
+        return {
+            "name": manifest.name,
+            "platform": manifest.platform,
+            "version": manifest.version,
+            "display_name": manifest.display_name,
+            "description": manifest.description,
+            "icon": manifest.icon,
+            "capabilities": manifest.capabilities,
+            "required_env": manifest.required_env,
+            "optional_env": manifest.optional_env,
+        }
 
     async def start(self, adapter_names: list[str] | None = None) -> None:
         """Start the adapter manager and configured adapters.
@@ -218,6 +357,15 @@ class AdapterManager:
             logger.info(f"Adapter {name} is disabled, skipping")
             return False
 
+        # Check required environment variables
+        env_ok, missing = self.check_adapter_env(name)
+        if not env_ok:
+            logger.error(
+                f"Adapter {name} missing required environment variables: {', '.join(missing)}"
+            )
+            ap.state = AdapterState.FAILED
+            return False
+
         ap.state = AdapterState.STARTING
         config = ap.config
 
@@ -248,6 +396,11 @@ class AdapterManager:
             pidfile = get_adapter_pidfile(name)
             with open(pidfile, "w") as f:
                 f.write(str(process.pid))
+
+            # Track metrics
+            if name not in self._metrics:
+                self._metrics[name] = AdapterMetrics()
+            self._metrics[name].record_start()
 
             logger.info(f"Adapter {name} started (PID: {process.pid})")
 
@@ -314,12 +467,19 @@ class AdapterManager:
             if os.path.exists(pidfile):
                 os.remove(pidfile)
 
+            # Track metrics
+            if name in self._metrics:
+                self._metrics[name].record_stop()
+
             logger.info(f"Adapter {name} stopped (exit code: {ap.last_exit_code})")
             return True
 
         except Exception as e:
             logger.error(f"Error stopping adapter {name}: {e}")
             ap.state = AdapterState.FAILED
+            # Track failure
+            if name in self._metrics:
+                self._metrics[name].record_failure("stop_error")
             return False
 
     async def restart_adapter(self, name: str) -> bool:
@@ -344,14 +504,48 @@ class AdapterManager:
         status = {}
         for name, ap in self.adapters.items():
             pid = ap.process.pid if ap.process and ap.process.poll() is None else None
-            status[name] = {
+            adapter_status = {
                 "state": ap.state.value,
                 "pid": pid,
                 "enabled": ap.config.enabled,
                 "restart_count": ap.restart_count,
                 "last_exit_code": ap.last_exit_code,
             }
+
+            # Include manifest info if available
+            manifest_info = self.get_adapter_manifest(name)
+            if manifest_info:
+                adapter_status["manifest"] = manifest_info
+                # Check env vars
+                env_ok, missing = self.check_adapter_env(name)
+                adapter_status["env_configured"] = env_ok
+                if not env_ok:
+                    adapter_status["missing_env"] = missing
+
+            status[name] = adapter_status
         return status
+
+    def get_metrics(self) -> dict[str, dict[str, Any]]:
+        """Get metrics for all adapters.
+
+        Returns:
+            Dictionary of adapter name to metrics dict
+        """
+        metrics = {}
+        for name, adapter_metrics in self._metrics.items():
+            metrics[name] = adapter_metrics.to_dict()
+        return metrics
+
+    def get_adapter_metrics(self, name: str) -> AdapterMetrics | None:
+        """Get metrics for a specific adapter.
+
+        Args:
+            name: Adapter name
+
+        Returns:
+            AdapterMetrics instance or None if not found
+        """
+        return self._metrics.get(name)
 
     async def _supervise(self) -> None:
         """Supervisor loop - monitors adapters and restarts on failure."""
@@ -400,7 +594,14 @@ class AdapterManager:
                                     f"({ap.config.max_restarts}), not restarting"
                                 )
                                 ap.state = AdapterState.FAILED
+                                # Track failure
+                                if name in self._metrics:
+                                    self._metrics[name].record_failure("max_restarts_exceeded")
                                 continue
+
+                            # Track restart
+                            if name in self._metrics:
+                                self._metrics[name].record_restart()
 
                             logger.info(
                                 f"Restarting adapter {name} in "

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import websockets
 
-from gateway.protocol import (
+from mypalclara.gateway.protocol import (
     ChannelInfo,
     MessageRequest,
     MessageType,

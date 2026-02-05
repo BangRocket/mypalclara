@@ -37,7 +37,7 @@ from typing import Any, Callable, Coroutine
 import yaml
 
 from config.logging import get_logger
-from gateway.events import Event, EventType, emit
+from mypalclara.gateway.events import Event, EventType, emit
 
 logger = get_logger("gateway.scheduler")
 

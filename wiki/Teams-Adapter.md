@@ -173,7 +173,7 @@ poetry run python -m adapters.teams
 
 ```bash
 # Terminal 1: Start gateway
-poetry run python -m gateway
+poetry run python -m mypalclara.gateway
 
 # Terminal 2: Start Teams adapter
 poetry run python -m adapters.teams
@@ -183,7 +183,7 @@ poetry run python -m adapters.teams
 
 ```bash
 # Enable Teams in gateway/adapters.yaml, then:
-poetry run python -m gateway start
+poetry run python -m mypalclara.gateway start
 ```
 
 ## Local Development with ngrok

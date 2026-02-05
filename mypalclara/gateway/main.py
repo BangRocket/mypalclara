@@ -29,11 +29,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config.logging import get_logger, init_logging
-from gateway.events import Event, EventType, emit, get_event_emitter
-from gateway.hooks import get_hook_manager
-from gateway.processor import MessageProcessor
-from gateway.scheduler import get_scheduler
-from gateway.server import GatewayServer
+from mypalclara.gateway.events import Event, EventType, emit, get_event_emitter
+from mypalclara.gateway.hooks import get_hook_manager
+from mypalclara.gateway.processor import MessageProcessor
+from mypalclara.gateway.scheduler import get_scheduler
+from mypalclara.gateway.server import GatewayServer
 
 init_logging()
 logger = get_logger("gateway")
