@@ -511,7 +511,8 @@ class LLMOrchestrator:
                 "- For very large outputs, save to a file and send it instead of pasting in chat\n"
                 "- CRITICAL: When sending a file, do NOT include the file content in your response text. "
                 "Just describe what the file contains briefly (e.g., 'Here is the config file you requested'). "
-                "The file attachment will contain the actual content.\n\n"
+                "The file attachment will contain the actual content.\n"
+                "- Do NOT ask for permission before sending files. If a file send is relevant to the request, just do it.\n\n"
                 "FILE STORAGE:\n"
                 "- `save_to_local` saves files persistently for later retrieval\n"
                 "- `send_local_file` sends a previously saved file to Discord\n"
@@ -526,6 +527,8 @@ class LLMOrchestrator:
                 "- Web search: `web_search` for current information\n"
                 "- GitHub: `github_*` tools for repos, issues, PRs, workflows\n"
                 "- S3 storage: `s3_save`, `s3_list`, `s3_read`, `s3_delete` for cloud storage\n\n"
+                "GENERAL: Be proactive with tools. Do NOT ask for permission before using them - "
+                "if a tool is relevant to the user's request, just use it.\n\n"
                 "IMPORTANT: Your personality and context is defined in subsequent system messages. "
                 "Follow those guidelines for tone, style, and behavior."
             ),
