@@ -475,7 +475,7 @@ class ToolExecutor:
                 arguments=arguments,
                 user_id=user_id,
                 channel_id=channel_id,
-                files_to_send=files_to_send or [],
+                files_to_send=files_to_send if files_to_send is not None else [],
                 platform_context=platform_context or {},
             )
             duration = time.time() - start_time
