@@ -118,6 +118,41 @@ class TestLLMConfig:
         assert high_config.tier == "high"
         assert high_config.provider == "anthropic"
 
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "bedrock",
+            "AWS_REGION": "us-west-2",
+            "BEDROCK_MODEL": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        },
+    )
+    def test_config_from_env_bedrock(self):
+        """Test loading config from environment for Amazon Bedrock."""
+        config = LLMConfig.from_env()
+        assert config.provider == "bedrock"
+        assert config.aws_region == "us-west-2"
+        assert config.model == "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        assert config.api_key is None  # Bedrock uses AWS credentials
+
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "azure",
+            "AZURE_OPENAI_ENDPOINT": "https://myresource.openai.azure.com",
+            "AZURE_OPENAI_API_KEY": "azure-key",
+            "AZURE_DEPLOYMENT_NAME": "gpt-4o-deployment",
+            "AZURE_API_VERSION": "2024-02-15-preview",
+        },
+    )
+    def test_config_from_env_azure(self):
+        """Test loading config from environment for Azure OpenAI."""
+        config = LLMConfig.from_env()
+        assert config.provider == "azure"
+        assert config.api_key == "azure-key"
+        assert config.base_url == "https://myresource.openai.azure.com"
+        assert config.azure_deployment == "gpt-4o-deployment"
+        assert config.azure_api_version == "2024-02-15-preview"
+
 
 class TestProviderRegistry:
     """Tests for ProviderRegistry."""
@@ -262,6 +297,36 @@ class TestTierFunctions:
         assert "high" in info["models"]
         assert "mid" in info["models"]
         assert "low" in info["models"]
+
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "bedrock",
+            "BEDROCK_MODEL_HIGH": "anthropic.claude-3-opus-20240229-v1:0",
+            "BEDROCK_MODEL_MID": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "BEDROCK_MODEL_LOW": "anthropic.claude-3-5-haiku-20241022-v1:0",
+        },
+    )
+    def test_get_model_for_tier_bedrock(self):
+        """Test getting model for Bedrock provider tiers."""
+        assert "opus" in get_model_for_tier("high", "bedrock").lower()
+        assert "sonnet" in get_model_for_tier("mid", "bedrock").lower()
+        assert "haiku" in get_model_for_tier("low", "bedrock").lower()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "azure",
+            "AZURE_MODEL_HIGH": "gpt-4-turbo",
+            "AZURE_MODEL_MID": "gpt-4o",
+            "AZURE_MODEL_LOW": "gpt-4o-mini",
+        },
+    )
+    def test_get_model_for_tier_azure(self):
+        """Test getting model for Azure provider tiers."""
+        assert get_model_for_tier("high", "azure") == "gpt-4-turbo"
+        assert get_model_for_tier("mid", "azure") == "gpt-4o"
+        assert get_model_for_tier("low", "azure") == "gpt-4o-mini"
 
 
 class TestCompatFunctions:
