@@ -599,8 +599,9 @@ class DiscordGatewayClient(GatewayClient):
         files = []
         for fd in file_data:
             try:
-                filename = fd.get("filename", "file")
-                content_b64 = fd.get("content_base64", "")
+                # FileData is a Pydantic model, access attributes directly
+                filename = fd.filename or "file"
+                content_b64 = fd.content_base64 or ""
                 content = base64.b64decode(content_b64)
 
                 # Create Discord file from bytes
@@ -608,7 +609,7 @@ class DiscordGatewayClient(GatewayClient):
                 files.append(file_obj)
                 logger.info(f"[_send_files_from_data] Prepared file: {filename} ({len(content)} bytes)")
             except Exception as e:
-                logger.error(f"[_send_files_from_data] Failed to prepare {fd.get('filename')}: {e}")
+                logger.error(f"[_send_files_from_data] Failed to prepare {getattr(fd, 'filename', 'unknown')}: {e}")
 
         if files:
             try:
