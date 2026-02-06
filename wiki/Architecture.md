@@ -20,10 +20,10 @@ MyPalClara uses a gateway architecture with a central WebSocket server for messa
 └──────────────────────────────────────────────────────────────┘
         │ WebSocket
         ▼
-┌────────────┐  ┌────────────┐  ┌────────────┐
-│  Discord   │  │   Teams    │  │    CLI     │
-│  Adapter   │  │  Adapter   │  │  Adapter   │
-└────────────┘  └────────────┘  └────────────┘
+┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+│  Discord   │  │   Teams    │  │    CLI     │  │    Web     │
+│  Adapter   │  │  Adapter   │  │  Adapter   │  │  (FastAPI) │
+└────────────┘  └────────────┘  └────────────┘  └────────────┘
 ```
 
 ## Core Components
@@ -63,6 +63,16 @@ Adapters connect platform-specific APIs to the gateway:
 - Interactive terminal with command history
 - Markdown rendering for responses
 - Shell command execution with approval flow
+
+**Web Interface** (`mypalclara/web/` + `web-ui/`):
+- React 19 + Vite + TypeScript SPA with FastAPI backend
+- Knowledge Base: grid/list views, semantic search, Tiptap editor, tags, export/import
+- Chat: WebSocket streaming with tool call display and file uploads
+- Graph Explorer: React Flow visualization of FalkorDB entity graph
+- OAuth2 auth (Discord, Google) with JWT sessions
+- Cross-platform identity via CanonicalUser + PlatformLink
+- Rate limiting middleware (120 rpm, 30 burst)
+- See [[Web-Interface]] for full details
 
 ### LLM Providers
 
@@ -149,6 +159,44 @@ messages
 ├── role
 ├── content
 └── created_at
+```
+
+### Identity Tables (Web Interface)
+
+```
+canonical_users
+├── id (UUID PK)
+├── display_name
+├── primary_email (unique)
+├── avatar_url
+├── created_at
+└── updated_at
+
+platform_links
+├── id (UUID PK)
+├── canonical_user_id (FK)
+├── platform
+├── platform_user_id
+├── prefixed_user_id (unique)
+├── display_name
+├── linked_at
+└── linked_via
+
+oauth_tokens
+├── id (UUID PK)
+├── canonical_user_id (FK)
+├── provider
+├── access_token
+├── refresh_token
+└── expires_at
+
+web_sessions
+├── id (UUID PK)
+├── canonical_user_id (FK)
+├── session_token_hash (unique)
+├── created_at
+├── expires_at
+└── revoked
 ```
 
 ### MCP Tables

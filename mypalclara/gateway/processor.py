@@ -397,6 +397,44 @@ class MessageProcessor:
             logger.exception(f"Error processing {request.id}: {e}")
             raise
 
+    def _resolve_canonical_user_ids(self, prefixed_user_id: str) -> list[str]:
+        """Resolve a prefixed user_id to all linked user_ids via CanonicalUser.
+
+        If the user has linked multiple platforms (e.g., discord-123 and teams-456),
+        this returns ALL prefixed IDs so memory queries span platforms.
+
+        Args:
+            prefixed_user_id: The prefixed user ID (e.g., 'discord-123')
+
+        Returns:
+            List of all prefixed user_ids for this canonical user,
+            or [prefixed_user_id] if no canonical user found.
+        """
+        try:
+            from db.models import PlatformLink
+
+            db = SessionLocal()
+            try:
+                link = (
+                    db.query(PlatformLink)
+                    .filter(PlatformLink.prefixed_user_id == prefixed_user_id)
+                    .first()
+                )
+                if not link:
+                    return [prefixed_user_id]
+
+                all_links = (
+                    db.query(PlatformLink.prefixed_user_id)
+                    .filter(PlatformLink.canonical_user_id == link.canonical_user_id)
+                    .all()
+                )
+                return [row[0] for row in all_links]
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug(f"Canonical user resolution failed for {prefixed_user_id}: {e}")
+            return [prefixed_user_id]
+
     async def _build_context(self, request: MessageRequest) -> dict[str, Any]:
         """Build context for the LLM including memories and prompt.
 
@@ -522,9 +560,16 @@ class MessageProcessor:
             # Insert before the current message
             messages = messages[:-1] + chain_messages + [messages[-1]]
 
+        # Resolve canonical user for cross-platform queries
+        all_user_ids = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._resolve_canonical_user_ids(user_id),
+        )
+
         return {
             "messages": messages,
             "user_id": user_id,
+            "all_user_ids": all_user_ids,
             "channel_id": channel_id,
             "is_dm": is_dm,
             "user_mems": user_mems,

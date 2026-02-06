@@ -24,14 +24,21 @@ poetry run python -m mypalclara.gateway status
 poetry run python -m mypalclara.gateway stop
 poetry run python -m mypalclara.gateway restart
 
+# Web interface
+poetry run uvicorn mypalclara.web.app:create_app --factory --reload --port 8000  # Backend
+cd web-ui && pnpm dev                           # Frontend (port 5173, proxies to :8000)
+cd web-ui && pnpm build                         # Production build to web-ui/dist/
+
 # Database
 poetry run python scripts/migrate.py           # Run migrations
 poetry run python scripts/migrate.py status    # Check status
 poetry run python scripts/clear_dbs.py         # Clear memory data
+poetry run python scripts/backfill_users.py    # Create CanonicalUsers for existing user_ids
 
 # Docker
 docker-compose --profile discord up
 docker-compose --profile discord --profile postgres up
+docker-compose --profile web up                 # Web interface
 ```
 
 ## Versioning
@@ -62,6 +69,8 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 | Directory | Purpose |
 |-----------|---------|
 | `mypalclara/gateway/` | WebSocket gateway for platform adapters |
+| `mypalclara/web/` | Web interface backend (FastAPI, auth, REST API, chat WS) |
+| `web-ui/` | Web interface frontend (React 19, Vite, Tailwind, TypeScript) |
 | `adapters/` | Platform adapters (Discord, Teams, Slack, etc.) |
 | `clara_core/memory/` | Rook memory system (Qdrant/pgvector, embeddings) |
 | `clara_core/mcp/` | MCP plugin system (servers, tools, OAuth) |
@@ -91,6 +100,25 @@ poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
 | Discord | Yes | Message edits |
 | Teams/Slack/Telegram/Matrix | Yes | 1s cooldown / rate limits |
 | Signal/WhatsApp | No | APIs don't support editing |
+| Web | Yes | Built-in browser chat |
+
+### Web Interface
+React + FastAPI web UI for browsing/editing memories, chatting, and managing adapters.
+
+- **Backend**: `mypalclara/web/` — FastAPI app with JWT auth, OAuth2 (Discord/Google), REST API, WebSocket chat
+- **Frontend**: `web-ui/` — React 19 + Vite + Tailwind CSS + TypeScript
+- **Knowledge Base**: Grid/list views, semantic search, Tiptap block editor, FSRS dynamics, saved filters
+- **Chat**: Streaming responses via WebSocket, tool call display, markdown rendering
+- **Graph Explorer**: React Flow visualization of FalkorDB entity graph
+- **Identity**: `CanonicalUser` unifies cross-platform identities via `PlatformLink`
+
+```bash
+# Required env vars for web
+WEB_SECRET_KEY=...                    # JWT signing key (change in production!)
+DISCORD_OAUTH_CLIENT_ID=...          # Discord OAuth app client ID
+DISCORD_OAUTH_CLIENT_SECRET=...      # Discord OAuth app client secret
+DISCORD_OAUTH_REDIRECT_URI=http://localhost:5173/auth/callback/discord
+```
 
 ## Environment Variables
 

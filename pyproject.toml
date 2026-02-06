@@ -81,6 +81,9 @@ typer = {extras = ["all"], version = "^0.15.0"}
 # Gateway
 websockets = "^15.0"  # WebSocket server for gateway architecture
 
+# Web interface
+PyJWT = "^2.8.0"  # JWT tokens for web auth
+
 # Microsoft Teams bot
 botbuilder-core = "^4.16.0"
 botbuilder-schema = "^4.16.0"
@@ -92,6 +95,7 @@ clara-gateway = "gateway.__main__:main"
 clara-discord = "adapters.discord.main:run"
 clara-teams = "adapters.teams.main:run"
 clara-cli = "adapters.cli.main:run"
+clara-web = "mypalclara.web.__main__:main"
 backup = "backup_service.cli:app"
 
 [tool.poetry.group.dev.dependencies]

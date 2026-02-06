@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0f1117;
+  --color-surface-raised: #171923;
+  --color-surface-overlay: #1e2130;
+  --color-border: #2d3148;
+  --color-border-subtle: #232640;
+  --color-text-primary: #e8eaf6;
+  --color-text-secondary: #9fa3c2;
+  --color-text-muted: #6b70a0;
+  --color-accent: #7c6ef0;
+  --color-accent-hover: #6b5ce0;
+  --color-success: #4caf50;
+  --color-warning: #ff9800;
+  --color-danger: #ef5350;
+  --color-key: #ffd54f;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  @apply bg-surface text-text-primary antialiased;
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Tiptap editor styles */
+.tiptap {
+  @apply outline-none min-h-[200px] p-4;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  @apply text-text-muted float-left h-0 pointer-events-none;
+  content: attr(data-placeholder);
+}
+.tiptap h1 { @apply text-2xl font-bold mt-4 mb-2; }
+.tiptap h2 { @apply text-xl font-bold mt-3 mb-2; }
+.tiptap h3 { @apply text-lg font-semibold mt-2 mb-1; }
+.tiptap ul { @apply list-disc pl-6 my-2; }
+.tiptap ol { @apply list-decimal pl-6 my-2; }
+.tiptap code { @apply bg-surface-overlay px-1.5 py-0.5 rounded font-mono text-sm; }
+.tiptap pre { @apply bg-surface-overlay rounded-lg p-4 my-2 overflow-x-auto; }
+.tiptap pre code { @apply bg-transparent p-0; }
+.tiptap blockquote { @apply border-l-4 border-accent pl-4 italic my-2; }
