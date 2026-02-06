@@ -277,9 +277,9 @@ async def send_email_alert(
         # Build embed
         color = {
             "urgent": 0xFF0000,  # Red
-            "high": 0xFF9900,    # Orange
+            "high": 0xFF9900,  # Orange
             "normal": 0x3498DB,  # Blue
-            "low": 0x95A5A6,     # Gray
+            "low": 0x95A5A6,  # Gray
         }.get(match.importance, 0x3498DB)
 
         embed = discord.Embed(

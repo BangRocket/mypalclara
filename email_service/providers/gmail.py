@@ -184,10 +184,7 @@ class GmailProvider(EmailProvider):
 
     def _parse_message(self, data: dict, include_body: bool = False) -> EmailMessage:
         """Parse Gmail API message response."""
-        headers = {
-            h["name"].lower(): h["value"]
-            for h in data.get("payload", {}).get("headers", [])
-        }
+        headers = {h["name"].lower(): h["value"] for h in data.get("payload", {}).get("headers", [])}
 
         from_addr = headers.get("from", "")
         subject = headers.get("subject", "(No Subject)")
@@ -404,9 +401,7 @@ class GmailProvider(EmailProvider):
             result = []
             for msg_ref in messages:
                 try:
-                    email_msg = await self._fetch_message_with_body(
-                        msg_ref["id"], include_body
-                    )
+                    email_msg = await self._fetch_message_with_body(msg_ref["id"], include_body)
                     if email_msg:
                         result.append(email_msg)
                 except Exception as e:
@@ -418,9 +413,7 @@ class GmailProvider(EmailProvider):
             logger.error(f"Gmail search failed: {e}")
             return []
 
-    async def _fetch_message_with_body(
-        self, message_id: str, include_body: bool = False
-    ) -> EmailMessage | None:
+    async def _fetch_message_with_body(self, message_id: str, include_body: bool = False) -> EmailMessage | None:
         """Fetch message with optional full body."""
         try:
             async with httpx.AsyncClient() as client:

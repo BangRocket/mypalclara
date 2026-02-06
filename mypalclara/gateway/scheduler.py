@@ -37,7 +37,7 @@ from typing import Any, Callable, Coroutine
 import yaml
 
 from config.logging import get_logger
-from gateway.events import Event, EventType, emit
+from mypalclara.gateway.events import Event, EventType, emit
 
 logger = get_logger("gateway.scheduler")
 
@@ -368,9 +368,7 @@ class Scheduler:
                     if now >= task.next_run:
                         # Time to run
                         if task.name not in self._running_tasks:
-                            self._running_tasks[task.name] = asyncio.create_task(
-                                self._run_task(task)
-                            )
+                            self._running_tasks[task.name] = asyncio.create_task(self._run_task(task))
 
                 # Sleep briefly before next check (100ms for responsive scheduling)
                 await asyncio.sleep(0.1)

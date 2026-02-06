@@ -15,13 +15,15 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
+from clara_core.llm.messages import AssistantMessage, SystemMessage, UserMessage
+from clara_core.llm.messages import Message as LLMMessage
 from config.logging import get_logger
 from db import SessionLocal
 from db.models import Message
 from db.models import Session as DBSession
-from gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
-from gateway.llm_orchestrator import LLMOrchestrator
-from gateway.protocol import (
+from mypalclara.gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
+from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
+from mypalclara.gateway.protocol import (
     MessageRequest,
     ResponseChunk,
     ResponseEnd,
@@ -29,12 +31,12 @@ from gateway.protocol import (
     ToolResult,
     ToolStart,
 )
-from gateway.tool_executor import ToolExecutor
+from mypalclara.gateway.tool_executor import ToolExecutor
 
 if TYPE_CHECKING:
     from websockets.server import WebSocketServerProtocol
 
-    from gateway.server import GatewayServer
+    from mypalclara.gateway.server import GatewayServer
 
 logger = get_logger("gateway.processor")
 
@@ -367,6 +369,9 @@ class MessageProcessor:
             # Store in memory
             await self._store_exchange(request, full_text, context)
 
+            # Promote memories that were used in this response (FSRS feedback)
+            await self._promote_retrieved_memories(context)
+
             # Convert file paths to FileData with content
             file_data_list = await self._prepare_file_data(files)
 
@@ -495,21 +500,24 @@ class MessageProcessor:
 
         # Add gateway context
         gateway_context = self._build_gateway_context(request, is_dm, participants)
-        messages.insert(1, {"role": "system", "content": gateway_context})
+        messages.insert(1, SystemMessage(content=gateway_context))
 
         # Add fired intentions as reminders
         if fired_intentions:
             intention_text = self._memory_manager.format_intentions_for_prompt(fired_intentions)
             if intention_text:
-                messages.insert(2, {"role": "system", "content": intention_text})
+                messages.insert(2, SystemMessage(content=intention_text))
 
         # Add reply chain if present
         if request.reply_chain:
-            chain_messages = []
+            chain_messages: list[LLMMessage] = []
             for msg in request.reply_chain:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
-                chain_messages.append({"role": role, "content": content})
+                if role == "assistant":
+                    chain_messages.append(AssistantMessage(content=content))
+                else:
+                    chain_messages.append(UserMessage(content=content))
 
             # Insert before the current message
             messages = messages[:-1] + chain_messages + [messages[-1]]
@@ -764,6 +772,41 @@ class MessageProcessor:
             pass  # Emotional context module not available
         except Exception as e:
             logger.debug(f"Failed to track sentiment: {e}")
+
+    async def _promote_retrieved_memories(self, context: dict[str, Any]) -> None:
+        """Promote memories that were retrieved for this response.
+
+        Closes the FSRS feedback loop: memories used in responses
+        get stronger (higher retrieval_strength), unused ones naturally
+        decay over time.
+        """
+        user_id = context.get("user_id")
+        if not user_id or not self._memory_manager:
+            return
+
+        try:
+            loop = asyncio.get_event_loop()
+            memory_ids = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._memory_manager.get_last_retrieved_memory_ids(user_id),
+            )
+            if not memory_ids:
+                return
+
+            for memory_id in memory_ids:
+                await loop.run_in_executor(
+                    BLOCKING_EXECUTOR,
+                    lambda mid=memory_id: self._memory_manager.promote_memory(
+                        memory_id=mid,
+                        user_id=user_id,
+                        grade=3,  # Grade.GOOD
+                        signal_type="used_in_response",
+                    ),
+                )
+
+            logger.debug(f"Promoted {len(memory_ids)} memories for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to promote memories: {e}")
 
     def _get_tool_emoji(self, tool_name: str) -> str:
         """Get emoji for a tool.

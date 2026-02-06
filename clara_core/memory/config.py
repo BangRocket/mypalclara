@@ -119,12 +119,13 @@ if not ROOK_DATABASE_URL and not QDRANT_URL:
 
 # Graph memory configuration (optional - for relationship tracking)
 ENABLE_GRAPH_MEMORY = os.getenv("ENABLE_GRAPH_MEMORY", "false").lower() == "true"
-GRAPH_STORE_PROVIDER = os.getenv("GRAPH_STORE_PROVIDER", "neo4j").lower()
+GRAPH_STORE_PROVIDER = os.getenv("GRAPH_STORE_PROVIDER", "falkordb").lower()
 
-# Neo4j configuration
-NEO4J_URL = os.getenv("NEO4J_URL")
-NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+# FalkorDB configuration
+FALKORDB_HOST = os.getenv("FALKORDB_HOST", "localhost")
+FALKORDB_PORT = int(os.getenv("FALKORDB_PORT", "6379"))
+FALKORDB_PASSWORD = os.getenv("FALKORDB_PASSWORD")
+FALKORDB_GRAPH_NAME = os.getenv("FALKORDB_GRAPH_NAME", "clara_memory")
 
 # Kuzu configuration
 KUZU_DATA_DIR = BASE_DATA_DIR / "kuzu_data"
@@ -137,18 +138,15 @@ def _get_graph_store_config() -> dict | None:
     if not ENABLE_GRAPH_MEMORY:
         return None
 
-    if GRAPH_STORE_PROVIDER == "neo4j":
-        if not NEO4J_URL or not NEO4J_PASSWORD:
-            logger.warning("Neo4j configured but NEO4J_URL or NEO4J_PASSWORD not set")
-            return None
-
-        logger.info(f"Graph store: Neo4j at {NEO4J_URL}")
+    if GRAPH_STORE_PROVIDER == "falkordb":
+        logger.info(f"Graph store: FalkorDB at {FALKORDB_HOST}:{FALKORDB_PORT}")
         return {
-            "provider": "neo4j",
+            "provider": "falkordb",
             "config": {
-                "url": NEO4J_URL,
-                "username": NEO4J_USERNAME,
-                "password": NEO4J_PASSWORD,
+                "host": FALKORDB_HOST,
+                "port": FALKORDB_PORT,
+                "password": FALKORDB_PASSWORD,
+                "graph_name": FALKORDB_GRAPH_NAME,
             },
         }
 
@@ -167,7 +165,11 @@ def _get_graph_store_config() -> dict | None:
 
 
 def _get_llm_config() -> dict | None:
-    """Build LLM config based on ROOK_PROVIDER."""
+    """Build LLM config based on ROOK_PROVIDER.
+
+    Uses the unified provider from clara_core.llm for consistent behavior
+    across all LLM operations (chat, memory, tools).
+    """
     if ROOK_PROVIDER not in PROVIDER_DEFAULTS:
         logger.warning(f"Unknown ROOK_PROVIDER={ROOK_PROVIDER} - LLM disabled")
         return None
@@ -183,31 +185,20 @@ def _get_llm_config() -> dict | None:
     # Get base URL: explicit ROOK_BASE_URL > provider's default URL
     base_url = ROOK_BASE_URL or provider_config["base_url"]
 
-    logger.info(f"Rook LLM Provider: {ROOK_PROVIDER}")
+    logger.info(f"Rook LLM Provider: {ROOK_PROVIDER} (via unified)")
     logger.info(f"Rook LLM Model: {ROOK_MODEL}")
     if base_url:
         logger.info(f"Rook LLM Base URL: {base_url}")
 
-    # Anthropic uses native SDK with anthropic_base_url
-    if ROOK_PROVIDER == "anthropic":
-        return {
-            "provider": "anthropic",
-            "config": {
-                "model": ROOK_MODEL,
-                "api_key": api_key,
-                "anthropic_base_url": base_url,  # CRITICAL: Proxy support for clewdr
-                "temperature": 0,
-                "max_tokens": 8000,
-            },
-        }
-
-    # All other providers use OpenAI-compatible endpoints
+    # Use unified provider for all backends
+    # This ensures consistent behavior with clara_core.llm
     return {
-        "provider": "openai",
+        "provider": "unified",
         "config": {
+            "provider": ROOK_PROVIDER,  # Actual provider (openrouter, anthropic, etc.)
             "model": ROOK_MODEL,
             "api_key": api_key,
-            "openai_base_url": base_url,
+            "base_url": base_url,
             "temperature": 0,
             "max_tokens": 8000,
         },

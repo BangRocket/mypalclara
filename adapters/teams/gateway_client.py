@@ -16,10 +16,11 @@ from botbuilder.core import TurnContext
 from botbuilder.schema import Activity, ActivityTypes, Attachment
 
 from adapters.base import GatewayClient
+from adapters.manifest import AdapterManifest, adapter
 from adapters.teams.graph_client import GraphClient, get_graph_client
 from adapters.teams.message_builder import AdaptiveCardBuilder
 from config.logging import get_logger
-from gateway.protocol import ChannelInfo, UserInfo
+from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     from adapters.teams.bot import TeamsBot
@@ -43,6 +44,25 @@ class PendingResponse:
     status_activity_id: str | None = None
 
 
+@adapter(
+    AdapterManifest(
+        name="teams",
+        platform="teams",
+        version="1.0.0",
+        display_name="Microsoft Teams",
+        description="Teams bot with Adaptive Cards and Graph API",
+        icon="💼",
+        capabilities=["streaming", "cards", "attachments", "reactions"],
+        required_env=["TEAMS_APP_ID", "TEAMS_APP_PASSWORD"],
+        optional_env=[
+            "TEAMS_TENANT_ID",
+            "GRAPH_CLIENT_ID",
+            "GRAPH_CLIENT_SECRET",
+        ],
+        python_packages=["botbuilder-core>=4.14.0", "msal>=1.20.0"],
+        tags=["enterprise", "workplace", "microsoft"],
+    )
+)
 class TeamsGatewayClient(GatewayClient):
     """Teams-specific gateway client.
 
@@ -232,10 +252,12 @@ class TeamsGatewayClient(GatewayClient):
                 if msg.get("content", "").strip() == current_text:
                     continue
 
-                reply_chain.append({
-                    "role": msg["role"],
-                    "content": msg["content"],
-                })
+                reply_chain.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                )
 
                 if len(reply_chain) >= max_messages:
                     break

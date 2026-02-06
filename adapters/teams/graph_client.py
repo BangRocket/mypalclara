@@ -59,8 +59,7 @@ class GraphClient:
         self._enabled = bool(self.tenant_id)
         if not self._enabled:
             logger.info(
-                "Graph API disabled - set TEAMS_GRAPH_TENANT_ID to enable "
-                "conversation history and file uploads"
+                "Graph API disabled - set TEAMS_GRAPH_TENANT_ID to enable " "conversation history and file uploads"
             )
 
         self._access_token: str | None = None
@@ -88,11 +87,7 @@ class GraphClient:
         """
         async with self._lock:
             # Check if current token is still valid (with 5 min buffer)
-            if (
-                self._access_token
-                and self._token_expiry
-                and datetime.now() < self._token_expiry - timedelta(minutes=5)
-            ):
+            if self._access_token and self._token_expiry and datetime.now() < self._token_expiry - timedelta(minutes=5):
                 return self._access_token
 
             # Request new token
@@ -236,12 +231,14 @@ class GraphClient:
             # Bot messages have from.application instead of from.user
             is_bot = msg.get("from", {}).get("application") is not None
 
-            messages.append({
-                "role": "assistant" if is_bot else "user",
-                "content": content,
-                "author": author,
-                "timestamp": msg.get("createdDateTime"),
-            })
+            messages.append(
+                {
+                    "role": "assistant" if is_bot else "user",
+                    "content": content,
+                    "author": author,
+                    "timestamp": msg.get("createdDateTime"),
+                }
+            )
 
         return messages
 
@@ -291,12 +288,14 @@ class GraphClient:
             author = from_user.get("displayName", "Unknown")
             is_bot = msg.get("from", {}).get("application") is not None
 
-            messages.append({
-                "role": "assistant" if is_bot else "user",
-                "content": content,
-                "author": author,
-                "timestamp": msg.get("createdDateTime"),
-            })
+            messages.append(
+                {
+                    "role": "assistant" if is_bot else "user",
+                    "content": content,
+                    "author": author,
+                    "timestamp": msg.get("createdDateTime"),
+                }
+            )
 
         return messages
 

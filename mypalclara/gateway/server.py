@@ -16,7 +16,7 @@ import websockets
 from websockets.server import WebSocketServerProtocol, serve
 
 from config.logging import get_logger
-from gateway.protocol import (
+from mypalclara.gateway.protocol import (
     CancelledMessage,
     CancelMessage,
     ErrorMessage,
@@ -42,8 +42,8 @@ from gateway.protocol import (
     StatusMessage,
     parse_adapter_message,
 )
-from gateway.router import MessageRouter
-from gateway.session import NodeRegistry, SessionManager
+from mypalclara.gateway.router import MessageRouter
+from mypalclara.gateway.session import NodeRegistry, SessionManager
 
 if TYPE_CHECKING:
     pass
@@ -626,7 +626,9 @@ class GatewayServer:
                     request_id=msg.request_id,
                     success=success,
                     enabled=msg.enabled if success else not msg.enabled,
-                    error=None if success else f"Failed to {'enable' if msg.enabled else 'disable'} '{msg.server_name}'",
+                    error=None
+                    if success
+                    else f"Failed to {'enable' if msg.enabled else 'disable'} '{msg.server_name}'",
                 ),
             )
 

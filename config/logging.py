@@ -413,9 +413,7 @@ class DiscordLogHandler(logging.Handler):
         """
         if self._loop and not self._shutdown:
             self._loop.call_soon_threadsafe(
-                lambda: self._loop.create_task(
-                    self.send_embed(title, description, color, fields, footer, tag)
-                )
+                lambda: self._loop.create_task(self.send_embed(title, description, color, fields, footer, tag))
             )
 
 
@@ -443,7 +441,10 @@ def init_logging(session_factory=None, console_level: int | None = None):
 
     # Debug: show what level we're using
     level_name = logging.getLevelName(console_level)
-    print(f"[logging] Initializing with console level: {level_name} (LOG_LEVEL={os.getenv('LOG_LEVEL', 'not set')})", file=sys.stderr)
+    print(
+        f"[logging] Initializing with console level: {level_name} (LOG_LEVEL={os.getenv('LOG_LEVEL', 'not set')})",
+        file=sys.stderr,
+    )
 
     # Clear any existing handlers on root logger (from basicConfig or other sources)
     root_logger = logging.getLogger()

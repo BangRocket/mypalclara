@@ -58,7 +58,6 @@ class ClaraConfig:
     tool_api_key: str = ""
     tool_base_url: str = ""
     tool_model: str = ""
-    tool_format: str = "openai"
 
     # User config
     user_id: str = "demo-user"
@@ -67,10 +66,11 @@ class ClaraConfig:
 
     # Graph memory
     enable_graph_memory: bool = False
-    graph_store_provider: str = "neo4j"
-    neo4j_url: str = ""
-    neo4j_username: str = ""
-    neo4j_password: str = ""
+    graph_store_provider: str = "falkordb"
+    falkordb_host: str = "localhost"
+    falkordb_port: int = 6379
+    falkordb_password: str = ""
+    falkordb_graph_name: str = "clara_memory"
 
     # Discord
     discord_bot_token: str = ""
@@ -135,14 +135,10 @@ class ClaraConfig:
             openrouter_title=os.getenv("OPENROUTER_TITLE", "MyPalClara"),
             # NanoGPT
             nanogpt_api_key=os.getenv("NANOGPT_API_KEY", ""),
-            nanogpt_model=os.getenv(
-                "NANOGPT_MODEL", "moonshotai/Kimi-K2-Instruct-0905"
-            ),
+            nanogpt_model=os.getenv("NANOGPT_MODEL", "moonshotai/Kimi-K2-Instruct-0905"),
             # Custom OpenAI
             custom_openai_api_key=os.getenv("CUSTOM_OPENAI_API_KEY", ""),
-            custom_openai_base_url=os.getenv(
-                "CUSTOM_OPENAI_BASE_URL", "https://api.openai.com/v1"
-            ),
+            custom_openai_base_url=os.getenv("CUSTOM_OPENAI_BASE_URL", "https://api.openai.com/v1"),
             custom_openai_model=os.getenv("CUSTOM_OPENAI_MODEL", "gpt-4o"),
             # OpenAI
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
@@ -155,18 +151,17 @@ class ClaraConfig:
             tool_api_key=os.getenv("TOOL_API_KEY", ""),
             tool_base_url=os.getenv("TOOL_BASE_URL", ""),
             tool_model=os.getenv("TOOL_MODEL", ""),
-            tool_format=os.getenv("TOOL_FORMAT", "openai").lower(),
             # User config
             user_id=os.getenv("USER_ID", "demo-user"),
             default_project=os.getenv("DEFAULT_PROJECT", "Default Project"),
             skip_profile_load=os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true",
             # Graph memory
-            enable_graph_memory=os.getenv("ENABLE_GRAPH_MEMORY", "false").lower()
-            == "true",
-            graph_store_provider=os.getenv("GRAPH_STORE_PROVIDER", "neo4j"),
-            neo4j_url=os.getenv("NEO4J_URL", ""),
-            neo4j_username=os.getenv("NEO4J_USERNAME", ""),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
+            enable_graph_memory=os.getenv("ENABLE_GRAPH_MEMORY", "false").lower() == "true",
+            graph_store_provider=os.getenv("GRAPH_STORE_PROVIDER", "falkordb"),
+            falkordb_host=os.getenv("FALKORDB_HOST", "localhost"),
+            falkordb_port=int(os.getenv("FALKORDB_PORT", "6379")),
+            falkordb_password=os.getenv("FALKORDB_PASSWORD", ""),
+            falkordb_graph_name=os.getenv("FALKORDB_GRAPH_NAME", "clara_memory"),
             # Discord
             discord_bot_token=os.getenv("DISCORD_BOT_TOKEN", ""),
             discord_client_id=os.getenv("DISCORD_CLIENT_ID", ""),
@@ -174,19 +169,12 @@ class ClaraConfig:
             discord_allowed_channels=os.getenv("DISCORD_ALLOWED_CHANNELS", ""),
             discord_allowed_roles=os.getenv("DISCORD_ALLOWED_ROLES", ""),
             discord_max_messages=int(os.getenv("DISCORD_MAX_MESSAGES", "25")),
-            discord_summary_age_minutes=int(
-                os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30")
-            ),
-            discord_channel_history_limit=int(
-                os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50")
-            ),
+            discord_summary_age_minutes=int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30")),
+            discord_channel_history_limit=int(os.getenv("DISCORD_CHANNEL_HISTORY_LIMIT", "50")),
             discord_monitor_port=int(os.getenv("DISCORD_MONITOR_PORT", "8001")),
-            discord_monitor_enabled=os.getenv("DISCORD_MONITOR_ENABLED", "true").lower()
-            == "true",
+            discord_monitor_enabled=os.getenv("DISCORD_MONITOR_ENABLED", "true").lower() == "true",
             # Docker sandbox
-            docker_sandbox_image=os.getenv(
-                "DOCKER_SANDBOX_IMAGE", "python:3.12-slim"
-            ),
+            docker_sandbox_image=os.getenv("DOCKER_SANDBOX_IMAGE", "python:3.12-slim"),
             docker_sandbox_timeout=int(os.getenv("DOCKER_SANDBOX_TIMEOUT", "900")),
             docker_sandbox_memory=os.getenv("DOCKER_SANDBOX_MEMORY", "512m"),
             docker_sandbox_cpu=float(os.getenv("DOCKER_SANDBOX_CPU", "1.0")),
@@ -194,15 +182,12 @@ class ClaraConfig:
             tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
             # Local file storage
             clara_files_dir=os.getenv("CLARA_FILES_DIR", "./clara_files"),
-            clara_max_file_size=int(
-                os.getenv("CLARA_MAX_FILE_SIZE", str(50 * 1024 * 1024))
-            ),
+            clara_max_file_size=int(os.getenv("CLARA_MAX_FILE_SIZE", str(50 * 1024 * 1024))),
             # Email
             clara_email_address=os.getenv("CLARA_EMAIL_ADDRESS", ""),
             clara_email_password=os.getenv("CLARA_EMAIL_PASSWORD", ""),
             clara_email_notify_user=os.getenv("CLARA_EMAIL_NOTIFY_USER", ""),
-            clara_email_notify=os.getenv("CLARA_EMAIL_NOTIFY", "false").lower()
-            == "true",
+            clara_email_notify=os.getenv("CLARA_EMAIL_NOTIFY", "false").lower() == "true",
         )
 
 

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from gateway.scheduler import (
+from mypalclara.gateway.scheduler import (
     CronParser,
     ScheduledTask,
     Scheduler,
@@ -273,12 +273,8 @@ tasks:
             assert task.description == "Test task from file"
 
     def test_stats(self, scheduler):
-        scheduler.add_task(
-            ScheduledTask(name="t1", type=TaskType.INTERVAL, interval=60, command="echo")
-        )
-        scheduler.add_task(
-            ScheduledTask(name="t2", type=TaskType.CRON, cron="0 9 * * *", command="echo")
-        )
+        scheduler.add_task(ScheduledTask(name="t1", type=TaskType.INTERVAL, interval=60, command="echo"))
+        scheduler.add_task(ScheduledTask(name="t2", type=TaskType.CRON, cron="0 9 * * *", command="echo"))
         scheduler.disable_task("t2")
 
         stats = scheduler.get_stats()

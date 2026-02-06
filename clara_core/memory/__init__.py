@@ -12,7 +12,7 @@ Configuration is handled through environment variables (ROOK_* preferred, MEM0_*
 - ROOK_MODEL: LLM model for memory extraction
 - ROOK_DATABASE_URL: PostgreSQL with pgvector for production
 - ENABLE_GRAPH_MEMORY: Enable graph memory for relationships
-- GRAPH_STORE_PROVIDER: Graph store (neo4j, kuzu)
+- GRAPH_STORE_PROVIDER: Graph store (falkordb, kuzu)
 
 Usage:
     from clara_core.memory import ClaraMemory, ROOK
@@ -50,9 +50,10 @@ from clara_core.memory.config import (
     GRAPH_STORE_PROVIDER,
     QDRANT_DATA_DIR,
     KUZU_DATA_DIR,
-    NEO4J_URL,
-    NEO4J_USERNAME,
-    NEO4J_PASSWORD,
+    FALKORDB_HOST,
+    FALKORDB_PORT,
+    FALKORDB_PASSWORD,
+    FALKORDB_GRAPH_NAME,
 )
 
 # Factories
@@ -103,9 +104,10 @@ __all__ = [
     "GRAPH_STORE_PROVIDER",
     "QDRANT_DATA_DIR",
     "KUZU_DATA_DIR",
-    "NEO4J_URL",
-    "NEO4J_USERNAME",
-    "NEO4J_PASSWORD",
+    "FALKORDB_HOST",
+    "FALKORDB_PORT",
+    "FALKORDB_PASSWORD",
+    "FALKORDB_GRAPH_NAME",
     # Factories
     "VectorStoreFactory",
     "EmbedderFactory",

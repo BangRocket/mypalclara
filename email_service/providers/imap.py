@@ -47,15 +47,11 @@ class IMAPProvider(EmailProvider):
                 return False
 
             if not self._server:
-                logger.error(
-                    f"No IMAP server configured for {self.account.email_address}"
-                )
+                logger.error(f"No IMAP server configured for {self.account.email_address}")
                 return False
 
             self._connected = True
-            logger.debug(
-                f"IMAP credentials ready for {self._server} as {self._username}"
-            )
+            logger.debug(f"IMAP credentials ready for {self._server} as {self._username}")
             return True
 
         except Exception as e:
@@ -113,9 +109,7 @@ class IMAPProvider(EmailProvider):
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 None,
-                lambda: self._fetch_new_messages_sync(
-                    since_uid, since_timestamp, limit
-                ),
+                lambda: self._fetch_new_messages_sync(since_uid, since_timestamp, limit),
             )
         except Exception as e:
             logger.error(f"Error fetching IMAP messages: {e}")
@@ -243,9 +237,7 @@ class IMAPProvider(EmailProvider):
 
                 # Get folder stats
                 status = mailbox.folder.status(folder)
-                logger.info(
-                    f"IMAP: Folder '{folder}' has {status.get('MESSAGES', '?')} messages"
-                )
+                logger.info(f"IMAP: Folder '{folder}' has {status.get('MESSAGES', '?')} messages")
 
                 # Build search criteria as kwargs for AND()
                 criteria_kwargs = {}
@@ -274,12 +266,8 @@ class IMAPProvider(EmailProvider):
 
                 # Fetch messages
                 count = 0
-                for msg in mailbox.fetch(
-                    criteria, limit=limit, reverse=True, mark_seen=False
-                ):
-                    messages.append(
-                        self._convert_message(msg, include_body=include_body)
-                    )
+                for msg in mailbox.fetch(criteria, limit=limit, reverse=True, mark_seen=False):
+                    messages.append(self._convert_message(msg, include_body=include_body))
                     count += 1
 
                 logger.info(f"IMAP: Successfully fetched {count} messages")
@@ -312,9 +300,7 @@ class IMAPProvider(EmailProvider):
             logger.error(f"Error getting email by ID: {e}")
             return None
 
-    def _get_email_by_id_sync(
-        self, uid: str, include_body: bool, folder: str
-    ) -> EmailMessage | None:
+    def _get_email_by_id_sync(self, uid: str, include_body: bool, folder: str) -> EmailMessage | None:
         """Synchronous get email by UID."""
         try:
             with self._get_mailbox().login(self._username, self._password) as mailbox:

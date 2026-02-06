@@ -176,17 +176,17 @@ SELECT * FROM pg_extension WHERE extname = 'vector';
 
 ### Graph Memory Errors
 
-**Symptom:** Neo4j or Kuzu connection errors
+**Symptom:** FalkorDB or Kuzu connection errors
 
 **Solution:**
 ```bash
 # Disable graph memory if not needed
 ENABLE_GRAPH_MEMORY=false
 
-# Or fix Neo4j connection
-NEO4J_URL=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your-password
+# Or fix FalkorDB connection
+FALKORDB_HOST=localhost
+FALKORDB_PORT=6379
+FALKORDB_PASSWORD=your-password  # Optional
 ```
 
 ## Database Issues
@@ -375,7 +375,7 @@ save_to_local(filename="output.txt", content="...")
 **Symptom:** Adapter can't connect to gateway
 
 **Checklist:**
-1. Gateway is running: `poetry run python -m gateway`
+1. Gateway is running: `poetry run python -m mypalclara.gateway`
 2. Check host/port match:
    ```bash
    CLARA_GATEWAY_HOST=127.0.0.1
@@ -422,7 +422,7 @@ echo "test" | bash -c "your-command"
 poetry run python discord_bot.py 2>&1 | tee debug.log
 
 # Gateway logs
-poetry run python -m gateway 2>&1 | tee gateway.log
+poetry run python -m mypalclara.gateway 2>&1 | tee gateway.log
 
 # With timestamps
 poetry run python discord_bot.py 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' | tee debug.log

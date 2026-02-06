@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gateway.protocol import ChannelInfo, MessageRequest, UserInfo
-from gateway.router import MessageRouter, RequestStatus
+from mypalclara.gateway.protocol import ChannelInfo, MessageRequest, UserInfo
+from mypalclara.gateway.router import MessageRouter, RequestStatus
 
 
 @pytest.fixture
@@ -210,9 +210,7 @@ class TestDeduplication:
 
         # Submit identical message with skip_dedup
         duplicate = make_request("req-2", content="Hello")
-        acquired, pos = await router.submit(
-            duplicate, mock_websocket, "node-1", skip_dedup=True
-        )
+        acquired, pos = await router.submit(duplicate, mock_websocket, "node-1", skip_dedup=True)
 
         assert acquired is True
 

@@ -28,11 +28,17 @@ def get_version() -> str:
     """Get the current Clara platform version."""
     return __version__
 
+
 from clara_core.config import get_config, init_platform
 from clara_core.llm import (
     DEFAULT_TIER,
+    AssistantMessage,
+    Message,
     ModelTier,
-    anthropic_to_openai_response,
+    SystemMessage,
+    ToolResponse,
+    ToolResultMessage,
+    UserMessage,
     generate_tool_description,
     get_current_tier,
     get_model_for_tier,
@@ -42,8 +48,11 @@ from clara_core.llm import (
     make_llm_with_tools,
     make_llm_with_tools_anthropic,
     make_llm_with_tools_langchain,
+    make_llm_with_tools_unified,
     make_llm_with_xml_tools,
     make_llm_with_xml_tools_streaming,
+    message_from_dict,
+    messages_from_dicts,
 )
 from clara_core.memory_manager import MemoryManager, load_initial_profile
 from clara_core.platform import PlatformAdapter, PlatformContext, PlatformMessage
@@ -69,10 +78,19 @@ __all__ = [
     "make_llm_with_tools",
     "make_llm_with_tools_anthropic",
     "make_llm_with_tools_langchain",
+    "make_llm_with_tools_unified",
     "make_llm_with_xml_tools",
     "make_llm_with_xml_tools_streaming",
-    "anthropic_to_openai_response",
     "generate_tool_description",
+    "ToolResponse",
+    # Typed message types
+    "Message",
+    "SystemMessage",
+    "UserMessage",
+    "AssistantMessage",
+    "ToolResultMessage",
+    "message_from_dict",
+    "messages_from_dicts",
     # Model tiers
     "ModelTier",
     "get_model_for_tier",

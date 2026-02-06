@@ -893,7 +893,7 @@ Default to embedded databases, scale to external when needed:
 | Component | Embedded | External |
 |-----------|----------|----------|
 | Vector store | SQLite + sqlite-vss | PostgreSQL + pgvector |
-| Graph store | Kuzu | Neo4j |
+| Graph store | Kuzu | FalkorDB |
 | Full-text | Tantivy | Elasticsearch |
 | Cache | redb | Redis |
 
@@ -1291,7 +1291,7 @@ enum RetrievalStrategy {
 
 ### Phase 10: Production Hardening
 - [ ] PostgreSQL + pgvector backend option
-- [ ] Neo4j backend option (alternative to Kuzu)
+- [ ] FalkorDB backend option (alternative to Kuzu)
 - [ ] Connection pooling (deadpool)
 - [ ] Metrics/telemetry (OpenTelemetry)
 - [ ] Export/import utilities (JSON Lines, Parquet)
@@ -1318,14 +1318,15 @@ dimensions = 1536
 distance = "cosine"  # or "euclidean", "dot"
 
 [graph]
-backend = "kuzu"  # or "neo4j"
+backend = "kuzu"  # or "falkordb"
 threshold = 0.7
 enabled = true
 
-[graph.neo4j]
-url = "bolt://..."
-username = "neo4j"
+[graph.falkordb]
+host = "localhost"
+port = 6379
 password = "..."
+graph_name = "clara_memory"
 
 [retrieval]
 max_key_memories = 15

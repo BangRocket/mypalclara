@@ -81,7 +81,7 @@ cp .env.example .env
 poetry run python discord_bot.py
 
 # Or run via gateway (recommended for multi-platform)
-poetry run python -m gateway start
+poetry run python -m mypalclara.gateway start
 
 # With Docker
 docker-compose --profile discord up
@@ -157,7 +157,7 @@ AUTO_TIER_SELECTION=true
 | `AZURE_DEVOPS_ORG` / `AZURE_DEVOPS_PAT` | Enable Azure DevOps integration |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Enable Google Workspace integration |
 | `ANTHROPIC_API_KEY` | Enable Claude Code agent |
-| `ENABLE_GRAPH_MEMORY=true` | Enable relationship tracking (Neo4j/Kuzu) |
+| `ENABLE_GRAPH_MEMORY=true` | Enable relationship tracking (FalkorDB/Kuzu) |
 | `SMITHERY_API_TOKEN` | Enable Smithery MCP server registry |
 
 ## MCP Plugin System
@@ -222,19 +222,19 @@ The gateway provides a central message processing hub for platform adapters.
 
 ```bash
 # Foreground (development)
-poetry run python -m gateway --host 127.0.0.1 --port 18789
+poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
 
 # Daemon mode with all enabled adapters
-poetry run python -m gateway start
-poetry run python -m gateway status
-poetry run python -m gateway stop
+poetry run python -m mypalclara.gateway start
+poetry run python -m mypalclara.gateway status
+poetry run python -m mypalclara.gateway stop
 
 # Start with specific adapter only
-poetry run python -m gateway start --adapter discord
+poetry run python -m mypalclara.gateway start --adapter discord
 
 # Manage individual adapters
-poetry run python -m gateway adapter discord status
-poetry run python -m gateway adapter discord restart
+poetry run python -m mypalclara.gateway adapter discord status
+poetry run python -m mypalclara.gateway adapter discord restart
 ```
 
 ### Hooks
@@ -271,7 +271,7 @@ tasks:
 
 ## Memory System
 
-Clara uses mem0 for persistent memory with vector search (pgvector/Qdrant) and optional graph storage (Neo4j/Kuzu).
+Clara uses mem0 for persistent memory with vector search (pgvector/Qdrant) and optional graph storage (FalkorDB/Kuzu).
 
 ### Memory Types
 - **User Memories** - Personal facts, preferences, and context
@@ -473,7 +473,7 @@ zip -r ../clara-teams-app.zip *
 poetry run python -m adapters.teams
 
 # Via gateway
-poetry run python -m gateway start --adapter teams
+poetry run python -m mypalclara.gateway start --adapter teams
 ```
 
 ### Troubleshooting

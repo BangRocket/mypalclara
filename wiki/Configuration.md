@@ -109,11 +109,12 @@ MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 ```bash
 ENABLE_GRAPH_MEMORY=true
 
-# Neo4j
-GRAPH_STORE_PROVIDER=neo4j
-NEO4J_URL=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
+# FalkorDB (Redis-protocol graph database, speaks OpenCypher)
+GRAPH_STORE_PROVIDER=falkordb
+FALKORDB_HOST=localhost       # Default: localhost
+FALKORDB_PORT=6379            # Default: 6379
+FALKORDB_PASSWORD=password    # Optional
+FALKORDB_GRAPH_NAME=clara_memory  # Default: clara_memory
 
 # Kuzu (embedded)
 GRAPH_STORE_PROVIDER=kuzu

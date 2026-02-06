@@ -4,15 +4,20 @@ Handles:
 - Message splitting to fit Discord's 2000 character limit
 - Response formatting with streaming indicators
 - Content cleaning (bot mention removal)
+- Special marker parsing for reactions, embeds, threads, buttons
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import discord
+
+logger = logging.getLogger(__name__)
 
 # Discord message limit
 DISCORD_MSG_LIMIT = 2000
@@ -172,3 +177,76 @@ def split_message_preserve_code(text: str, max_length: int = DISCORD_MSG_LIMIT) 
         chunks.append(current.strip())
 
     return chunks if chunks else [text[:max_length]]
+
+
+def parse_markers(text: str) -> dict[str, Any]:
+    """Parse special markers from response text.
+
+    Markers are special lines that trigger platform features:
+    - __REACTION__:emoji - Add reaction to original message
+    - __EMBED__:{json} - Create an embed message
+    - __THREAD__:name:archive_minutes - Create a thread
+    - __EDIT__:message_id - Edit a previous message
+    - __BUTTONS__:[{json}] - Add interactive buttons
+
+    Args:
+        text: Full response text
+
+    Returns:
+        Dict with parsed data and cleaned text:
+        - text: Cleaned text with markers removed
+        - reaction: Emoji to react with (optional)
+        - embed: Embed data dict (optional)
+        - thread: Thread config dict (optional)
+        - edit_target: Message ID to edit (optional)
+        - buttons: Button configs list (optional)
+    """
+    result: dict[str, Any] = {"text": text}
+    lines_to_remove = []
+
+    for line in text.split("\n"):
+        line_stripped = line.strip()
+
+        # Reaction marker
+        if line_stripped.startswith("__REACTION__:"):
+            result["reaction"] = line_stripped.replace("__REACTION__:", "").strip()
+            lines_to_remove.append(line)
+
+        # Embed marker
+        elif line_stripped.startswith("__EMBED__:"):
+            try:
+                json_str = line_stripped.replace("__EMBED__:", "").strip()
+                result["embed"] = json.loads(json_str)
+                lines_to_remove.append(line)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse embed JSON: {e}")
+
+        # Thread marker
+        elif line_stripped.startswith("__THREAD__:"):
+            parts = line_stripped.replace("__THREAD__:", "").strip().split(":")
+            result["thread"] = {
+                "name": parts[0] if parts else "Discussion",
+                "auto_archive": int(parts[1]) if len(parts) > 1 else 1440,
+            }
+            lines_to_remove.append(line)
+
+        # Edit marker
+        elif line_stripped.startswith("__EDIT__:"):
+            result["edit_target"] = line_stripped.replace("__EDIT__:", "").strip()
+            lines_to_remove.append(line)
+
+        # Buttons marker
+        elif line_stripped.startswith("__BUTTONS__:"):
+            try:
+                json_str = line_stripped.replace("__BUTTONS__:", "").strip()
+                result["buttons"] = json.loads(json_str)
+                lines_to_remove.append(line)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse buttons JSON: {e}")
+
+    # Remove marker lines from text
+    for line in lines_to_remove:
+        text = text.replace(line, "")
+
+    result["text"] = text.strip()
+    return result
