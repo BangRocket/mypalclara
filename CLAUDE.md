@@ -24,8 +24,11 @@ poetry run python -m mypalclara.gateway status
 poetry run python -m mypalclara.gateway stop
 poetry run python -m mypalclara.gateway restart
 
-# Web interface
-poetry run uvicorn mypalclara.web.app:create_app --factory --reload --port 8000  # Backend
+# Web interface (managed by gateway)
+poetry run python -m mypalclara.gateway start --adapter web  # Start web via gateway
+
+# Web interface (standalone dev)
+WEB_DEV_MODE=true WEB_RELOAD=true poetry run python -m mypalclara.web  # Backend
 cd web-ui && pnpm dev                           # Frontend (port 5173, proxies to :8000)
 cd web-ui && pnpm build                         # Production build to web-ui/dist/
 
