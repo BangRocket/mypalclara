@@ -66,10 +66,11 @@ class ClaraConfig:
 
     # Graph memory
     enable_graph_memory: bool = False
-    graph_store_provider: str = "neo4j"
-    neo4j_url: str = ""
-    neo4j_username: str = ""
-    neo4j_password: str = ""
+    graph_store_provider: str = "falkordb"
+    falkordb_host: str = "localhost"
+    falkordb_port: int = 6379
+    falkordb_password: str = ""
+    falkordb_graph_name: str = "clara_memory"
 
     # Discord
     discord_bot_token: str = ""
@@ -156,10 +157,11 @@ class ClaraConfig:
             skip_profile_load=os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true",
             # Graph memory
             enable_graph_memory=os.getenv("ENABLE_GRAPH_MEMORY", "false").lower() == "true",
-            graph_store_provider=os.getenv("GRAPH_STORE_PROVIDER", "neo4j"),
-            neo4j_url=os.getenv("NEO4J_URL", ""),
-            neo4j_username=os.getenv("NEO4J_USERNAME", ""),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
+            graph_store_provider=os.getenv("GRAPH_STORE_PROVIDER", "falkordb"),
+            falkordb_host=os.getenv("FALKORDB_HOST", "localhost"),
+            falkordb_port=int(os.getenv("FALKORDB_PORT", "6379")),
+            falkordb_password=os.getenv("FALKORDB_PASSWORD", ""),
+            falkordb_graph_name=os.getenv("FALKORDB_GRAPH_NAME", "clara_memory"),
             # Discord
             discord_bot_token=os.getenv("DISCORD_BOT_TOKEN", ""),
             discord_client_id=os.getenv("DISCORD_CLIENT_ID", ""),

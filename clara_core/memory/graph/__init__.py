@@ -4,9 +4,9 @@ from clara_core.memory.graph.factory import GraphStoreFactory
 
 
 # Lazy imports to avoid requiring graph dependencies when not used
-def get_neo4j_graph():
-    """Get Neo4j MemoryGraph class (requires neo4j dependency)."""
-    from clara_core.memory.graph.neo4j import MemoryGraph
+def get_falkordb_graph():
+    """Get FalkorDB MemoryGraph class (requires falkordb dependency)."""
+    from clara_core.memory.graph.falkordb import MemoryGraph
 
     return MemoryGraph
 
@@ -20,6 +20,6 @@ def get_kuzu_graph():
 
 __all__ = [
     "GraphStoreFactory",
-    "get_neo4j_graph",
+    "get_falkordb_graph",
     "get_kuzu_graph",
 ]

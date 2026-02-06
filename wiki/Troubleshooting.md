@@ -176,17 +176,17 @@ SELECT * FROM pg_extension WHERE extname = 'vector';
 
 ### Graph Memory Errors
 
-**Symptom:** Neo4j or Kuzu connection errors
+**Symptom:** FalkorDB or Kuzu connection errors
 
 **Solution:**
 ```bash
 # Disable graph memory if not needed
 ENABLE_GRAPH_MEMORY=false
 
-# Or fix Neo4j connection
-NEO4J_URL=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your-password
+# Or fix FalkorDB connection
+FALKORDB_HOST=localhost
+FALKORDB_PORT=6379
+FALKORDB_PASSWORD=your-password  # Optional
 ```
 
 ## Database Issues

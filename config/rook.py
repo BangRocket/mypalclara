@@ -37,9 +37,10 @@ from clara_core.memory.config import (
     GRAPH_STORE_PROVIDER,
     QDRANT_DATA_DIR,
     KUZU_DATA_DIR,
-    NEO4J_URL,
-    NEO4J_USERNAME,
-    NEO4J_PASSWORD,
+    FALKORDB_HOST,
+    FALKORDB_PORT,
+    FALKORDB_PASSWORD,
+    FALKORDB_GRAPH_NAME,
 )
 
 __all__ = [
@@ -62,7 +63,8 @@ __all__ = [
     "GRAPH_STORE_PROVIDER",
     "QDRANT_DATA_DIR",
     "KUZU_DATA_DIR",
-    "NEO4J_URL",
-    "NEO4J_USERNAME",
-    "NEO4J_PASSWORD",
+    "FALKORDB_HOST",
+    "FALKORDB_PORT",
+    "FALKORDB_PASSWORD",
+    "FALKORDB_GRAPH_NAME",
 ]

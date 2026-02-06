@@ -1,13 +1,13 @@
-"""Neo4j graph store implementation for Clara Memory System."""
+"""FalkorDB graph store implementation for Clara Memory System."""
 
 import logging
 import os
 from typing import TYPE_CHECKING
 
 try:
-    from langchain_neo4j import Neo4jGraph
+    import falkordb
 except ImportError:
-    raise ImportError("langchain_neo4j is not installed. Please install it using pip install langchain-neo4j")
+    raise ImportError("falkordb is not installed. Please install it using pip install falkordb")
 
 try:
     from rank_bm25 import BM25Okapi
@@ -15,7 +15,6 @@ except ImportError:
     raise ImportError("rank_bm25 is not installed. Please install it using pip install rank-bm25")
 
 from clara_core.memory.embeddings.factory import EmbedderFactory
-from clara_core.memory.llm.factory import LlmFactory
 from clara_core.memory.graph.tools import (
     DELETE_MEMORY_TOOL_GRAPH,
     EXTRACT_ENTITIES_TOOL,
@@ -27,6 +26,7 @@ from clara_core.memory.graph.utils import (
     get_delete_messages,
     sanitize_relationship_for_cypher,
 )
+from clara_core.memory.llm.factory import LlmFactory
 
 if TYPE_CHECKING:
     from clara_core.memory.cache.graph_cache import GraphCache
@@ -35,26 +35,24 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryGraph:
-    """Neo4j-based graph memory for entity and relationship tracking."""
+    """FalkorDB-based graph memory for entity and relationship tracking."""
 
     def __init__(self, config):
-        """Initialize the Neo4j graph memory.
+        """Initialize the FalkorDB graph memory.
 
         Args:
             config: ClaraMemoryConfig instance with graph_store, embedder, and llm configs
         """
         self.config = config
 
-        # Initialize Neo4j connection
+        # Initialize FalkorDB connection
         graph_config = config.graph_store.config
-        self.graph = Neo4jGraph(
-            graph_config.get("url"),
-            graph_config.get("username", "neo4j"),
-            graph_config.get("password"),
-            graph_config.get("database", "neo4j"),
-            refresh_schema=False,
-            driver_config={"notifications_min_severity": "OFF"},
+        self.client = falkordb.FalkorDB(
+            host=graph_config.get("host", "localhost"),
+            port=graph_config.get("port", 6379),
+            password=graph_config.get("password"),
         )
+        self.graph = self.client.select_graph(graph_config.get("graph_name", "clara_memory"))
 
         # Initialize embedder
         self.embedding_model = EmbedderFactory.create(
@@ -62,8 +60,11 @@ class MemoryGraph:
             config.embedder.config,
         )
 
-        # Node label for entities
-        self.node_label = ":`__Entity__`"
+        # Embedding dimensions for vector index
+        self.embedding_dims = 1536
+
+        # Node label for entities (no backtick escaping needed in FalkorDB)
+        self.node_label = ":__Entity__"
 
         # Create indexes
         self._create_indexes()
@@ -101,15 +102,35 @@ class MemoryGraph:
                 logger.debug(f"Graph cache unavailable: {e}")
         return self._cache
 
+    def _query(self, cypher: str, params: dict | None = None) -> list[dict]:
+        """Execute Cypher and return list[dict] with column names as keys.
+
+        FalkorDB returns QueryResult with result_set (list[list]) and header
+        where each header entry is [column_type_int, column_name_str].
+        This helper normalizes results to list[dict] for consistent access.
+        """
+        result = self.graph.query(cypher, params=params or {})
+        if not result.result_set:
+            return []
+        # Header entries are [ColumnType, "column_name"] pairs — extract names
+        column_names = [col[1] if isinstance(col, (list, tuple)) else col for col in result.header]
+        return [dict(zip(column_names, row)) for row in result.result_set]
+
     def _create_indexes(self):
-        """Create Neo4j indexes for efficient querying."""
+        """Create FalkorDB indexes for efficient querying."""
+        # FalkorDB doesn't support IF NOT EXISTS for indexes, so wrap in try/except
         try:
-            self.graph.query(f"CREATE INDEX entity_single IF NOT EXISTS FOR (n {self.node_label}) ON (n.user_id)")
+            self.graph.query("CREATE INDEX FOR (n:__Entity__) ON (n.user_id)")
+        except Exception:
+            pass
+        try:
+            self.graph.query("CREATE INDEX FOR (n:__Entity__) ON (n.name)")
         except Exception:
             pass
         try:
             self.graph.query(
-                f"CREATE INDEX entity_composite IF NOT EXISTS FOR (n {self.node_label}) ON (n.name, n.user_id)"
+                f"CREATE VECTOR INDEX FOR (n:__Entity__) ON (n.embedding) "
+                f"OPTIONS {{dim: {self.embedding_dims}, similarityFunction: 'cosine'}}"
             )
         except Exception:
             pass
@@ -257,7 +278,7 @@ class MemoryGraph:
         RETURN n.name AS source, type(r) AS relationship, m.name AS target
         LIMIT $limit
         """
-        results = self.graph.query(query, params=params)
+        results = self._query(query, params=params)
 
         final_results = [
             {"source": r["source"], "relationship": r["relationship"], "target": r["target"]} for r in results
@@ -357,19 +378,22 @@ class MemoryGraph:
         for node in node_list:
             n_embedding = self.embedding_model.embed(node)
 
+            # FalkorDB uses vec.cosineDistance() which returns [0, 2] where 0 = identical.
+            # Convert to similarity: similarity = 1 - distance
+            # vecf32() wraps the embedding parameter for FalkorDB vector operations.
             cypher_query = f"""
             MATCH (n {self.node_label} {{{node_props_str}}})
             WHERE n.embedding IS NOT NULL
-            WITH n, round(2 * vector.similarity.cosine(n.embedding, $n_embedding) - 1, 4) AS similarity
+            WITH n, (1 - vec.cosineDistance(n.embedding, vecf32($n_embedding))) AS similarity
             WHERE similarity >= $threshold
             CALL {{
                 WITH n
                 MATCH (n)-[r]->(m {self.node_label} {{{node_props_str}}})
-                RETURN n.name AS source, elementId(n) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, m.name AS destination, elementId(m) AS destination_id
+                RETURN n.name AS source, id(n) AS source_id, type(r) AS relationship, id(r) AS relation_id, m.name AS destination, id(m) AS destination_id
                 UNION
                 WITH n
                 MATCH (n)<-[r]-(m {self.node_label} {{{node_props_str}}})
-                RETURN m.name AS source, elementId(m) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, n.name AS destination, elementId(n) AS destination_id
+                RETURN m.name AS source, id(m) AS source_id, type(r) AS relationship, id(r) AS relation_id, n.name AS destination, id(n) AS destination_id
             }}
             WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
             RETURN source, source_id, relationship, relation_id, destination, destination_id, similarity
@@ -388,7 +412,7 @@ class MemoryGraph:
             if filters.get("run_id"):
                 params["run_id"] = filters["run_id"]
 
-            ans = self.graph.query(cypher_query, params=params)
+            ans = self._query(cypher_query, params=params)
             result_relations.extend(ans)
 
         return result_relations
@@ -461,7 +485,7 @@ class MemoryGraph:
             RETURN n.name AS source, m.name AS target, type(r) AS relationship
             """
 
-            result = self.graph.query(cypher, params=params)
+            result = self._query(cypher, params=params)
             results.append(result)
 
         return results
@@ -497,20 +521,14 @@ class MemoryGraph:
             if run_id:
                 params["run_id"] = run_id
 
-            merge_props = ["name: $name", "user_id: $user_id"]
-            if agent_id:
-                merge_props.append("agent_id: $agent_id")
-            if run_id:
-                merge_props.append("run_id: $run_id")
-            merge_props_str = ", ".join(merge_props)
-
             if source_node and dest_node:
                 # Both nodes exist - just create relationship
+                # FalkorDB uses id() instead of elementId()
                 cypher = f"""
-                MATCH (source) WHERE elementId(source) = $source_id
+                MATCH (source) WHERE id(source) = $source_id
                 SET source.mentions = coalesce(source.mentions, 0) + 1
                 WITH source
-                MATCH (destination) WHERE elementId(destination) = $destination_id
+                MATCH (destination) WHERE id(destination) = $destination_id
                 SET destination.mentions = coalesce(destination.mentions, 0) + 1
                 MERGE (source)-[r:{relationship}]->(destination)
                 ON CREATE SET r.created_at = timestamp(), r.mentions = 1
@@ -519,21 +537,21 @@ class MemoryGraph:
                 """
                 params.update(
                     {
-                        "source_id": source_node[0]["elementId(source_candidate)"],
-                        "destination_id": dest_node[0]["elementId(destination_candidate)"],
+                        "source_id": source_node[0]["id(source_candidate)"],
+                        "destination_id": dest_node[0]["id(destination_candidate)"],
                     }
                 )
             elif source_node:
                 # Source exists, create destination
+                # FalkorDB: SET embedding = vecf32() instead of CALL db.create.setNodeVectorProperty()
                 cypher = f"""
-                MATCH (source) WHERE elementId(source) = $source_id
+                MATCH (source) WHERE id(source) = $source_id
                 SET source.mentions = coalesce(source.mentions, 0) + 1
                 WITH source
                 MERGE (destination {self.node_label} {{name: $dest_name, user_id: $user_id}})
                 ON CREATE SET destination.created = timestamp(), destination.mentions = 1
                 ON MATCH SET destination.mentions = coalesce(destination.mentions, 0) + 1
-                WITH source, destination
-                CALL db.create.setNodeVectorProperty(destination, 'embedding', $dest_embedding)
+                SET destination.embedding = vecf32($dest_embedding)
                 WITH source, destination
                 MERGE (source)-[r:{relationship}]->(destination)
                 ON CREATE SET r.created = timestamp(), r.mentions = 1
@@ -542,7 +560,7 @@ class MemoryGraph:
                 """
                 params.update(
                     {
-                        "source_id": source_node[0]["elementId(source_candidate)"],
+                        "source_id": source_node[0]["id(source_candidate)"],
                         "dest_name": destination,
                         "dest_embedding": dest_embedding,
                     }
@@ -550,14 +568,13 @@ class MemoryGraph:
             elif dest_node:
                 # Destination exists, create source
                 cypher = f"""
-                MATCH (destination) WHERE elementId(destination) = $destination_id
+                MATCH (destination) WHERE id(destination) = $destination_id
                 SET destination.mentions = coalesce(destination.mentions, 0) + 1
                 WITH destination
                 MERGE (source {self.node_label} {{name: $source_name, user_id: $user_id}})
                 ON CREATE SET source.created = timestamp(), source.mentions = 1
                 ON MATCH SET source.mentions = coalesce(source.mentions, 0) + 1
-                WITH source, destination
-                CALL db.create.setNodeVectorProperty(source, 'embedding', $source_embedding)
+                SET source.embedding = vecf32($source_embedding)
                 WITH source, destination
                 MERGE (source)-[r:{relationship}]->(destination)
                 ON CREATE SET r.created = timestamp(), r.mentions = 1
@@ -566,7 +583,7 @@ class MemoryGraph:
                 """
                 params.update(
                     {
-                        "destination_id": dest_node[0]["elementId(destination_candidate)"],
+                        "destination_id": dest_node[0]["id(destination_candidate)"],
                         "source_name": source,
                         "source_embedding": source_embedding,
                     }
@@ -577,14 +594,12 @@ class MemoryGraph:
                 MERGE (source {self.node_label} {{name: $source_name, user_id: $user_id}})
                 ON CREATE SET source.created = timestamp(), source.mentions = 1
                 ON MATCH SET source.mentions = coalesce(source.mentions, 0) + 1
-                WITH source
-                CALL db.create.setNodeVectorProperty(source, 'embedding', $source_embedding)
+                SET source.embedding = vecf32($source_embedding)
                 WITH source
                 MERGE (destination {self.node_label} {{name: $dest_name, user_id: $user_id}})
                 ON CREATE SET destination.created = timestamp(), destination.mentions = 1
                 ON MATCH SET destination.mentions = coalesce(destination.mentions, 0) + 1
-                WITH source, destination
-                CALL db.create.setNodeVectorProperty(destination, 'embedding', $dest_embedding)
+                SET destination.embedding = vecf32($dest_embedding)
                 WITH source, destination
                 MERGE (source)-[r:{relationship}]->(destination)
                 ON CREATE SET r.created = timestamp(), r.mentions = 1
@@ -600,7 +615,7 @@ class MemoryGraph:
                     }
                 )
 
-            result = self.graph.query(cypher, params=params)
+            result = self._query(cypher, params=params)
             results.append(result)
 
         return results
@@ -613,14 +628,15 @@ class MemoryGraph:
         if filters.get("run_id"):
             where_conditions.append("source_candidate.run_id = $run_id")
 
+        # FalkorDB: vec.cosineDistance returns [0, 2], convert to similarity [−1, 1]
         cypher = f"""
         MATCH (source_candidate {self.node_label})
         WHERE {" AND ".join(where_conditions)}
-        WITH source_candidate, round(2 * vector.similarity.cosine(source_candidate.embedding, $source_embedding) - 1, 4) AS similarity
+        WITH source_candidate, (1 - vec.cosineDistance(source_candidate.embedding, vecf32($source_embedding))) AS similarity
         WHERE similarity >= $threshold
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN elementId(source_candidate)
+        RETURN id(source_candidate)
         """
 
         params = {"source_embedding": source_embedding, "user_id": filters["user_id"], "threshold": self.threshold}
@@ -629,24 +645,27 @@ class MemoryGraph:
         if filters.get("run_id"):
             params["run_id"] = filters["run_id"]
 
-        return self.graph.query(cypher, params=params)
+        return self._query(cypher, params=params)
 
     def _search_destination_node(self, dest_embedding: list, filters: dict) -> list:
         """Search for a destination node by embedding similarity."""
-        where_conditions = ["dest_candidate.embedding IS NOT NULL", "dest_candidate.user_id = $user_id"]
+        where_conditions = [
+            "destination_candidate.embedding IS NOT NULL",
+            "destination_candidate.user_id = $user_id",
+        ]
         if filters.get("agent_id"):
-            where_conditions.append("dest_candidate.agent_id = $agent_id")
+            where_conditions.append("destination_candidate.agent_id = $agent_id")
         if filters.get("run_id"):
-            where_conditions.append("dest_candidate.run_id = $run_id")
+            where_conditions.append("destination_candidate.run_id = $run_id")
 
         cypher = f"""
-        MATCH (dest_candidate {self.node_label})
+        MATCH (destination_candidate {self.node_label})
         WHERE {" AND ".join(where_conditions)}
-        WITH dest_candidate, round(2 * vector.similarity.cosine(dest_candidate.embedding, $dest_embedding) - 1, 4) AS similarity
+        WITH destination_candidate, (1 - vec.cosineDistance(destination_candidate.embedding, vecf32($dest_embedding))) AS similarity
         WHERE similarity >= $threshold
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN elementId(dest_candidate)
+        RETURN id(destination_candidate)
         """
 
         params = {"dest_embedding": dest_embedding, "user_id": filters["user_id"], "threshold": self.threshold}
@@ -655,7 +674,7 @@ class MemoryGraph:
         if filters.get("run_id"):
             params["run_id"] = filters["run_id"]
 
-        return self.graph.query(cypher, params=params)
+        return self._query(cypher, params=params)
 
     def _remove_spaces_from_entities(self, entity_list: list) -> list:
         """Normalize entity names by lowercasing and replacing spaces."""

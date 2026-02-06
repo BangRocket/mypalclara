@@ -65,7 +65,7 @@ Adapters connect platform-specific APIs to the gateway:
 
 Clara's memory uses mem0 with multiple layers:
 - **Vector Store** - pgvector (production) or Qdrant (development)
-- **Graph Store** - Neo4j or Kuzu for relationship tracking
+- **Graph Store** - FalkorDB or Kuzu for relationship tracking
 - **Session Store** - SQLAlchemy with SQLite or PostgreSQL
 
 ### Tool System

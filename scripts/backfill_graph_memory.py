@@ -37,7 +37,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("anthropic").setLevel(logging.WARNING)
-logging.getLogger("neo4j").setLevel(logging.WARNING)
+logging.getLogger("falkordb").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("clara_core.memory").setLevel(logging.WARNING)
 
