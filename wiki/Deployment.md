@@ -6,9 +6,58 @@ This guide covers deploying Clara in production environments.
 
 | Option | Best For | Complexity |
 |--------|----------|------------|
+| Docker Compose | Self-hosted, customizable | Low-Medium |
 | Railway | Quick start, managed | Low |
-| Docker Compose | Self-hosted, customizable | Medium |
 | Manual | Full control | High |
+
+## Docker Compose
+
+### Basic Setup
+
+```bash
+# Clone repo
+git clone https://github.com/BangRocket/mypalclara.git
+cd mypalclara
+
+# Configure
+cp .env.docker.example .env
+# Edit .env with your values
+
+# Run Discord bot with databases
+docker-compose --profile discord up -d
+
+# Run gateway with adapters
+docker-compose --profile gateway --profile adapters up -d
+```
+
+### Docker Compose Profiles
+
+| Profile | Services |
+|---------|----------|
+| `discord` | Discord bot (standalone mode) |
+| `gateway` | Gateway server |
+| `adapters` | Gateway-connected Discord adapter |
+| `teams` | Teams adapter |
+| `qdrant` | Qdrant vector database |
+| `redis` | Redis cache |
+
+**Always-on services** (no profile needed):
+- `postgres` - Main PostgreSQL database (port 5442)
+- `postgres-vectors` - pgvector database (port 5443)
+- `falkordb` - FalkorDB graph database (port 6380)
+
+### Custom Build
+
+```yaml
+services:
+  clara:
+    build: .
+    env_file: .env
+    volumes:
+      - ./clara_files:/app/clara_files
+      - ./mcp_servers:/app/mcp_servers
+    restart: unless-stopped
+```
 
 ## Railway Deployment
 
@@ -45,60 +94,12 @@ Railway can provision PostgreSQL:
    CREATE EXTENSION IF NOT EXISTS vector;
    ```
 
-### Custom Domain
-
-1. Go to Settings > Domains
-2. Add custom domain
-3. Configure DNS CNAME record
-
-## Docker Compose
-
-### Basic Setup
-
-```bash
-# Clone repo
-git clone https://github.com/BangRocket/mypalclara.git
-cd mypalclara
-
-# Configure
-cp .env.example .env
-# Edit .env with your values
-
-# Run Discord bot only
-docker-compose --profile discord up -d
-
-# Run with PostgreSQL
-docker-compose --profile discord --profile postgres up -d
-```
-
-### docker-compose.yml Profiles
-
-| Profile | Services |
-|---------|----------|
-| `discord` | Discord bot |
-| `postgres` | PostgreSQL + pgvector |
-| `gateway` | Gateway server |
-| `teams` | Teams adapter (beta) |
-
-### Custom Build
-
-```yaml
-services:
-  clara:
-    build: .
-    env_file: .env
-    volumes:
-      - ./clara_files:/app/clara_files
-      - ./mcp_servers:/app/mcp_servers
-    restart: unless-stopped
-```
-
 ## Database Setup
 
 ### PostgreSQL with pgvector
 
 ```bash
-# Create database
+# Create databases
 createdb clara_main
 createdb clara_vectors
 
@@ -110,7 +111,7 @@ psql clara_vectors -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 ```bash
 DATABASE_URL=postgresql://user:pass@host:5432/clara_main
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/clara_vectors
+ROOK_DATABASE_URL=postgresql://user:pass@host:5432/clara_vectors
 ```
 
 ### Migrations
@@ -121,7 +122,11 @@ Run migrations on first deploy:
 poetry run python scripts/migrate.py
 ```
 
-Or auto-migrate on startup (default behavior).
+Check migration status:
+
+```bash
+poetry run python scripts/migrate.py status
+```
 
 ## Database Backups
 
@@ -180,8 +185,8 @@ Suitable for personal use:
 For team or public use:
 - PostgreSQL for sessions
 - pgvector for memory
+- FalkorDB for graph relations
 - Shared MCP server configs
-- Load balancer (future)
 
 ### Resource Requirements
 
@@ -245,19 +250,19 @@ curl http://localhost:18789/health
 1. Check Discord bot token
 2. Verify bot is in the server
 3. Check channel permissions
-4. Review logs for errors
+4. Review logs: `poetry run python -m mypalclara.gateway logs`
 
 ### Memory Not Working
 
 1. Verify OPENAI_API_KEY is set
 2. Check vector store connection
-3. Review mem0 logs
+3. Review Rook configuration in `config/rook.py`
 
 ### Database Issues
 
 1. Check DATABASE_URL format
 2. Verify pgvector extension
-3. Run migrations
+3. Run migrations: `poetry run python scripts/migrate.py`
 
 ### MCP Servers Failing
 

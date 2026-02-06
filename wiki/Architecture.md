@@ -1,51 +1,48 @@
 # Architecture
 
-MyPalClara uses a modular architecture with a central gateway for message processing.
+MyPalClara uses a gateway architecture with a central WebSocket server for message processing and thin platform adapters.
 
 ## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Gateway Server                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Router    │  │  Processor  │  │    LLM Orchestrator     │  │
-│  │  (queuing)  │──│  (context)  │──│  (streaming, tools)     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-│         │                                        │               │
-│         ▼                                        ▼               │
-│  ┌─────────────┐                        ┌─────────────────────┐  │
-│  │   Session   │                        │   Tool Executor     │  │
-│  │   Manager   │                        │   (MCP, built-in)   │  │
-│  └─────────────┘                        └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-         │                                         │
-         │ WebSocket                               │
-         ▼                                         ▼
-┌─────────────────┐                      ┌─────────────────────┐
-│ Discord Adapter │                      │   MCP Servers       │
-│  (py-cord)      │                      │  (stdio/HTTP)       │
-└─────────────────┘                      └─────────────────────┘
-┌─────────────────┐
-│  Teams Adapter  │
-│  (Bot Framework)│
-└─────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      Clara Gateway                           │
+│  ┌──────────┐  ┌───────────┐  ┌───────────────────────────┐ │
+│  │  Router   │──│ Processor │──│    LLM Orchestrator       │ │
+│  │ (queuing) │  │ (context) │  │ (streaming, tool calling) │ │
+│  └──────────┘  └───────────┘  └───────────────────────────┘ │
+│       │                                  │                   │
+│       ▼                                  ▼                   │
+│  ┌──────────┐  ┌──────────┐    ┌─────────────────────────┐  │
+│  │ Sessions │  │  Rook    │    │    Tool Executor        │  │
+│  │          │  │ (memory) │    │ (MCP + built-in tools)  │  │
+│  └──────────┘  └──────────┘    └─────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+        │ WebSocket
+        ▼
+┌────────────┐  ┌────────────┐  ┌────────────┐
+│  Discord   │  │   Teams    │  │    CLI     │
+│  Adapter   │  │  Adapter   │  │  Adapter   │
+└────────────┘  └────────────┘  └────────────┘
 ```
 
 ## Core Components
 
 ### Gateway Server
 
-The gateway (`gateway/`) is the central hub that:
+The gateway (`mypalclara/gateway/`) is the central hub that:
 - Accepts WebSocket connections from platform adapters
 - Routes messages through the processing pipeline
 - Manages sessions and user context
 - Coordinates tool execution
 
 Key files:
-- `gateway/server.py` - WebSocket server
-- `gateway/router.py` - Message routing and queuing
-- `gateway/processor.py` - Context building and memory retrieval
-- `gateway/llm_orchestrator.py` - LLM calls with streaming and tool detection
+- `mypalclara/gateway/server.py` - WebSocket server
+- `mypalclara/gateway/router.py` - Message routing and queuing
+- `mypalclara/gateway/processor.py` - Context building and memory retrieval
+- `mypalclara/gateway/llm_orchestrator.py` - LLM calls with streaming and tool detection
+- `mypalclara/gateway/tool_executor.py` - Tool invocation
+- `mypalclara/gateway/session.py` - Session management
 
 ### Platform Adapters
 
@@ -55,25 +52,55 @@ Adapters connect platform-specific APIs to the gateway:
 - Uses py-cord for Discord API
 - Handles message formatting, splitting, and reactions
 - Manages channel modes (active/mention/off)
+- Streaming responses via message edits
 
 **Teams Adapter** (`adapters/teams/`):
 - Uses Bot Framework SDK
 - Adaptive Cards for rich responses
 - Azure Bot Service authentication
 
-### Memory System
+**CLI Adapter** (`adapters/cli/`):
+- Interactive terminal with command history
+- Markdown rendering for responses
+- Shell command execution with approval flow
 
-Clara's memory uses mem0 with multiple layers:
-- **Vector Store** - pgvector (production) or Qdrant (development)
+### LLM Providers
+
+Unified provider architecture in `clara_core/llm/`:
+
+| Provider | Backend | Notes |
+|----------|---------|-------|
+| `openrouter` | OpenRouter API | Multi-model proxy (default) |
+| `anthropic` | Native Anthropic SDK | Supports proxies like clewdr |
+| `nanogpt` | NanoGPT API | Moonshot AI models |
+| `openai` | OpenAI-compatible | Any compatible endpoint |
+| `bedrock` | Amazon Bedrock | AWS-hosted Claude models |
+| `azure` | Azure OpenAI | Azure-hosted models |
+
+Key modules:
+- `clara_core/llm/providers/base.py` - Abstract `LLMProvider` interface
+- `clara_core/llm/providers/langchain.py` - LangChain, DirectAnthropic, DirectOpenAI providers
+- `clara_core/llm/providers/registry.py` - Provider caching and factory
+- `clara_core/llm/messages.py` - Typed message dataclasses (SystemMessage, UserMessage, etc.)
+- `clara_core/llm/formats.py` - Provider-specific format conversion
+
+### Memory System (Rook)
+
+Clara's memory uses Rook with multiple layers:
+- **Vector Store** - pgvector (production) or Qdrant (development) for semantic search
 - **Graph Store** - FalkorDB or Kuzu for relationship tracking
 - **Session Store** - SQLAlchemy with SQLite or PostgreSQL
 
+Configuration in `config/rook.py` with env vars using `ROOK_*` prefix (fallback: `MEM0_*`).
+
 ### Tool System
 
-Tools are registered in a unified registry:
-- **Built-in Tools** - File operations, code execution, web search
-- **MCP Tools** - External MCP servers (stdio or HTTP transport)
-- **Integration Tools** - GitHub, Google Workspace, Azure DevOps
+Tools are loaded via the plugin system:
+- **Built-in Tools** (`clara_core/core_tools/`) - File operations, code execution, web search, browser, terminal
+- **MCP Tools** (`clara_core/mcp/`) - External MCP servers (stdio or HTTP transport)
+- **Integration Tools** - GitHub, Azure DevOps, Google Workspace (via MCP or built-in)
+
+Tool registry in `tools/_registry.py` wraps `clara_core/plugins/` for backwards compatibility.
 
 ## Data Flow
 
@@ -162,8 +189,9 @@ See [[Configuration]] for the complete list of environment variables.
 
 ### File-Based Config
 
-- `hooks/hooks.yaml` - Gateway event hooks
-- `scheduler.yaml` - Scheduled tasks
+- `hooks/hooks.yaml.example` - Gateway event hooks (copy to `hooks.yaml` to activate)
+- `config/scheduler.yaml.example` - Scheduled tasks
+- `mypalclara/gateway/adapters.yaml` - Adapter configuration
 - `.mcp_servers/` - MCP server configurations
 
 ## Scaling Considerations
@@ -176,5 +204,5 @@ See [[Configuration]] for the complete list of environment variables.
 ### Production (Multi-Instance)
 - PostgreSQL for sessions
 - pgvector for memory vectors
-- Redis for session sharing (future)
+- FalkorDB for graph memory
 - Load balancer for gateway instances

@@ -4,9 +4,9 @@ Step-by-step guide to installing MyPalClara.
 
 ## Prerequisites
 
-- **Python 3.11+** - Required for the bot
+- **Python 3.11+** (< 3.14) - Required
 - **Poetry** - Python dependency management
-- **Docker** - Optional, for code execution sandbox
+- **Docker** - Optional, for code execution sandbox and databases
 - **Node.js/npm** - Optional, for MCP servers from npm
 
 ### Installing Prerequisites
@@ -67,7 +67,7 @@ git config core.hooksPath .githooks
 ### Create Environment File
 
 ```bash
-cp .env.example .env
+cp .env.docker.example .env
 ```
 
 ### Required Settings
@@ -78,7 +78,7 @@ Edit `.env` with your API keys:
 # Discord bot token (from Discord Developer Portal)
 DISCORD_BOT_TOKEN=your-bot-token
 
-# OpenAI API key (required for mem0 embeddings)
+# OpenAI API key (required for Rook embeddings)
 OPENAI_API_KEY=sk-your-key
 
 # Choose LLM provider
@@ -107,34 +107,34 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 ### Development
 
 ```bash
-# Run the Discord bot directly
-poetry run python discord_bot.py
+# Run via gateway (recommended)
+poetry run python -m mypalclara.gateway start --adapter discord
 
-# Or run via gateway (multi-platform support)
-poetry run python -m mypalclara.gateway
+# Or foreground mode
+poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
 ```
 
 ### Production
 
 ```bash
 # Daemon mode
-poetry run python discord_bot.py --daemon --logfile /var/log/clara.log
+poetry run python -m mypalclara.gateway start
 
 # Check status
-poetry run python discord_bot.py --status
+poetry run python -m mypalclara.gateway status
 
 # Stop
-poetry run python discord_bot.py --stop
+poetry run python -m mypalclara.gateway stop
 ```
 
 ### Docker
 
 ```bash
-# Discord bot only
+# Discord bot with databases
 docker-compose --profile discord up -d
 
-# With PostgreSQL databases
-docker-compose --profile discord --profile postgres up -d
+# Gateway with adapters
+docker-compose --profile gateway --profile adapters up -d
 ```
 
 ## Verify Installation
@@ -166,8 +166,8 @@ Add to `~/.bashrc` or `~/.zshrc` for persistence.
 Ensure you're in the project directory and using Poetry:
 ```bash
 cd mypalclara
-poetry shell  # Activate virtual environment
-python discord_bot.py
+poetry shell
+poetry run python -m mypalclara.gateway start
 ```
 
 ### Bot Not Responding
@@ -177,7 +177,7 @@ python discord_bot.py
 3. Check bot has permissions in the channel
 4. Review logs for errors
 
-### Memory Errors (mem0)
+### Memory Errors (Rook)
 
 1. Ensure OPENAI_API_KEY is set
 2. Check vector store is running (if using Qdrant)

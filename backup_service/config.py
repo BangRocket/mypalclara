@@ -33,6 +33,14 @@ class BackupConfig:
     respawn_hours: int = 23
     force: bool = False
 
+    # FalkorDB (optional graph memory backup)
+    falkordb_host: str = ""
+    falkordb_port: int = 6379
+    falkordb_password: str = ""
+
+    # Config file backup (optional)
+    config_paths: list[str] = field(default_factory=list)
+
     # DB retry
     db_retry_attempts: int = 5
     db_retry_delay: int = 2
@@ -63,6 +71,12 @@ class BackupConfig:
             dump_timeout=int(os.getenv("BACKUP_DUMP_TIMEOUT", "600")),
             respawn_hours=int(os.getenv("RESPAWN_PROTECTION_HOURS", "23")),
             force=os.getenv("FORCE_BACKUP", "").lower() == "true",
+            # FalkorDB
+            falkordb_host=os.getenv("FALKORDB_HOST", ""),
+            falkordb_port=int(os.getenv("FALKORDB_PORT", "6379")),
+            falkordb_password=os.getenv("FALKORDB_PASSWORD", ""),
+            # Config file backup
+            config_paths=[p.strip() for p in os.getenv("BACKUP_CONFIG_PATHS", "").split(",") if p.strip()],
             # DB retry
             db_retry_attempts=int(os.getenv("DB_RETRY_ATTEMPTS", "5")),
             db_retry_delay=int(os.getenv("DB_RETRY_DELAY", "2")),
@@ -70,6 +84,16 @@ class BackupConfig:
             health_port=int(os.getenv("HEALTH_PORT", os.getenv("PORT", "8080"))),
             cron_schedule=os.getenv("BACKUP_CRON_SCHEDULE", "0 3 * * *"),
         )
+
+    @property
+    def falkordb_enabled(self) -> bool:
+        """True when FalkorDB host is configured."""
+        return bool(self.falkordb_host)
+
+    @property
+    def config_backup_enabled(self) -> bool:
+        """True when config file paths are configured."""
+        return bool(self.config_paths)
 
     @property
     def databases(self) -> dict[str, str]:

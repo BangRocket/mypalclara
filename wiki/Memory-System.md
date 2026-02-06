@@ -1,6 +1,6 @@
 # Memory System
 
-Clara uses [mem0](https://github.com/mem0ai/mem0) for persistent semantic memory with vector search and optional graph relationship tracking.
+Clara uses Rook for persistent semantic memory with vector search and optional graph relationship tracking.
 
 ## Overview
 
@@ -31,12 +31,12 @@ For entity relationship tracking:
 # Required for embeddings
 OPENAI_API_KEY=your-key
 
-# Memory extraction LLM
-MEM0_PROVIDER=openrouter  # or anthropic, nanogpt, openai
-MEM0_MODEL=openai/gpt-4o-mini
+# Memory extraction LLM (independent from chat LLM)
+ROOK_PROVIDER=openrouter  # or anthropic, nanogpt, openai
+ROOK_MODEL=openai/gpt-4o-mini
 
 # Vector store (production)
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
+ROOK_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 # Graph store (optional)
 ENABLE_GRAPH_MEMORY=true
@@ -46,6 +46,8 @@ FALKORDB_PORT=6379             # Default: 6379
 FALKORDB_PASSWORD=password     # Optional
 FALKORDB_GRAPH_NAME=clara_memory  # Default: clara_memory
 ```
+
+Note: `MEM0_*` env vars are supported as fallback for backward compatibility.
 
 ## Memory Types
 
@@ -117,7 +119,7 @@ Memories are retrieved during message processing:
 ### Extraction
 
 After each conversation exchange:
-1. Recent messages sent to mem0
+1. Recent messages sent to Rook
 2. LLM extracts relevant facts
 3. Deduplication with existing memories
 4. Storage with metadata
@@ -130,17 +132,26 @@ To manage context window:
 - Max 20 graph relations
 - Search query truncated to 6000 chars
 
-## Clear Memory
+## Scripts
 
 ```bash
-# With confirmation prompt
-poetry run python clear_dbs.py
+# Ingest profile data
+poetry run python scripts/bootstrap_memory.py
+
+# Apply to Rook
+poetry run python scripts/bootstrap_memory.py --apply
+
+# Clear memory with confirmation prompt
+poetry run python scripts/clear_dbs.py
 
 # Skip confirmation
-poetry run python clear_dbs.py --yes
+poetry run python scripts/clear_dbs.py --yes
 
 # Clear specific user only
-poetry run python clear_dbs.py --user discord-123456
+poetry run python scripts/clear_dbs.py --user discord-123456
+
+# Backfill graph memory from Discord history
+poetry run python scripts/backfill_graph_memory.py
 ```
 
 ## API Usage
@@ -170,27 +181,27 @@ manager.add_to_mem0(
 )
 ```
 
-### Direct mem0 Access
+### Direct Rook Access
 
 ```python
-from config.mem0 import MEM0
+from config.rook import ROOK
 
 # Search memories
-results = MEM0.search(
+results = ROOK.search(
     "Josh's work",
     user_id="discord-123",
     agent_id="clara"
 )
 
 # Add memory
-MEM0.add(
+ROOK.add(
     [{"role": "user", "content": "My name is Josh"}],
     user_id="discord-123",
     agent_id="clara"
 )
 
 # Get all memories
-all_mems = MEM0.get_all(user_id="discord-123")
+all_mems = ROOK.get_all(user_id="discord-123")
 ```
 
 ## Best Practices

@@ -45,6 +45,9 @@ poetry run python -m mypalclara.gateway stop
 
 # Restart
 poetry run python -m mypalclara.gateway restart
+
+# View logs
+poetry run python -m mypalclara.gateway logs
 ```
 
 ### Adapter Management
@@ -65,7 +68,7 @@ poetry run python -m mypalclara.gateway adapter discord restart
 
 ### Adapter Configuration
 
-Configure adapters in `gateway/adapters.yaml`:
+Configure adapters in `mypalclara/gateway/adapters.yaml`:
 
 ```yaml
 adapters:
@@ -106,35 +109,35 @@ adapters:
 
 ## Components
 
-### Router (`gateway/router.py`)
+### Router (`mypalclara/gateway/router.py`)
 
 Handles message queuing and routing:
 - Per-channel message queues
 - Priority handling
 - Cancellation support
 
-### Processor (`gateway/processor.py`)
+### Processor (`mypalclara/gateway/processor.py`)
 
 Builds context for LLM calls:
-- Fetches memories from mem0
+- Fetches memories from Rook
 - Retrieves channel summaries
 - Manages session context
 
-### LLM Orchestrator (`gateway/llm_orchestrator.py`)
+### LLM Orchestrator (`mypalclara/gateway/llm_orchestrator.py`)
 
 Coordinates LLM interactions:
 - Streaming response generation
 - Tool call detection and execution
 - Auto-continue for long responses
 
-### Session Manager (`gateway/session.py`)
+### Session Manager (`mypalclara/gateway/session.py`)
 
 Manages user sessions:
 - Session creation and lookup
 - Activity tracking
 - Stale session cleanup
 
-### Tool Executor (`gateway/tool_executor.py`)
+### Tool Executor (`mypalclara/gateway/tool_executor.py`)
 
 Executes tool calls:
 - Built-in tool registry
@@ -198,7 +201,7 @@ Hooks are automations triggered by gateway events.
 
 ### Configuration
 
-Create `hooks/hooks.yaml`:
+Copy `hooks/hooks.yaml.example` to `hooks/hooks.yaml`:
 
 ```yaml
 hooks:
@@ -256,7 +259,7 @@ Hooks receive context via environment variables:
 Register hooks programmatically:
 
 ```python
-from gateway import hook, EventType, Event
+from mypalclara.gateway import hook, EventType, Event
 
 @hook(EventType.SESSION_START)
 async def on_session_start(event: Event):
@@ -269,7 +272,7 @@ The scheduler runs tasks on intervals or cron schedules.
 
 ### Configuration
 
-Create `scheduler.yaml`:
+Copy `config/scheduler.yaml.example` to `config/scheduler.yaml`:
 
 ```yaml
 tasks:
@@ -304,7 +307,7 @@ tasks:
 Register tasks programmatically:
 
 ```python
-from gateway import scheduled, TaskType
+from mypalclara.gateway import scheduled, TaskType
 
 @scheduled(type=TaskType.INTERVAL, interval=3600)
 async def hourly_cleanup():

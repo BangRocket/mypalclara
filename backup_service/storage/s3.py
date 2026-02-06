@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 BACKUP_PREFIX = "backups"
 
+# Map db_name to file extension
+_EXTENSIONS: dict[str, str] = {
+    "falkordb": ".rdb.gz",
+    "config": ".tar.gz",
+}
+_DEFAULT_EXT = ".sql.gz"
+
 
 class S3Backend:
     """Store backups in S3-compatible object storage."""
@@ -38,7 +45,8 @@ class S3Backend:
         self.client.head_bucket(Bucket=self.bucket)
 
     def upload(self, data: bytes, db_name: str, timestamp: str) -> str:
-        key = f"{BACKUP_PREFIX}/{db_name}/{db_name}_{timestamp}.sql.gz"
+        ext = _EXTENSIONS.get(db_name, _DEFAULT_EXT)
+        key = f"{BACKUP_PREFIX}/{db_name}/{db_name}_{timestamp}{ext}"
         self.client.put_object(
             Bucket=self.bucket,
             Key=key,
@@ -66,23 +74,30 @@ class S3Backend:
                 f"{BACKUP_PREFIX}/clara/",
                 f"{BACKUP_PREFIX}/rook/",
                 f"{BACKUP_PREFIX}/mem0/",  # Backward compat
+                f"{BACKUP_PREFIX}/falkordb/",
+                f"{BACKUP_PREFIX}/config/",
             ]
+
+        # Map prefix path component to display db_name
+        _prefix_to_db = {
+            "mem0": "rook",
+            "clara": "clara",
+            "rook": "rook",
+            "falkordb": "falkordb",
+            "config": "config",
+        }
 
         for prefix in prefixes:
             # Determine db_name from prefix
-            if "/mem0/" in prefix:
-                entry_db = "rook"
-            elif "/clara/" in prefix:
-                entry_db = "clara"
-            else:
-                entry_db = db_name or "unknown"
+            prefix_part = prefix.rstrip("/").split("/")[-1]
+            entry_db = _prefix_to_db.get(prefix_part, db_name or "unknown")
 
             try:
                 paginator = self.client.get_paginator("list_objects_v2")
                 for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
                     for obj in page.get("Contents", []):
                         filename = obj["Key"].split("/")[-1]
-                        if not filename.endswith(".sql.gz"):
+                        if not filename.endswith(".gz"):
                             continue
                         entries.append(
                             BackupEntry(

@@ -6,6 +6,8 @@ Automated database backup service with local and S3 storage, Rich CLI, and Docke
 
 The backup service provides:
 - Automated PostgreSQL backups (Clara main DB + Rook vectors DB)
+- FalkorDB graph memory backups (RDB dump via redis-cli)
+- Config file backups (.env, personality, MCP servers)
 - Local filesystem or S3-compatible storage (Wasabi, AWS S3, MinIO)
 - Gzip compression with configurable level
 - Rich CLI with progress indicators and colored output
@@ -23,7 +25,8 @@ backup_service/
 ├── __main__.py          # python -m backup_service entry point
 ├── cli.py               # Typer CLI: run, list, restore, status, serve
 ├── config.py            # BackupConfig dataclass, env var loading
-├── database.py          # pg_dump, psql restore, connection checks
+├── config_files.py      # Config file tar.gz backup/restore
+├── database.py          # pg_dump, psql restore, redis-cli RDB dump
 ├── health.py            # Health check HTTP server
 ├── cron.py              # Simple cron scheduler for serve mode
 ├── storage/
@@ -50,10 +53,12 @@ All commands available via `poetry run backup <command>` or `python -m backup_se
 Run database backups.
 
 ```bash
-poetry run backup run                  # Backup both databases
+poetry run backup run                  # Backup all configured targets
 poetry run backup run --force          # Bypass respawn protection
 poetry run backup run --db clara       # Only Clara DB
 poetry run backup run --db rook        # Only Rook vectors DB
+poetry run backup run --db falkordb    # Only FalkorDB graph memory
+poetry run backup run --db config      # Only config files
 ```
 
 ### `backup list`
@@ -71,18 +76,29 @@ Restore a database from backup.
 
 ```bash
 poetry run backup restore              # Interactive: pick from list
-poetry run backup restore --file X     # From local .sql.gz file
-poetry run backup restore --target URL # Restore to different DB
+poetry run backup restore --file X     # From local backup file
+poetry run backup restore --target URL # Target DB URL or output path
 poetry run backup restore --yes        # Skip confirmation
 ```
 
-The restore command:
-1. Lists available backups in a numbered table
-2. Downloads from storage with progress indicator
-3. Shows backup details and target database (password masked)
-4. Asks for confirmation before proceeding
-5. For rook DB: automatically prepends `CREATE EXTENSION IF NOT EXISTS vector;`
-6. Pipes decompressed SQL to `psql`
+The restore command detects backup type from file extension:
+
+| Extension | Type | Restore behavior |
+|-----------|------|-----------------|
+| `.sql.gz` | PostgreSQL | Pipes decompressed SQL to `psql` |
+| `.rdb.gz` | FalkorDB | Extracts RDB file + prints copy instructions |
+| `.tar.gz` | Config | Extracts files to `--target` path or current directory |
+
+PostgreSQL restore notes:
+- For rook DB: automatically prepends `CREATE EXTENSION IF NOT EXISTS vector;`
+- `--target` specifies the database URL to restore into
+
+FalkorDB restore notes:
+- Extracts the RDB dump to a local file
+- Manual steps required: stop FalkorDB, copy RDB into data volume, restart
+
+Config restore notes:
+- `--target` specifies the output directory (default: current directory)
 
 ### `backup status`
 
@@ -133,6 +149,14 @@ FORCE_BACKUP=false                  # Bypass respawn protection
 DB_RETRY_ATTEMPTS=5                 # Max connection retries
 DB_RETRY_DELAY=2                    # Initial retry delay (seconds)
 
+# FalkorDB backup (optional)
+FALKORDB_HOST=                       # FalkorDB host (enables backup when set)
+FALKORDB_PORT=6379                   # FalkorDB port
+FALKORDB_PASSWORD=                   # FalkorDB password (optional)
+
+# Config file backup (optional)
+BACKUP_CONFIG_PATHS=                 # Comma-separated paths to back up
+
 # Serve mode
 HEALTH_PORT=8080                    # Health check server port
 BACKUP_CRON_SCHEDULE=0 3 * * *     # Cron schedule for serve mode
@@ -152,6 +176,10 @@ Stores backups on the local filesystem. Works with zero configuration for develo
 ├── rook/
 │   ├── rook_20260201_030000.sql.gz
 │   └── rook_20260131_030000.sql.gz
+├── falkordb/
+│   └── falkordb_20260201_030000.rdb.gz
+├── config/
+│   └── config_20260201_030000.tar.gz
 └── .last_backup
 ```
 
@@ -166,6 +194,10 @@ s3://clara-backups/
     │   └── clara_20260201_030000.sql.gz
     ├── rook/
     │   └── rook_20260201_030000.sql.gz
+    ├── falkordb/
+    │   └── falkordb_20260201_030000.rdb.gz
+    ├── config/
+    │   └── config_20260201_030000.tar.gz
     └── .last_backup
 ```
 
@@ -190,6 +222,25 @@ S3_REGION=us-east-1
 S3_ENDPOINT_URL=https://minio.example.com
 S3_REGION=us-east-1
 ```
+
+## Backup Targets
+
+| Target | Extension | Enabled when | Tool |
+|--------|-----------|-------------|------|
+| Clara (PostgreSQL) | `.sql.gz` | `DATABASE_URL` is set | `pg_dump` |
+| Rook (PostgreSQL) | `.sql.gz` | `ROOK_DATABASE_URL` is set | `pg_dump` |
+| FalkorDB (graph memory) | `.rdb.gz` | `FALKORDB_HOST` is set | `redis-cli --rdb` |
+| Config files | `.tar.gz` | `BACKUP_CONFIG_PATHS` is set | Python `tarfile` |
+
+### FalkorDB
+
+Backs up the FalkorDB graph database using `redis-cli --rdb`, which streams an RDB snapshot. The dump is gzip-compressed before storage. Requires `redis-tools` in the container (included in the Docker image).
+
+### Config Files
+
+Archives specified paths (files or directories) into a single `.tar.gz`. Useful for backing up `.env`, personality config, and MCP server configurations. Missing paths are skipped.
+
+Docker Compose default: `/app/.env,/app/config/personality.txt,/app/.mcp_servers`
 
 ## Docker Compose
 

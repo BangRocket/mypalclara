@@ -21,7 +21,7 @@ poetry install
 ## 2. Configure
 
 ```bash
-cp .env.example .env
+cp .env.docker.example .env
 ```
 
 Edit `.env` with minimum required settings:
@@ -42,11 +42,11 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 ## 3. Run
 
 ```bash
-# Direct run
-poetry run python discord_bot.py
+# Gateway with Discord adapter (recommended)
+poetry run python -m mypalclara.gateway start --adapter discord
 
-# Or daemon mode
-poetry run python discord_bot.py --daemon
+# Or with Docker
+docker-compose --profile discord up
 ```
 
 ## 4. Test
@@ -78,7 +78,7 @@ poetry run python discord_bot.py --daemon
 **Import errors?**
 ```bash
 poetry shell
-python discord_bot.py
+poetry run python -m mypalclara.gateway start
 ```
 
 See [[Troubleshooting]] for more help.

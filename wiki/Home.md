@@ -12,7 +12,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 ### Architecture
 - [[Architecture]] - System design and components
 - [[Gateway]] - Central WebSocket message hub
-- [[Memory-System]] - Persistent memory with mem0
+- [[Memory-System]] - Persistent memory with Rook
 
 ### Platform Adapters
 - [[Discord-Features]] - Discord bot features and commands
@@ -25,7 +25,6 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 - [[Sandbox-System]] - Code execution (Docker, Incus)
 
 ### Integrations
-- [[API-Service]] - OAuth and external API endpoints
 - [[Email-Monitoring]] - Email alerts to Discord
 - [[Proactive-Messaging]] - Organic response system
 
@@ -38,11 +37,12 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Platform | Discord, Teams, CLI adapters |
-| Persistent Memory | mem0 with vector + graph storage |
+| Multi-Platform | Discord, Teams, CLI adapters via gateway |
+| Persistent Memory | Rook with vector + graph storage |
+| 6 LLM Backends | OpenRouter, Anthropic, NanoGPT, OpenAI, Bedrock, Azure |
 | MCP Plugins | Install tools from Smithery, npm, GitHub |
 | Code Execution | Docker, Incus containers/VMs |
-| Integrations | GitHub, Google Workspace, Email |
+| Integrations | GitHub, Azure DevOps, Google Workspace, Email |
 | Model Tiers | Dynamic tier selection (!high, !mid, !low) |
 | Proactive | Organic conversations, follow-ups |
 | Gateway | Central hub with hooks and scheduler |
@@ -73,14 +73,13 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 | [[Configuration]] | Environment variables reference |
 | [[Architecture]] | System design overview |
 | [[Gateway]] | WebSocket hub, hooks, scheduler |
-| [[Memory-System]] | mem0, vectors, graph store |
+| [[Memory-System]] | Rook memory, vectors, graph store |
 | [[Discord-Features]] | Discord bot guide |
 | [[Teams-Adapter]] | Microsoft Teams setup |
 | [[CLI-Adapter]] | Terminal interface |
 | [[MCP-Plugin-System]] | MCP server installation |
 | [[Tool-Development]] | Custom tool creation |
 | [[Sandbox-System]] | Code execution backends |
-| [[API-Service]] | OAuth service |
 | [[Email-Monitoring]] | Email to Discord alerts |
 | [[Proactive-Messaging]] | Organic response system |
 | [[Deployment]] | Production deployment |

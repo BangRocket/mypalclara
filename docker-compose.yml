@@ -365,8 +365,17 @@ services:
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-}
       - S3_REGION=${S3_REGION:-us-east-1}
+      # FalkorDB backup
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      # Config file backup
+      - BACKUP_CONFIG_PATHS=/app/.env,/app/config/personality.txt,/app/.mcp_servers
     volumes:
       - backup-data:/backups
+      - ./.env:/app/.env:ro
+      - ./config:/app/config:ro
+      - ./.mcp_servers:/app/.mcp_servers:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s

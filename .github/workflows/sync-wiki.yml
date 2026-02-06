@@ -1,0 +1,48 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync wiki/ to GitHub Wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: BangRocket/mypalclara.wiki
+          path: .wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync files
+        run: |
+          # Remove old wiki files (except .git)
+          find .wiki -maxdepth 1 -type f -name '*.md' -delete
+
+          # Copy wiki/ contents to wiki repo root
+          cp wiki/*.md .wiki/
+
+          cd .wiki
+
+          # Check for changes
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo "No wiki changes to sync."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Sync wiki from main repo ($(date +%Y-%m-%d))"
+          git push
