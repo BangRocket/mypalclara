@@ -14,7 +14,15 @@ from rich.prompt import Confirm, IntPrompt
 from rich.table import Table
 
 from backup_service.config import BackupConfig
-from backup_service.database import check_db_connection, dump_database, mask_url, restore_database
+from backup_service.config_files import dump_config_files, restore_config_files
+from backup_service.database import (
+    check_db_connection,
+    dump_database,
+    dump_falkordb,
+    mask_url,
+    restore_database,
+    restore_falkordb,
+)
 from backup_service.health import backup_state, start_health_server
 from backup_service.storage import create_backend
 
@@ -36,6 +44,8 @@ logger = logging.getLogger("backup_service")
 class DbFilter(str, Enum):
     clara = "clara"
     rook = "rook"
+    falkordb = "falkordb"
+    config = "config"
 
 
 def _load_config() -> BackupConfig:
@@ -116,19 +126,26 @@ def run(
 
     # Determine which databases to backup
     databases = config.databases
-    if db:
+    if db and db.value in ("clara", "rook"):
         if db.value not in databases:
             console.print(f"[red]Error:[/] {db.value} database URL not configured")
             raise typer.Exit(1)
         databases = {db.value: databases[db.value]}
+    elif db and db.value in ("falkordb", "config"):
+        # Non-PostgreSQL targets: skip the database loop
+        databases = {}
 
-    if not databases:
-        console.print("[red]Error:[/] No database URLs configured (DATABASE_URL, ROOK_DATABASE_URL)")
+    backup_falkordb = (not db or db.value == "falkordb") and config.falkordb_enabled
+    backup_config = (not db or db.value == "config") and config.config_backup_enabled
+
+    if not databases and not backup_falkordb and not backup_config:
+        console.print("[red]Error:[/] No backup targets configured")
         raise typer.Exit(1)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     results: list[dict] = []
 
+    # PostgreSQL backups
     for db_name, db_url in databases.items():
         console.print(f"\n[bold]Backing up {db_name}...[/]")
 
@@ -176,6 +193,78 @@ def run(
             }
         )
 
+    # FalkorDB backup
+    if backup_falkordb:
+        console.print("\n[bold]Backing up falkordb...[/]")
+        with console.status("  Dumping FalkorDB..."):
+            data, raw_size = dump_falkordb(config)
+
+        if data:
+            with console.status("  Uploading falkordb..."):
+                try:
+                    key = backend.upload(data, "falkordb", timestamp)
+                except Exception as e:
+                    console.print(f"  [red]Failed:[/] Upload error: {e}")
+                    results.append({"db": "falkordb", "status": "failed", "error": str(e)})
+                    data = None
+
+            if data:
+                ratio = (1 - len(data) / raw_size) * 100 if raw_size else 0
+                console.print(
+                    f"  [green]OK:[/] {_format_size(raw_size)} -> {_format_size(len(data))} ({ratio:.0f}% compression)"
+                )
+                deleted = backend.cleanup_old("falkordb", config.retention_days)
+                if deleted:
+                    console.print(f"  Cleaned up {deleted} old backup(s)")
+                results.append(
+                    {
+                        "db": "falkordb",
+                        "status": "success",
+                        "raw_size": raw_size,
+                        "compressed_size": len(data),
+                        "key": key,
+                    }
+                )
+        else:
+            console.print("  [red]Failed:[/] FalkorDB dump failed")
+            results.append({"db": "falkordb", "status": "failed", "error": "dump failed"})
+
+    # Config file backup
+    if backup_config:
+        console.print("\n[bold]Backing up config files...[/]")
+        with console.status("  Archiving config files..."):
+            data, raw_size = dump_config_files(config.config_paths, config.compression_level)
+
+        if data:
+            with console.status("  Uploading config..."):
+                try:
+                    key = backend.upload(data, "config", timestamp)
+                except Exception as e:
+                    console.print(f"  [red]Failed:[/] Upload error: {e}")
+                    results.append({"db": "config", "status": "failed", "error": str(e)})
+                    data = None
+
+            if data:
+                ratio = (1 - len(data) / raw_size) * 100 if raw_size else 0
+                console.print(
+                    f"  [green]OK:[/] {_format_size(raw_size)} -> {_format_size(len(data))} ({ratio:.0f}% compression)"
+                )
+                deleted = backend.cleanup_old("config", config.retention_days)
+                if deleted:
+                    console.print(f"  Cleaned up {deleted} old backup(s)")
+                results.append(
+                    {
+                        "db": "config",
+                        "status": "success",
+                        "raw_size": raw_size,
+                        "compressed_size": len(data),
+                        "key": key,
+                    }
+                )
+        else:
+            console.print("  [red]Failed:[/] Config file archive failed")
+            results.append({"db": "config", "status": "failed", "error": "archive failed"})
+
     # Update respawn marker
     successes = [r for r in results if r["status"] == "success"]
     failures = [r for r in results if r["status"] == "failed"]
@@ -190,6 +279,10 @@ def run(
             lines.append(f"[green]OK[/]   {r['db']}: {_format_size(r['compressed_size'])}")
         else:
             lines.append(f"[red]FAIL[/] {r['db']}: {r.get('error', 'unknown')}")
+
+    if not lines:
+        console.print("[yellow]No backup targets matched.[/]")
+        return
 
     title = "[green]Backup Complete[/]" if not failures else "[yellow]Backup Partial[/]"
     console.print(Panel("\n".join(lines), title=title))
@@ -239,11 +332,70 @@ def list_backups(
 # ── backup restore ──────────────────────────────────────────────────────
 
 
+def _detect_backup_type(filename: str) -> str:
+    """Detect backup type from filename extension."""
+    lower = filename.lower()
+    if lower.endswith(".rdb.gz"):
+        return "falkordb"
+    if lower.endswith(".tar.gz"):
+        return "config"
+    return "postgresql"
+
+
+def _infer_db_name(filename: str) -> str | None:
+    """Infer db_name from filename."""
+    lower = filename.lower()
+    if "falkordb" in lower:
+        return "falkordb"
+    if "config" in lower:
+        return "config"
+    if "clara" in lower:
+        return "clara"
+    if "rook" in lower or "mem0" in lower:
+        return "rook"
+    return None
+
+
+def _restore_by_type(
+    backup_type: str,
+    backup_data: bytes,
+    db_name: str,
+    db_url: str,
+    target_path: str | None,
+) -> bool:
+    """Route restore to the correct handler based on backup type."""
+    if backup_type == "falkordb":
+        from pathlib import Path
+
+        out = Path(target_path) if target_path else Path("./falkordb_restore.rdb")
+        ok = restore_falkordb(backup_data, out)
+        if ok:
+            console.print(f"\n[green]RDB file extracted to:[/] {out.resolve()}")
+            console.print("[yellow]To restore FalkorDB:[/]")
+            console.print("  1. Stop the FalkorDB container")
+            console.print(f"  2. Copy {out.resolve()} into the FalkorDB data volume as dump.rdb")
+            console.print("  3. Start the FalkorDB container")
+        return ok
+
+    if backup_type == "config":
+        from pathlib import Path
+
+        out_dir = Path(target_path) if target_path else Path(".")
+        ok = restore_config_files(backup_data, out_dir)
+        if ok:
+            console.print(f"\n[green]Config files extracted to:[/] {out_dir.resolve()}")
+        return ok
+
+    # PostgreSQL
+    return restore_database(db_url, backup_data, db_name)
+
+
 @app.command()
 def restore(
-    file: Annotated[Optional[str], typer.Option("--file", "-f", help="Restore from local .sql.gz file")] = None,
+    file: Annotated[Optional[str], typer.Option("--file", "-f", help="Restore from local backup file")] = None,
     target: Annotated[
-        Optional[str], typer.Option("--target", "-t", help="Target database URL (overrides default)")
+        Optional[str],
+        typer.Option("--target", "-t", help="Target database URL (PostgreSQL) or output path (FalkorDB/config)"),
     ] = None,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation prompt")] = False,
 ) -> None:
@@ -260,21 +412,13 @@ def restore(
             raise typer.Exit(1)
 
         backup_data = path.read_bytes()
+        backup_type = _detect_backup_type(path.name)
 
         # Infer db_name from filename
-        filename = path.name.lower()
-        if "clara" in filename:
-            db_name = "clara"
-        elif "rook" in filename or "mem0" in filename:
-            db_name = "rook"
-        else:
-            console.print("[yellow]Cannot determine database from filename.[/]")
-            console.print("Filename should contain 'clara' or 'rook'.")
-            raise typer.Exit(1)
-
-        db_url = target or config.databases.get(db_name, "")
-        if not db_url:
-            console.print(f"[red]Error:[/] No URL configured for {db_name} database")
+        db_name = _infer_db_name(path.name)
+        if not db_name:
+            console.print("[yellow]Cannot determine backup type from filename.[/]")
+            console.print("Filename should contain 'clara', 'rook', 'falkordb', or 'config'.")
             raise typer.Exit(1)
 
         # Verify it's gzipped (check magic number)
@@ -282,16 +426,28 @@ def restore(
             console.print("[red]Error:[/] File does not appear to be gzipped")
             raise typer.Exit(1)
 
+        # PostgreSQL restores need a DB URL
+        db_url = ""
+        if backup_type == "postgresql":
+            db_url = target or config.databases.get(db_name, "")
+            if not db_url:
+                console.print(f"[red]Error:[/] No URL configured for {db_name} database")
+                raise typer.Exit(1)
+
         console.print(f"Backup:   [bold]{path.name}[/] ({_format_size(len(backup_data))})")
-        console.print(f"Database: [bold]{db_name}[/]")
-        console.print(f"Target:   [bold]{mask_url(db_url)}[/]")
+        console.print(f"Type:     [bold]{backup_type}[/]")
+        if backup_type == "postgresql":
+            console.print(f"Database: [bold]{db_name}[/]")
+            console.print(f"Target:   [bold]{mask_url(db_url)}[/]")
+        elif target:
+            console.print(f"Output:   [bold]{target}[/]")
 
         if not yes and not Confirm.ask("\n[yellow]This will overwrite data. Continue?[/]"):
             console.print("Aborted.")
             raise typer.Exit(0)
 
         with console.status("Restoring..."):
-            ok = restore_database(db_url, backup_data, db_name)
+            ok = _restore_by_type(backup_type, backup_data, db_name, db_url, target)
 
         if ok:
             console.print("[green]Restore completed successfully.[/]")
@@ -333,17 +489,25 @@ def restore(
 
     entry = entries[choice - 1]
     db_name = entry.db_name
-    db_url = target or config.databases.get(db_name, "")
+    backup_type = _detect_backup_type(entry.filename)
 
-    if not db_url:
-        console.print(f"[red]Error:[/] No URL configured for {db_name} database. Use --target to specify one.")
-        raise typer.Exit(1)
+    # PostgreSQL restores need a DB URL
+    db_url = ""
+    if backup_type == "postgresql":
+        db_url = target or config.databases.get(db_name, "")
+        if not db_url:
+            console.print(f"[red]Error:[/] No URL configured for {db_name} database. Use --target to specify one.")
+            raise typer.Exit(1)
 
     console.print(
         f"\nBackup:   [bold]{entry.filename}[/] ({_format_size(entry.size)}, {entry.modified.strftime('%Y-%m-%d %H:%M UTC')})"
     )
-    console.print(f"Database: [bold]{db_name}[/]")
-    console.print(f"Target:   [bold]{mask_url(db_url)}[/]")
+    console.print(f"Type:     [bold]{backup_type}[/]")
+    if backup_type == "postgresql":
+        console.print(f"Database: [bold]{db_name}[/]")
+        console.print(f"Target:   [bold]{mask_url(db_url)}[/]")
+    elif target:
+        console.print(f"Output:   [bold]{target}[/]")
 
     if not yes and not Confirm.ask("\n[yellow]This will overwrite data. Continue?[/]"):
         console.print("Aborted.")
@@ -353,7 +517,7 @@ def restore(
         backup_data = backend.download(entry.key)
 
     with console.status("Restoring..."):
-        ok = restore_database(db_url, backup_data, db_name)
+        ok = _restore_by_type(backup_type, backup_data, db_name, db_url, target)
 
     if ok:
         console.print("[green]Restore completed successfully.[/]")
@@ -386,6 +550,22 @@ def status() -> None:
         lines.append(f"  {name}: {mask_url(url)}")
     if not config.databases:
         lines.append("  [yellow](none configured)[/]")
+
+    lines.append("")
+    lines.append("[bold]FalkorDB:[/]")
+    if config.falkordb_enabled:
+        lines.append(f"  Host: {config.falkordb_host}:{config.falkordb_port}")
+        lines.append(f"  Auth: {'yes' if config.falkordb_password else 'no'}")
+    else:
+        lines.append("  [dim](not configured)[/]")
+
+    lines.append("")
+    lines.append("[bold]Config Files:[/]")
+    if config.config_backup_enabled:
+        for p in config.config_paths:
+            lines.append(f"  {p}")
+    else:
+        lines.append("  [dim](not configured)[/]")
 
     lines.append("")
     lines.append(f"[bold]Retention:[/]      {config.retention_days} days")
@@ -459,6 +639,7 @@ def _run_backup(config: BackupConfig) -> None:
     successes = 0
     failures = 0
 
+    # PostgreSQL backups
     for db_name, db_url in config.databases.items():
         logger.info(f"Backing up {db_name}...")
 
@@ -479,6 +660,38 @@ def _run_backup(config: BackupConfig) -> None:
             backend.cleanup_old(db_name, config.retention_days)
         except Exception as e:
             logger.error(f"[{db_name}] Upload failed: {e}")
+            failures += 1
+
+    # FalkorDB backup
+    if config.falkordb_enabled:
+        logger.info("Backing up falkordb...")
+        data, raw_size = dump_falkordb(config)
+        if data:
+            try:
+                backend.upload(data, "falkordb", timestamp)
+                successes += 1
+                backend.cleanup_old("falkordb", config.retention_days)
+            except Exception as e:
+                logger.error(f"[falkordb] Upload failed: {e}")
+                failures += 1
+        else:
+            logger.error("[falkordb] Dump failed")
+            failures += 1
+
+    # Config file backup
+    if config.config_backup_enabled:
+        logger.info("Backing up config files...")
+        data, raw_size = dump_config_files(config.config_paths, config.compression_level)
+        if data:
+            try:
+                backend.upload(data, "config", timestamp)
+                successes += 1
+                backend.cleanup_old("config", config.retention_days)
+            except Exception as e:
+                logger.error(f"[config] Upload failed: {e}")
+                failures += 1
+        else:
+            logger.error("[config] Archive failed")
             failures += 1
 
     if successes:

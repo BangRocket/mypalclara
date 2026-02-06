@@ -5,7 +5,7 @@ Guide to creating custom tools for Clara.
 ## Overview
 
 Clara's tool system provides:
-- Dynamic tool loading with hot-reload
+- Plugin-based tool loading
 - Context passing (user, channel, platform)
 - Permission checking
 - Type-safe parameters via Pydantic
@@ -15,14 +15,10 @@ Clara's tool system provides:
 ### Basic Tool
 
 ```python
-# tools/my_tools.py
+# clara_core/core_tools/my_tool.py
 
-from clara_core.tool_registry import tool, ToolContext
+from tools import ToolContext
 
-@tool(
-    name="greet_user",
-    description="Greet a user by name",
-)
 async def greet_user(name: str, ctx: ToolContext) -> str:
     """
     Greet a user warmly.
@@ -39,10 +35,6 @@ async def greet_user(name: str, ctx: ToolContext) -> str:
 from typing import Optional
 from pydantic import Field
 
-@tool(
-    name="search_files",
-    description="Search for files matching criteria",
-)
 async def search_files(
     pattern: str = Field(description="File pattern to match"),
     directory: str = Field(default=".", description="Directory to search"),
@@ -74,7 +66,6 @@ class ToolContext:
 ### Using Context
 
 ```python
-@tool(name="admin_action", description="Admin-only action")
 async def admin_action(ctx: ToolContext) -> str:
     if not await ctx.is_admin():
         return "Error: Admin permission required"
@@ -91,47 +82,42 @@ Located in `clara_core/core_tools/`:
 
 ```
 clara_core/core_tools/
-├── mcp_management.py   # MCP server management
+├── browser_tool.py     # Playwright browser automation
 ├── chat_history.py     # Chat history retrieval
-└── system_logs.py      # System log access
+├── files_tool.py       # File operations
+├── mcp_management.py   # MCP server management
+├── process_tool.py     # Background process management
+├── system_logs.py      # System log access
+└── terminal_tool.py    # Terminal/shell execution
 ```
 
-### Platform-Specific Tools
+### Tool Infrastructure
 
 Located in `tools/`:
 
 ```
 tools/
-├── cli_files.py    # CLI file operations
-├── cli_shell.py    # CLI shell execution
-├── discord/        # Discord-specific tools
-└── shared/         # Cross-platform tools
+├── _base.py       # Base tool definitions
+├── _loader.py     # Dynamic tool loading
+└── _registry.py   # Tool registry (wraps clara_core/plugins/)
 ```
 
-## Registering Tools
+## Plugin System
 
-### Automatic Discovery
+Tools are loaded through the plugin system in `clara_core/plugins/`:
 
-Tools in `tools/` are automatically discovered and loaded.
-
-### Manual Registration
-
-```python
-from clara_core.tool_registry import ToolRegistry
-
-registry = ToolRegistry()
-registry.register(greet_user)
+```
+clara_core/plugins/
+├── loader.py       # Plugin discovery and loading
+├── registry.py     # Plugin registration
+├── runtime.py      # Plugin execution runtime
+├── manifest.py     # Plugin manifests
+├── policies.py     # Security policies
+├── audit.py        # Security audit
+└── hooks.py        # Plugin hooks
 ```
 
-## Hot Reload
-
-Enable hot reload for development:
-
-```bash
-TOOL_HOT_RELOAD=true
-```
-
-Changes to tool files are automatically detected and reloaded.
+The `tools/_registry.py` provides a backwards-compatible `ToolRegistry` wrapper around the plugin system.
 
 ## Parameter Types
 
@@ -153,12 +139,11 @@ Changes to tool files are automatically detected and reloaded.
 ```python
 from typing import Literal, Optional
 
-@tool(name="process_data")
 async def process_data(
     data: list[str],                              # List of strings
     format: Literal["json", "csv", "xml"],        # Choice
     limit: Optional[int] = None,                  # Optional
-    options: dict = Field(default_factory=dict),  # Dict with default
+    options: dict = Field(default_factory=dict),   # Dict with default
     ctx: ToolContext = None,
 ) -> dict:
     ...
@@ -169,7 +154,6 @@ async def process_data(
 ### Return Errors as Strings
 
 ```python
-@tool(name="risky_operation")
 async def risky_operation(ctx: ToolContext) -> str:
     try:
         result = do_something()
@@ -180,26 +164,13 @@ async def risky_operation(ctx: ToolContext) -> str:
         return "Error: Permission denied"
 ```
 
-### Raise Exceptions
-
-```python
-from clara_core.tool_registry import ToolError
-
-@tool(name="strict_operation")
-async def strict_operation(ctx: ToolContext) -> str:
-    if not validate():
-        raise ToolError("Validation failed")
-    return "Success"
-```
-
 ## Testing Tools
 
 ### Unit Tests
 
 ```python
 import pytest
-from tools.my_tools import greet_user
-from clara_core.tool_registry import ToolContext
+from tools import ToolContext
 
 @pytest.mark.asyncio
 async def test_greet_user():
@@ -210,20 +181,6 @@ async def test_greet_user():
     )
     result = await greet_user("Alice", ctx=ctx)
     assert "Alice" in result
-```
-
-### Integration Tests
-
-```python
-@pytest.mark.asyncio
-async def test_tool_via_registry():
-    registry = ToolRegistry()
-    result = await registry.execute(
-        "greet_user",
-        {"name": "Bob"},
-        context={"user_id": "test"},
-    )
-    assert "Bob" in result
 ```
 
 ## Best Practices
@@ -244,38 +201,6 @@ async def test_tool_via_registry():
 - Block for long periods (use async)
 - Modify global state without synchronization
 
-## Admin Tools
-
-Tools requiring admin permission:
-
-```python
-@tool(
-    name="dangerous_operation",
-    description="Admin-only dangerous operation",
-    admin_only=True,  # Requires admin
-)
-async def dangerous_operation(ctx: ToolContext) -> str:
-    # Context automatically checks admin
-    return "Completed"
-```
-
-## Tool Metadata
-
-Additional metadata for tools:
-
-```python
-@tool(
-    name="example_tool",
-    description="Example with metadata",
-    category="utilities",      # Tool category
-    platforms=["discord"],     # Platform restrictions
-    rate_limit=10,             # Calls per minute
-    hidden=False,              # Show in tool list
-)
-async def example_tool(ctx: ToolContext) -> str:
-    ...
-```
-
 ## MCP Tool Integration
 
 Tools from MCP servers are automatically namespaced:
@@ -284,45 +209,9 @@ Tools from MCP servers are automatically namespaced:
 {server_name}__{tool_name}
 ```
 
-Example: `github__create_issue`
+Example: `github__create_issue`, `filesystem__read_file`
 
-### Creating MCP-Compatible Tools
-
-```python
-@tool(
-    name="mcp_compatible",
-    mcp_schema={
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"}
-            },
-            "required": ["query"]
-        }
-    }
-)
-async def mcp_compatible(query: str, ctx: ToolContext) -> dict:
-    return {"results": [...]}
-```
-
-## File Structure Example
-
-```
-tools/
-├── __init__.py
-├── utilities/
-│   ├── __init__.py
-│   ├── text_tools.py      # Text manipulation
-│   ├── math_tools.py      # Calculations
-│   └── date_tools.py      # Date/time utilities
-├── integrations/
-│   ├── __init__.py
-│   ├── github_tools.py    # GitHub integration
-│   └── slack_tools.py     # Slack integration
-└── admin/
-    ├── __init__.py
-    └── system_tools.py    # Admin operations
-```
+MCP tools are managed via the MCP system in `clara_core/mcp/`. See [[MCP-Plugin-System]] for details on installing and managing MCP servers.
 
 ## See Also
 

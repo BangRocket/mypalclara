@@ -10,7 +10,7 @@ The proactive messaging system allows Clara to initiate conversations when appro
 
 ## Overview
 
-The system consists of two components:
+The system is implemented in `proactive/engine.py` and consists of:
 
 1. **Organic Response System (ORS)** - State machine for deciding when to speak
 2. **Proactive Engine** - Background process for monitoring and initiating
@@ -222,14 +222,8 @@ ORS_ENABLED=false
 
 ```
 ┌─────────────────────────┐
-│    Proactive Engine     │
-│   proactive_engine.py   │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  Organic Response Sys   │
-│ organic_response_sys.py │
+│    Proactive Engine      │
+│    proactive/engine.py   │
 └───────────┬─────────────┘
             │
      ┌──────┴──────┐

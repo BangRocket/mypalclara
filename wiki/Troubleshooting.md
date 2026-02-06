@@ -38,7 +38,7 @@ poetry install
 
 ### Import Errors
 
-**Symptom:** `ModuleNotFoundError` when running the bot
+**Symptom:** `ModuleNotFoundError` when running
 
 **Solution:**
 ```bash
@@ -49,7 +49,7 @@ cd mypalclara
 poetry shell
 
 # Or run directly with poetry
-poetry run python discord_bot.py
+poetry run python -m mypalclara.gateway start
 ```
 
 ## Discord Bot Issues
@@ -67,12 +67,11 @@ poetry run python discord_bot.py
 
 **Debug:**
 ```bash
-# Check logs
-poetry run python discord_bot.py 2>&1 | tee bot.log
+# Check gateway logs
+poetry run python -m mypalclara.gateway logs
 
-# Daemon mode logs
-poetry run python discord_bot.py --status
-tail -f /var/log/clara.log
+# Or run in foreground for live output
+poetry run python -m mypalclara.gateway start -f
 ```
 
 ### Bot Offline in Discord
@@ -86,10 +85,10 @@ tail -f /var/log/clara.log
 ```bash
 # Regenerate token in Discord Developer Portal
 # Update DISCORD_BOT_TOKEN in .env
-# Restart bot
+# Restart
 
-poetry run python discord_bot.py --stop
-poetry run python discord_bot.py --daemon
+poetry run python -m mypalclara.gateway stop
+poetry run python -m mypalclara.gateway start
 ```
 
 ### Permission Errors
@@ -122,9 +121,9 @@ poetry run python discord_bot.py --daemon
 
 ## Memory System Issues
 
-### mem0 Initialization Errors
+### Rook Initialization Errors
 
-**Symptom:** `Error initializing mem0` or embedding errors
+**Symptom:** `Error initializing Rook` or embedding errors
 
 **Checklist:**
 1. Verify `OPENAI_API_KEY` is set (required for embeddings)
@@ -155,7 +154,7 @@ ls -la qdrant_data/
 
 # Clear and restart
 rm -rf qdrant_data/
-poetry run python discord_bot.py
+poetry run python -m mypalclara.gateway start
 ```
 
 ### pgvector Issues (Production)
@@ -165,7 +164,7 @@ poetry run python discord_bot.py
 **Solution:**
 ```sql
 -- Connect to database
-psql $MEM0_DATABASE_URL
+psql $ROOK_DATABASE_URL
 
 -- Enable extension
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -198,10 +197,10 @@ FALKORDB_PASSWORD=your-password  # Optional
 **Solution:**
 ```bash
 # Check for multiple processes
-ps aux | grep discord_bot
+ps aux | grep gateway
 
-# Stop daemon
-poetry run python discord_bot.py --stop
+# Stop gateway
+poetry run python -m mypalclara.gateway stop
 
 # Clear lock
 rm -f assistant.db-journal
@@ -240,6 +239,22 @@ poetry run python scripts/migrate.py
 
 # If corrupted, reset (DANGEROUS)
 poetry run python scripts/migrate.py reset
+```
+
+### Multiple Heads Error
+
+**Symptom:** `The script directory has multiple heads (due to branching)`
+
+**Solution:**
+```bash
+# Check current heads
+poetry run python scripts/migrate.py heads
+
+# Merge heads
+poetry run alembic -c db/alembic.ini merge heads -m "merge branches"
+
+# Then run migrations
+poetry run python scripts/migrate.py
 ```
 
 ## LLM Provider Issues
@@ -289,6 +304,12 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 
 # OpenAI
 CUSTOM_OPENAI_MODEL=gpt-4o
+
+# Bedrock
+BEDROCK_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0
+
+# Azure
+AZURE_MODEL=gpt-4o
 ```
 
 ## MCP Server Issues
@@ -375,7 +396,7 @@ save_to_local(filename="output.txt", content="...")
 **Symptom:** Adapter can't connect to gateway
 
 **Checklist:**
-1. Gateway is running: `poetry run python -m mypalclara.gateway`
+1. Gateway is running: `poetry run python -m mypalclara.gateway status`
 2. Check host/port match:
    ```bash
    CLARA_GATEWAY_HOST=127.0.0.1
@@ -411,28 +432,25 @@ echo "test" | bash -c "your-command"
 **Solutions:**
 1. Limit conversation history
 2. Reduce `DISCORD_CHANNEL_HISTORY_LIMIT`
-3. Clear old sessions: `poetry run python clear_dbs.py`
+3. Clear old sessions: `poetry run python scripts/clear_dbs.py`
 
 ## Getting Help
 
 ### Logs
 
 ```bash
-# Discord bot logs
-poetry run python discord_bot.py 2>&1 | tee debug.log
-
 # Gateway logs
-poetry run python -m mypalclara.gateway 2>&1 | tee gateway.log
+poetry run python -m mypalclara.gateway logs
 
-# With timestamps
-poetry run python discord_bot.py 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' | tee debug.log
+# Live foreground output
+poetry run python -m mypalclara.gateway start -f 2>&1 | tee debug.log
 ```
 
 ### Debug Mode
 
 Set environment variable for verbose output:
 ```bash
-DEBUG=1 poetry run python discord_bot.py
+LOG_LEVEL=DEBUG poetry run python -m mypalclara.gateway start -f
 ```
 
 ### Report Issues
@@ -443,4 +461,3 @@ DEBUG=1 poetry run python discord_bot.py
    - Steps to reproduce
    - Environment (OS, Python version)
    - Relevant config (redact secrets)
-

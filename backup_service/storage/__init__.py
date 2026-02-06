@@ -18,7 +18,7 @@ class BackupEntry:
     filename: str  # Just the filename
     size: int  # Bytes
     modified: datetime
-    db_name: str  # "clara" or "rook"
+    db_name: str  # "clara", "rook", "falkordb", or "config"
 
 
 class StorageBackend(Protocol):

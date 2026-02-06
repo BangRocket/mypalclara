@@ -7,8 +7,8 @@ Complete reference for all environment variables and configuration options.
 | Variable | Description |
 |----------|-------------|
 | `DISCORD_BOT_TOKEN` | Discord bot token |
-| `OPENAI_API_KEY` | Required for mem0 embeddings |
-| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai` |
+| `OPENAI_API_KEY` | Required for Rook embeddings |
+| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai`, `bedrock`, `azure` |
 
 ## LLM Providers
 
@@ -50,6 +50,30 @@ CUSTOM_OPENAI_BASE_URL=https://api.openai.com/v1
 CUSTOM_OPENAI_MODEL=gpt-4o
 ```
 
+### Amazon Bedrock
+
+Requires `langchain-aws` package. Supports IAM role authentication on AWS.
+
+```bash
+LLM_PROVIDER=bedrock
+AWS_REGION=us-east-1
+BEDROCK_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0
+# Uses IAM role or explicit credentials:
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+```
+
+### Azure OpenAI
+
+```bash
+LLM_PROVIDER=azure
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-key
+AZURE_DEPLOYMENT_NAME=your-deployment
+AZURE_API_VERSION=2024-02-15-preview  # Optional
+AZURE_MODEL=gpt-4o  # Optional
+```
+
 ## Model Tiers
 
 ### Tier-Specific Models
@@ -74,6 +98,16 @@ NANOGPT_MODEL_LOW=anthropic/claude-3-5-haiku
 CUSTOM_OPENAI_MODEL_HIGH=gpt-4-turbo
 CUSTOM_OPENAI_MODEL_MID=gpt-4o
 CUSTOM_OPENAI_MODEL_LOW=gpt-4o-mini
+
+# Bedrock
+BEDROCK_MODEL_HIGH=anthropic.claude-3-opus-20240229-v1:0
+BEDROCK_MODEL_MID=anthropic.claude-3-5-sonnet-20241022-v2:0
+BEDROCK_MODEL_LOW=anthropic.claude-3-5-haiku-20241022-v1:0
+
+# Azure
+AZURE_MODEL_HIGH=gpt-4-turbo
+AZURE_MODEL_MID=gpt-4o
+AZURE_MODEL_LOW=gpt-4o-mini
 ```
 
 ### Auto-Tier Selection
@@ -83,22 +117,26 @@ AUTO_TIER_SELECTION=true  # Enable automatic tier selection
 MODEL_TIER=mid  # Default tier when not specified
 ```
 
-## Memory System
+## Memory System (Rook)
 
-### mem0 Provider
+### Rook Provider
+
+Rook uses its own LLM for memory extraction (independent from chat LLM):
 
 ```bash
-MEM0_PROVIDER=openrouter  # or anthropic, nanogpt, openai
-MEM0_MODEL=openai/gpt-4o-mini
-MEM0_API_KEY=override-key  # Optional override
-MEM0_BASE_URL=override-url  # Optional override
+ROOK_PROVIDER=openrouter  # or anthropic, nanogpt, openai
+ROOK_MODEL=openai/gpt-4o-mini
+ROOK_API_KEY=override-key  # Optional override
+ROOK_BASE_URL=override-url  # Optional override
 ```
+
+Note: `MEM0_*` env vars are supported as fallback for backward compatibility.
 
 ### Vector Store
 
 ```bash
 # PostgreSQL with pgvector (production)
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
+ROOK_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 # Qdrant (development) - uses local directory
 # No config needed, uses ./qdrant_data
@@ -282,13 +320,25 @@ CLARA_FILES_DIR=./clara_files
 CLARA_MAX_FILE_SIZE=52428800  # 50MB
 ```
 
+## Proactive Messaging
+
+```bash
+ORS_ENABLED=true
+ORS_BASE_INTERVAL_MINUTES=15
+ORS_MIN_SPEAK_GAP_HOURS=2
+ORS_ACTIVE_DAYS=7
+ORS_NOTE_DECAY_DAYS=7
+ORS_IDLE_TIMEOUT_MINUTES=30
+```
+
 ## Other
 
 ```bash
 USER_ID=demo-user  # Single-user identifier
 DEFAULT_PROJECT="Default Project"
-SKIP_PROFILE_LOAD=true  # Skip initial mem0 profile
+SKIP_PROFILE_LOAD=true  # Skip initial Rook profile
 DEFAULT_TIMEZONE=America/New_York
+LOG_LEVEL=INFO
 ```
 
 ## Cloudflare Access
@@ -304,6 +354,8 @@ CF_ACCESS_CLIENT_SECRET=your-client-secret
 
 ### hooks/hooks.yaml
 
+Copy `hooks/hooks.yaml.example` to `hooks/hooks.yaml`:
+
 ```yaml
 hooks:
   - name: my-hook
@@ -312,7 +364,9 @@ hooks:
     timeout: 30
 ```
 
-### scheduler.yaml
+### config/scheduler.yaml
+
+Copy `config/scheduler.yaml.example` to `config/scheduler.yaml`:
 
 ```yaml
 tasks:
@@ -321,6 +375,10 @@ tasks:
     interval: 3600
     command: poetry run python cleanup.py
 ```
+
+### mypalclara/gateway/adapters.yaml
+
+Adapter configuration for the gateway daemon.
 
 ### .mcp_servers/
 

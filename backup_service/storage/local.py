@@ -17,6 +17,15 @@ logger = logging.getLogger(__name__)
 
 MARKER_FILE = ".last_backup"
 
+# Map db_name to file extension
+_EXTENSIONS: dict[str, str] = {
+    "falkordb": ".rdb.gz",
+    "config": ".tar.gz",
+}
+_DEFAULT_EXT = ".sql.gz"
+
+ALL_DB_NAMES = ["clara", "rook", "falkordb", "config"]
+
 
 class LocalBackend:
     """Store backups on the local filesystem."""
@@ -32,7 +41,8 @@ class LocalBackend:
 
     def upload(self, data: bytes, db_name: str, timestamp: str) -> str:
         d = self._db_dir(db_name)
-        filename = f"{db_name}_{timestamp}.sql.gz"
+        ext = _EXTENSIONS.get(db_name, _DEFAULT_EXT)
+        filename = f"{db_name}_{timestamp}{ext}"
         path = d / filename
         path.write_bytes(data)
         logger.info(f"[{db_name}] Saved to {path}")
@@ -46,13 +56,13 @@ class LocalBackend:
 
     def list_backups(self, db_name: str | None = None) -> list[BackupEntry]:
         entries: list[BackupEntry] = []
-        db_names = [db_name] if db_name else ["clara", "rook"]
+        db_names = [db_name] if db_name else ALL_DB_NAMES
 
         for name in db_names:
             db_dir = self.base_dir / name
             if not db_dir.exists():
                 continue
-            for f in db_dir.glob("*.sql.gz"):
+            for f in db_dir.glob("*.gz"):
                 stat = f.stat()
                 entries.append(
                     BackupEntry(
@@ -94,7 +104,7 @@ class LocalBackend:
         if not db_dir.exists():
             return 0
 
-        for f in db_dir.glob("*.sql.gz"):
+        for f in db_dir.glob("*.gz"):
             mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=UTC)
             if mtime < cutoff:
                 f.unlink()

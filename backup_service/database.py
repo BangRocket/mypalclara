@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -145,6 +146,90 @@ def dump_database(db_url: str, db_name: str, config: BackupConfig) -> tuple[byte
     except Exception as e:
         logger.error(f"[{db_name}] Dump failed: {e}")
         return None, 0
+
+
+def dump_falkordb(config: BackupConfig) -> tuple[bytes | None, int]:
+    """Dump FalkorDB using redis-cli --rdb.
+
+    Returns (compressed_data, raw_size) or (None, 0) on failure.
+    """
+    if not config.falkordb_host:
+        logger.warning("[falkordb] Skipped - no host configured")
+        return None, 0
+
+    logger.info(f"[falkordb] Starting RDB dump from {config.falkordb_host}:{config.falkordb_port}")
+
+    cmd = [
+        "redis-cli",
+        "-h",
+        config.falkordb_host,
+        "-p",
+        str(config.falkordb_port),
+    ]
+    if config.falkordb_password:
+        cmd.extend(["-a", config.falkordb_password])
+    cmd.extend(["--rdb", "-"])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=config.dump_timeout,
+        )
+
+        if result.returncode != 0:
+            stderr = result.stderr.decode(errors="replace")[:500]
+            # redis-cli prints auth warnings to stderr even on success
+            if not result.stdout:
+                logger.error(f"[falkordb] redis-cli --rdb failed: {stderr}")
+                return None, 0
+
+        dump_data = result.stdout
+        raw_size = len(dump_data)
+
+        if raw_size == 0:
+            logger.error("[falkordb] redis-cli --rdb returned empty output")
+            return None, 0
+
+        compressed = gzip.compress(dump_data, compresslevel=config.compression_level)
+
+        ratio = (1 - len(compressed) / raw_size) * 100 if raw_size else 0
+        logger.info(
+            f"[falkordb] Dump complete: {raw_size:,} bytes -> " f"{len(compressed):,} bytes ({ratio:.1f}% compression)"
+        )
+        return compressed, raw_size
+
+    except FileNotFoundError:
+        logger.error("[falkordb] redis-cli not found - install redis-tools")
+        return None, 0
+    except subprocess.TimeoutExpired:
+        logger.error(f"[falkordb] redis-cli timed out after {config.dump_timeout}s")
+        return None, 0
+    except Exception as e:
+        logger.error(f"[falkordb] Dump failed: {e}")
+        return None, 0
+
+
+def restore_falkordb(backup_data: bytes, output_path: Path) -> bool:
+    """Decompress a FalkorDB .rdb.gz backup to a file.
+
+    Does NOT restart FalkorDB — prints instructions for the user.
+    Returns True on success.
+    """
+    try:
+        rdb_data = gzip.decompress(backup_data)
+    except Exception as e:
+        logger.error(f"[falkordb] Failed to decompress backup: {e}")
+        return False
+
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(rdb_data)
+        logger.info(f"[falkordb] Extracted RDB to {output_path} ({len(rdb_data):,} bytes)")
+        return True
+    except Exception as e:
+        logger.error(f"[falkordb] Failed to write RDB file: {e}")
+        return False
 
 
 def restore_database(db_url: str, backup_data: bytes, db_name: str) -> bool:
