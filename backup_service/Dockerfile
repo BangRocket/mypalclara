@@ -1,7 +1,6 @@
 FROM python:3.12-slim
 
 # Install PostgreSQL 18 client from official PostgreSQL repo
-# This ensures we have pg_dump compatible with PG 18 servers
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
@@ -12,18 +11,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install just the deps the backup service needs (not the full Poetry tree)
+RUN pip install --no-cache-dir typer[all] boto3 python-dotenv
 
-# Copy backup script
-COPY backup.py .
+# Copy backup service package
+COPY backup_service/ ./backup_service/
 
-# Expose health check port
+RUN mkdir -p /backups
+
 EXPOSE 8080
-
-# Run backup
-CMD ["python", "backup.py"]
+CMD ["python", "-m", "backup_service", "serve"]

@@ -345,6 +345,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Backup service (cron daemon + health server)
+  backup:
+    build:
+      context: .
+      dockerfile: backup_service/Dockerfile
+    container_name: mypalclara-backup
+    profiles:
+      - backup
+    environment:
+      - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
+      - ROOK_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
+      - BACKUP_STORAGE=${BACKUP_STORAGE:-local}
+      - BACKUP_LOCAL_DIR=/backups
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_CRON_SCHEDULE=${BACKUP_CRON_SCHEDULE:-0 3 * * *}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - S3_REGION=${S3_REGION:-us-east-1}
+    volumes:
+      - backup-data:/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-vectors:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mypalclara-data:
   mypalclara-files:
@@ -353,6 +387,7 @@ volumes:
   qdrant-data:
   redis-data:
   falkordb-data:
+  backup-data:
 
 networks:
   default:
