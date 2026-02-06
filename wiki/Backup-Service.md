@@ -1,260 +1,262 @@
 # Backup Service
 
-Automated database backup service for S3-compatible storage.
+Automated database backup service with local and S3 storage, Rich CLI, and Docker Compose sidecar mode.
 
 ## Overview
 
 The backup service provides:
-- Automated PostgreSQL backups (Clara DB + Mem0 DB)
-- S3-compatible storage (Wasabi, AWS S3, MinIO, etc.)
-- Gzip compression
-- Configurable retention policy
+- Automated PostgreSQL backups (Clara main DB + Rook vectors DB)
+- Local filesystem or S3-compatible storage (Wasabi, AWS S3, MinIO)
+- Gzip compression with configurable level
+- Rich CLI with progress indicators and colored output
+- Interactive restore from backup
+- Built-in cron scheduler for Docker sidecar mode
 - Respawn protection (prevents duplicate backups)
-- Health check endpoints
+- Health check endpoints for container orchestration
+- Configurable retention policy
 
-## Location
+## Package Structure
 
 ```
 backup_service/
-├── backup.py       # Main backup script
-├── Dockerfile      # Container image
-└── requirements.txt
+├── __init__.py          # Package marker
+├── __main__.py          # python -m backup_service entry point
+├── cli.py               # Typer CLI: run, list, restore, status, serve
+├── config.py            # BackupConfig dataclass, env var loading
+├── database.py          # pg_dump, psql restore, connection checks
+├── health.py            # Health check HTTP server
+├── cron.py              # Simple cron scheduler for serve mode
+├── storage/
+│   ├── __init__.py      # StorageBackend protocol + factory
+│   ├── local.py         # Local filesystem backend
+│   └── s3.py            # S3/Wasabi backend
+└── Dockerfile           # Container image
+```
+
+## Installation
+
+The backup CLI is included in the main project:
+
+```bash
+poetry install
+```
+
+## CLI Commands
+
+All commands available via `poetry run backup <command>` or `python -m backup_service <command>`.
+
+### `backup run`
+
+Run database backups.
+
+```bash
+poetry run backup run                  # Backup both databases
+poetry run backup run --force          # Bypass respawn protection
+poetry run backup run --db clara       # Only Clara DB
+poetry run backup run --db rook        # Only Rook vectors DB
+```
+
+### `backup list`
+
+List available backups in a Rich table.
+
+```bash
+poetry run backup list                 # All backups
+poetry run backup list --db clara      # Filter by database
+```
+
+### `backup restore`
+
+Restore a database from backup.
+
+```bash
+poetry run backup restore              # Interactive: pick from list
+poetry run backup restore --file X     # From local .sql.gz file
+poetry run backup restore --target URL # Restore to different DB
+poetry run backup restore --yes        # Skip confirmation
+```
+
+The restore command:
+1. Lists available backups in a numbered table
+2. Downloads from storage with progress indicator
+3. Shows backup details and target database (password masked)
+4. Asks for confirmation before proceeding
+5. For rook DB: automatically prepends `CREATE EXTENSION IF NOT EXISTS vector;`
+6. Pipes decompressed SQL to `psql`
+
+### `backup status`
+
+Show backup service configuration and status.
+
+```bash
+poetry run backup status
+```
+
+### `backup serve`
+
+Run as long-lived daemon with built-in cron scheduler and health server.
+
+```bash
+poetry run backup serve                        # Use default schedule
+poetry run backup serve --schedule "0 3 * * *" # Custom schedule
 ```
 
 ## Configuration
 
+### Environment Variables
+
 ```bash
 # Database connections
 DATABASE_URL=postgresql://user:pass@host:5432/clara_main
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/clara_vectors
+ROOK_DATABASE_URL=postgresql://user:pass@host:5432/clara_vectors
+# Fallback: MEM0_DATABASE_URL (backward compatibility)
 
-# S3 storage
+# Storage backend
+BACKUP_STORAGE=local                  # "local" (default) or "s3"
+BACKUP_LOCAL_DIR=./backups            # Local backup directory
+
+# S3 settings (when BACKUP_STORAGE=s3)
 S3_BUCKET=clara-backups
 S3_ENDPOINT_URL=https://s3.wasabisys.com
 S3_ACCESS_KEY=your-access-key
 S3_SECRET_KEY=your-secret-key
 S3_REGION=us-east-1
 
-# Backup settings
+# Backup behavior
 BACKUP_RETENTION_DAYS=7              # Days to keep backups
-RESPAWN_PROTECTION_HOURS=23          # Min hours between backups
-FORCE_BACKUP=false                   # Bypass respawn protection
+BACKUP_COMPRESSION_LEVEL=9          # Gzip level (1-9)
+BACKUP_DUMP_TIMEOUT=600             # pg_dump timeout in seconds
+RESPAWN_PROTECTION_HOURS=23         # Min hours between backups
+FORCE_BACKUP=false                  # Bypass respawn protection
 
-# Retry settings
-DB_RETRY_ATTEMPTS=5                  # Max connection retries
-DB_RETRY_DELAY=2                     # Initial retry delay (seconds)
+# DB connection retry
+DB_RETRY_ATTEMPTS=5                 # Max connection retries
+DB_RETRY_DELAY=2                    # Initial retry delay (seconds)
+
+# Serve mode
+HEALTH_PORT=8080                    # Health check server port
+BACKUP_CRON_SCHEDULE=0 3 * * *     # Cron schedule for serve mode
 ```
 
-## Usage
+## Storage Backends
 
-### Run Backup
+### Local (Default)
 
-```bash
-cd backup_service
-python backup.py
+Stores backups on the local filesystem. Works with zero configuration for development.
+
+```
+./backups/
+├── clara/
+│   ├── clara_20260201_030000.sql.gz
+│   └── clara_20260131_030000.sql.gz
+├── rook/
+│   ├── rook_20260201_030000.sql.gz
+│   └── rook_20260131_030000.sql.gz
+└── .last_backup
 ```
 
-### List Backups
+### S3-Compatible
 
-```bash
-python backup.py --list
+Stores backups in S3-compatible object storage (Wasabi, AWS S3, MinIO).
+
+```
+s3://clara-backups/
+└── backups/
+    ├── clara/
+    │   └── clara_20260201_030000.sql.gz
+    ├── rook/
+    │   └── rook_20260201_030000.sql.gz
+    └── .last_backup
 ```
 
-Output:
-```
-Available backups in clara-backups:
+Backward compatibility: listing also scans the `backups/mem0/` prefix for old backups.
 
-Clara DB backups:
-  - backups/clara/clara_20260201_030000.sql.gz (2.5 MB)
-  - backups/clara/clara_20260131_030000.sql.gz (2.4 MB)
+#### S3 Providers
 
-Mem0 DB backups:
-  - backups/mem0/mem0_20260201_030000.sql.gz (1.2 MB)
-  - backups/mem0/mem0_20260131_030000.sql.gz (1.1 MB)
-```
-
-### Show Restore Instructions
-
-```bash
-python backup.py --restore
-```
-
-### Health Server Only
-
-```bash
-python backup.py --server
-```
-
-Starts health check server without running backup.
-
-## Restore from Backup
-
-### 1. Download Backup
-
-```bash
-# Using AWS CLI
-aws s3 cp s3://clara-backups/backups/clara/clara_20260201_030000.sql.gz . \
-  --endpoint-url=https://s3.wasabisys.com
-
-# Or using boto3 script
-python -c "
-import boto3
-s3 = boto3.client('s3', endpoint_url='https://s3.wasabisys.com')
-s3.download_file('clara-backups', 'backups/clara/clara_20260201_030000.sql.gz', 'backup.sql.gz')
-"
-```
-
-### 2. Decompress
-
-```bash
-gunzip clara_20260201_030000.sql.gz
-```
-
-### 3. Restore
-
-```bash
-# Full restore (WARNING: drops existing data)
-psql $DATABASE_URL < clara_20260201_030000.sql
-
-# Or restore to new database first
-createdb clara_restore
-psql postgresql://user:pass@host:5432/clara_restore < clara_20260201_030000.sql
-```
-
-## Railway Deployment
-
-### Setup
-
-1. Create new service from `backup_service/` directory
-2. Set root directory to `backup_service`
-3. Configure environment variables
-4. Set cron schedule
-
-### Cron Configuration
-
-In Railway service settings:
-```
-Cron Schedule: 0 3 * * *
-```
-
-This runs daily at 3:00 AM UTC.
-
-### Dockerfile
-
-```dockerfile
-FROM python:3.12-slim
-
-RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY backup.py .
-
-CMD ["python", "backup.py"]
-```
-
-## Features
-
-### Respawn Protection
-
-Prevents duplicate backups when Railway restarts containers:
-
-- Checks S3 for most recent backup timestamp
-- Skips if last backup was within `RESPAWN_PROTECTION_HOURS`
-- Bypass with `FORCE_BACKUP=true`
-
-### Retention Policy
-
-Automatically deletes backups older than `BACKUP_RETENTION_DAYS`:
-
-1. Lists all backups in S3
-2. Parses timestamps from filenames
-3. Deletes expired backups
-4. Logs cleanup actions
-
-### Health Checks
-
-Endpoints for container orchestration:
-
-| Endpoint | Description |
-|----------|-------------|
-| `/health` | General health check |
-| `/ready` | Readiness probe |
-| `/live` | Liveness probe |
-
-### Retry Logic
-
-Exponential backoff for database connections:
-
-```python
-# Attempt 1: wait 2s
-# Attempt 2: wait 4s
-# Attempt 3: wait 8s
-# Attempt 4: wait 16s
-# Attempt 5: wait 32s
-```
-
-## S3 Providers
-
-### Wasabi (Recommended)
-
+**Wasabi (Recommended):**
 ```bash
 S3_ENDPOINT_URL=https://s3.wasabisys.com
 S3_REGION=us-east-1
 ```
 
-Cost-effective, S3-compatible, no egress fees.
-
-### AWS S3
-
+**AWS S3:**
 ```bash
 S3_ENDPOINT_URL=https://s3.amazonaws.com
 S3_REGION=us-east-1
 ```
 
-### MinIO (Self-hosted)
-
+**MinIO (Self-hosted):**
 ```bash
 S3_ENDPOINT_URL=https://minio.example.com
 S3_REGION=us-east-1
 ```
 
-## Backup Structure
+## Docker Compose
 
-```
-s3://clara-backups/
-├── backups/
-│   ├── clara/
-│   │   ├── clara_20260201_030000.sql.gz
-│   │   ├── clara_20260131_030000.sql.gz
-│   │   └── ...
-│   └── mem0/
-│       ├── mem0_20260201_030000.sql.gz
-│       ├── mem0_20260131_030000.sql.gz
-│       └── ...
-└── metadata/
-    └── last_backup.json
+The backup service runs as a sidecar container with a built-in cron scheduler.
+
+### Start
+
+```bash
+docker compose --profile backup up -d
 ```
 
-## Monitoring
+### Manual Commands
 
-### Logs
+```bash
+# Run backup manually
+docker compose exec backup python -m backup_service run --force
 
-Check Railway logs for backup status:
+# List backups
+docker compose exec backup python -m backup_service list
 
+# Check status
+docker compose exec backup python -m backup_service status
 ```
-2026-02-01 03:00:00 - Starting backup...
-2026-02-01 03:00:05 - Clara DB backup complete: clara_20260201_030000.sql.gz (2.5 MB)
-2026-02-01 03:00:10 - Mem0 DB backup complete: mem0_20260201_030000.sql.gz (1.2 MB)
-2026-02-01 03:00:12 - Cleanup: removed 2 expired backups
-2026-02-01 03:00:12 - Backup complete
+
+### Configuration
+
+Set in `.env` or docker-compose override:
+
+```bash
+BACKUP_STORAGE=local                  # or "s3"
+BACKUP_RETENTION_DAYS=7
+BACKUP_CRON_SCHEDULE=0 3 * * *       # Daily at 3 AM
 ```
 
-### Alerts
+For S3, also set `S3_BUCKET`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`.
 
-Set up Railway notifications for failed deployments to catch backup failures.
+## Health Checks
+
+Available on port 8080 (configurable via `HEALTH_PORT`):
+
+| Endpoint | Description |
+|----------|-------------|
+| `/health` | General health + backup state |
+| `/ready` | Readiness probe |
+| `/live` | Liveness probe |
+
+## Restore from Backup
+
+### Interactive Restore
+
+```bash
+poetry run backup restore
+```
+
+Shows a numbered list of backups, prompts for selection, confirms before restoring.
+
+### From Local File
+
+```bash
+poetry run backup restore --file ./backups/clara/clara_20260201_030000.sql.gz
+```
+
+### To Different Database
+
+```bash
+poetry run backup restore --target postgresql://user:pass@host:5432/clara_restore
+```
 
 ## See Also
 

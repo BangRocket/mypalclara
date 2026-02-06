@@ -76,6 +76,7 @@ alembic = "^1.18.1"
 # CLI interface
 prompt_toolkit = "^3.0.52"
 rich = "^14.0.0"
+typer = {extras = ["all"], version = "^0.15.0"}
 
 # Gateway
 websockets = "^15.0"  # WebSocket server for gateway architecture
@@ -91,6 +92,7 @@ clara-gateway = "gateway.__main__:main"
 clara-discord = "adapters.discord.main:run"
 clara-teams = "adapters.teams.main:run"
 clara-cli = "adapters.cli.main:run"
+backup = "backup_service.cli:app"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
