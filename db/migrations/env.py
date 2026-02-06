@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, event, pool, text
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -74,6 +74,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Set timeouts on PostgreSQL to fail fast instead of hanging forever
+        # when another connection holds a lock (e.g., stale alembic_version lock)
+        if "postgresql" in str(connectable.url):
+            connection.execute(text("SET lock_timeout = '10s'"))
+            connection.execute(text("SET statement_timeout = '60s'"))
+
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
