@@ -634,9 +634,9 @@ class MemoryGraph:
         WHERE {" AND ".join(where_conditions)}
         WITH source_candidate, (1 - vec.cosineDistance(source_candidate.embedding, vecf32($source_embedding))) AS similarity
         WHERE similarity >= $threshold
+        RETURN id(source_candidate), similarity
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN id(source_candidate)
         """
 
         params = {"source_embedding": source_embedding, "user_id": filters["user_id"], "threshold": self.threshold}
@@ -663,9 +663,9 @@ class MemoryGraph:
         WHERE {" AND ".join(where_conditions)}
         WITH destination_candidate, (1 - vec.cosineDistance(destination_candidate.embedding, vecf32($dest_embedding))) AS similarity
         WHERE similarity >= $threshold
+        RETURN id(destination_candidate), similarity
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN id(destination_candidate)
         """
 
         params = {"dest_embedding": dest_embedding, "user_id": filters["user_id"], "threshold": self.threshold}
