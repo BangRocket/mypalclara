@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, OAuthToken, PlatformLink, WebSession, utcnow
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user, get_current_user, get_db
 from mypalclara.web.auth.session import create_access_token, hash_token
 from mypalclara.web.config import get_web_config
 
@@ -28,6 +28,56 @@ DISCORD_USER_URL = "https://discord.com/api/v10/users/@me"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USER_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+@router.get("/config")
+async def auth_config():
+    """Return auth configuration so the frontend knows what's available."""
+    config = get_web_config()
+    return {
+        "dev_mode": config.dev_mode,
+        "providers": {
+            "discord": bool(config.discord_client_id),
+            "google": bool(config.google_client_id),
+        },
+    }
+
+
+@router.post("/dev-login")
+async def dev_login(response: Response, db: DBSession = Depends(get_db)):
+    """Log in as the dev user. Only available when WEB_DEV_MODE=true."""
+    config = get_web_config()
+    if not config.dev_mode:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    user = _get_or_create_dev_user(db)
+    jwt_token = create_access_token(user.id)
+
+    web_session = WebSession(
+        id=str(uuid.uuid4()),
+        canonical_user_id=user.id,
+        session_token_hash=hash_token(jwt_token),
+    )
+    db.add(web_session)
+    db.commit()
+
+    response.set_cookie(
+        key="access_token",
+        value=jwt_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=config.jwt_expire_minutes * 60,
+    )
+    return {
+        "user": {
+            "id": user.id,
+            "display_name": user.display_name,
+            "email": user.primary_email,
+            "avatar_url": user.avatar_url,
+        },
+        "token": jwt_token,
+    }
 
 
 @router.get("/login/{provider}")

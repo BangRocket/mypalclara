@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session as DBSession
 
 from db.connection import SessionLocal
 from db.models import CanonicalUser, PlatformLink
+from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user
 from mypalclara.web.auth.session import decode_access_token
 from mypalclara.web.chat.adapter import web_chat_adapter
+from mypalclara.web.config import get_web_config
 
 logger = logging.getLogger("web.chat.ws")
 router = APIRouter()
@@ -35,24 +37,27 @@ async def websocket_chat(ws: WebSocket):
         {"type": "response_end", "full_text": "...", "tool_count": N}
         {"type": "error", ...}
     """
-    # Authenticate from query param
-    token = ws.query_params.get("token")
-    if not token:
-        await ws.close(code=4001, reason="Missing token")
-        return
-
-    payload = decode_access_token(token)
-    if not payload or "sub" not in payload:
-        await ws.close(code=4001, reason="Invalid token")
-        return
-
-    # Look up user
+    # Authenticate from query param (or dev mode)
+    config = get_web_config()
     db: DBSession = SessionLocal()
     try:
-        user = db.query(CanonicalUser).filter(CanonicalUser.id == payload["sub"]).first()
-        if not user:
-            await ws.close(code=4001, reason="User not found")
-            return
+        if config.dev_mode:
+            user = _get_or_create_dev_user(db)
+        else:
+            token = ws.query_params.get("token")
+            if not token:
+                await ws.close(code=4001, reason="Missing token")
+                return
+
+            payload = decode_access_token(token)
+            if not payload or "sub" not in payload:
+                await ws.close(code=4001, reason="Invalid token")
+                return
+
+            user = db.query(CanonicalUser).filter(CanonicalUser.id == payload["sub"]).first()
+            if not user:
+                await ws.close(code=4001, reason="User not found")
+                return
 
         # Get preferred user_id (first platform link, or web-<id>)
         link = db.query(PlatformLink).filter(PlatformLink.canonical_user_id == user.id).first()

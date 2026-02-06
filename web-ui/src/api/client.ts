@@ -26,10 +26,17 @@ export interface User {
   platforms?: { platform: string; platform_user_id: string; display_name: string; linked_at: string | null }[];
 }
 
+export interface AuthConfig {
+  dev_mode: boolean;
+  providers: { discord: boolean; google: boolean };
+}
+
 export const auth = {
+  config: () => request<AuthConfig>("/auth/config"),
   me: () => request<User>("/auth/me"),
   loginUrl: (provider: string) => request<{ url: string }>(`/auth/login/${provider}`),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  devLogin: () => request<{ user: User; token: string }>("/auth/dev-login", { method: "POST" }),
   callback: (provider: string, code: string) =>
     request<{ user: User; token: string }>(`/auth/callback/${provider}?code=${code}`),
 };

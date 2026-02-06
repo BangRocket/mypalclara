@@ -33,6 +33,10 @@ class WebConfig:
         default_factory=lambda: os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:5173/auth/callback/google")
     )
 
+    # Dev mode — bypasses OAuth, auto-creates a dev user
+    dev_mode: bool = field(default_factory=lambda: os.getenv("WEB_DEV_MODE", "").lower() in ("1", "true", "yes"))
+    dev_user_name: str = field(default_factory=lambda: os.getenv("WEB_DEV_USER_NAME", "Dev User"))
+
     # Server
     host: str = field(default_factory=lambda: os.getenv("WEB_HOST", "0.0.0.0"))
     port: int = int(os.getenv("WEB_PORT", "8000"))
