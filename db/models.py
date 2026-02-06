@@ -400,7 +400,10 @@ class MemoryDynamics(Base):
 
     # Key memory flag (high importance, always retrieved)
     is_key = Column(Boolean, default=False)
-    importance_weight = Column(Float, default=1.0)  # Multiplier for ranking
+    importance_weight = Column(Float, default=1.0)
+
+    # Classification category (personal, professional, preferences, goals, emotional, temporal)
+    category = Column(String(50), nullable=True, default=None)
 
     # Access tracking
     last_accessed_at = Column(DateTime, nullable=True)
