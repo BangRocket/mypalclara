@@ -82,6 +82,10 @@ services:
       - "6380:6379"  # Use 6380 to avoid conflict with Redis
     volumes:
       - falkordb-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      ${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
@@ -145,6 +149,8 @@ services:
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Web search
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       # Sandbox
@@ -258,6 +264,8 @@ services:
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Fast LLM (for quick operations)
       - FAST_LLM_PROVIDER=${FAST_LLM_PROVIDER:-}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
@@ -386,8 +394,11 @@ services:
       - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
       # Graph memory (for graph explorer)
       - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
+      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # General
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
