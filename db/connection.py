@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
-load_dotenv()
+from clara_core.config import get_settings
 
 logger = logging.getLogger("db")
 
+_settings = get_settings()
+
 # Support both SQLite (local dev) and PostgreSQL (production)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = _settings.database.url or None
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres"):
     # PostgreSQL with connection pooling
-    # Railway and other hosts use postgresql:// prefix, SQLAlchemy prefers postgresql://
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -27,13 +26,13 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres"):
         poolclass=QueuePool,
         pool_size=5,
         max_overflow=10,
-        pool_pre_ping=True,  # Verify connections before use
+        pool_pre_ping=True,
         echo=False,
     )
     logger.info(f"Using PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'configured'}")
 else:
     # Fallback to SQLite for local development
-    DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+    DATA_DIR = Path(_settings.database.data_dir)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE_URL = f"sqlite:///{DATA_DIR}/assistant.db"
     engine = create_engine(DATABASE_URL, echo=False, future=True)
@@ -48,12 +47,7 @@ def get_session():
 
 
 def init_db(run_migrations: bool = True) -> None:
-    """Initialize the database.
-
-    Args:
-        run_migrations: If True, run Alembic migrations. If False, use create_all
-                       (for testing or when migrations aren't available).
-    """
+    """Initialize the database."""
     from db.models import Base
 
     if run_migrations:
@@ -62,8 +56,6 @@ def init_db(run_migrations: bool = True) -> None:
         except Exception as e:
             logger.warning(f"Migration failed: {e}")
 
-    # Always run create_all to ensure new tables exist
-    # (create_all only creates tables that don't exist, it's safe to call after migrations)
     Base.metadata.create_all(bind=engine)
 
 
@@ -74,7 +66,6 @@ def run_alembic_migrations() -> None:
     from alembic.runtime.migration import MigrationContext
     from alembic.script import ScriptDirectory
 
-    # Find alembic.ini
     project_root = Path(__file__).parent.parent
     alembic_ini = project_root / "alembic.ini"
 
@@ -82,11 +73,9 @@ def run_alembic_migrations() -> None:
         logger.warning("alembic.ini not found, skipping migrations")
         return
 
-    # Configure Alembic
     cfg = Config(str(alembic_ini))
     cfg.set_main_option("sqlalchemy.url", str(DATABASE_URL))
 
-    # Check current state
     with engine.connect() as conn:
         context = MigrationContext.configure(conn)
         current_rev = context.get_current_revision()

@@ -396,7 +396,7 @@ class ToolExecutor:
         Returns:
             List of tool definitions
         """
-        import os
+        from clara_core.config import get_settings
 
         if not self._initialized:
             logger.warning("ToolExecutor not initialized")
@@ -413,7 +413,8 @@ class ToolExecutor:
             }
 
             # Check for OAuth capabilities
-            if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"):
+            s = get_settings()
+            if s.web.google_oauth.client_id and s.web.google_oauth.client_secret:
                 capabilities["google_oauth"] = True
 
             native_tools = self._tool_registry.get_tools(

@@ -22,9 +22,20 @@ MODULE_VERSION = "1.0.0"
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-LOCAL_FILES_DIR = Path(os.getenv("CLARA_FILES_DIR", "./clara_files"))
-MAX_FILE_SIZE = int(os.getenv("CLARA_MAX_FILE_SIZE", str(50 * 1024 * 1024)))  # 50MB default
+# Configuration — lazy accessors for settings-backed values
+
+
+def _get_files_dir() -> Path:
+    from clara_core.config import get_settings
+
+    return Path(get_settings().files_dir)
+
+
+def _get_max_file_size() -> int:
+    from clara_core.config import get_settings
+
+    return get_settings().max_file_size
+
 
 # S3 Configuration
 S3_ENABLED = os.getenv("S3_ENABLED", "false").lower() == "true"
@@ -98,8 +109,8 @@ class FileResult:
 class LocalFileManager:
     """Manages local file storage for users."""
 
-    def __init__(self, base_dir: Path = LOCAL_FILES_DIR):
-        self.base_dir = base_dir
+    def __init__(self, base_dir: Path | None = None):
+        self.base_dir = base_dir if base_dir is not None else _get_files_dir()
         self._ensure_base_dir()
 
     def _ensure_base_dir(self):
@@ -142,10 +153,11 @@ class LocalFileManager:
             else:
                 content_bytes = content
 
-            if len(content_bytes) > MAX_FILE_SIZE:
+            max_size = _get_max_file_size()
+            if len(content_bytes) > max_size:
                 return FileResult(
                     success=False,
-                    message=f"File too large ({len(content_bytes)} bytes, max {MAX_FILE_SIZE})",
+                    message=f"File too large ({len(content_bytes)} bytes, max {max_size})",
                 )
 
             # Write file
@@ -352,11 +364,12 @@ class S3FileManager:
             else:
                 content_bytes = content
 
-            if len(content_bytes) > MAX_FILE_SIZE:
+            max_size = _get_max_file_size()
+            if len(content_bytes) > max_size:
                 logger.warning(f"[s3] File too large: {len(content_bytes)} bytes")
                 return FileResult(
                     success=False,
-                    message=f"File too large ({len(content_bytes)} bytes, max {MAX_FILE_SIZE})",
+                    message=f"File too large ({len(content_bytes)} bytes, max {max_size})",
                 )
 
             # Upload to S3
@@ -540,7 +553,7 @@ def get_file_manager() -> FileManager:
             logger.info(f"[storage] Using S3 storage: {S3_ENDPOINT_URL} / {S3_BUCKET}")
             _file_manager = S3FileManager()
         else:
-            logger.info(f"[storage] Using local storage: {LOCAL_FILES_DIR}")
+            logger.info(f"[storage] Using local storage: {_get_files_dir()}")
             _file_manager = LocalFileManager()
     return _file_manager
 

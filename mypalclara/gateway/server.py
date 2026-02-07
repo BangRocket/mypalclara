@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -75,7 +74,9 @@ class GatewayServer:
         """
         self.host = host
         self.port = port
-        self.secret = secret or os.getenv("CLARA_GATEWAY_SECRET")
+        from clara_core.config import get_settings
+
+        self.secret = secret or get_settings().gateway.secret or None
 
         self.node_registry = NodeRegistry()
         self.session_manager = SessionManager(self.node_registry)

@@ -1,25 +1,28 @@
-"""Voice chat configuration from environment variables."""
+"""Voice chat configuration from settings."""
 
 from __future__ import annotations
 
-import os
+from clara_core.config import get_settings
+
+_voice = get_settings().voice
+_llm = get_settings().llm
 
 # STT Configuration
-VOICE_STT_PROVIDER: str = os.getenv("VOICE_STT_PROVIDER", "openai")
-VOICE_STT_MODEL: str = os.getenv("VOICE_STT_MODEL", "whisper-1")
-GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
-OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+VOICE_STT_PROVIDER: str = _voice.stt.provider
+VOICE_STT_MODEL: str = _voice.stt.model
+GROQ_API_KEY: str | None = _voice.stt.groq_api_key or None
+OPENAI_API_KEY: str | None = _llm.openai_api_key or None
 
 # TTS Configuration
-REPLICATE_API_TOKEN: str | None = os.getenv("REPLICATE_API_TOKEN")
-VOICE_TTS_SPEAKER: str = os.getenv("VOICE_TTS_SPEAKER", "Serena")
-VOICE_TTS_LANGUAGE: str = os.getenv("VOICE_TTS_LANGUAGE", "auto")
+REPLICATE_API_TOKEN: str | None = _voice.tts.replicate_api_token or None
+VOICE_TTS_SPEAKER: str = _voice.tts.speaker
+VOICE_TTS_LANGUAGE: str = _voice.tts.language
 
 # VAD / Behavior
-VOICE_VAD_AGGRESSIVENESS: int = int(os.getenv("VOICE_VAD_AGGRESSIVENESS", "2"))
-VOICE_SILENCE_DURATION: float = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))
-VOICE_IDLE_TIMEOUT: int = int(os.getenv("VOICE_IDLE_TIMEOUT", "300"))
-VOICE_ENABLE_INTERRUPTION: bool = os.getenv("VOICE_ENABLE_INTERRUPTION", "true").lower() == "true"
+VOICE_VAD_AGGRESSIVENESS: int = _voice.vad.aggressiveness
+VOICE_SILENCE_DURATION: float = _voice.vad.silence_duration
+VOICE_IDLE_TIMEOUT: int = _voice.idle_timeout
+VOICE_ENABLE_INTERRUPTION: bool = _voice.enable_interruption
 
 # Audio constants
 DISCORD_SAMPLE_RATE = 48000

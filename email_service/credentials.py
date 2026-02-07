@@ -5,16 +5,15 @@ Uses Fernet symmetric encryption with a key from environment variable.
 
 from __future__ import annotations
 
-import os
-
 from cryptography.fernet import Fernet, InvalidToken
 
+from clara_core.config import get_settings
 from config.logging import get_logger
 
 logger = get_logger("email.credentials")
 
-# Encryption key from environment (generate with: Fernet.generate_key().decode())
-EMAIL_ENCRYPTION_KEY = os.getenv("EMAIL_ENCRYPTION_KEY")
+# Encryption key from settings (generate with: Fernet.generate_key().decode())
+EMAIL_ENCRYPTION_KEY = get_settings().email.encryption_key or None
 
 _fernet: Fernet | None = None
 

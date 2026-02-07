@@ -18,7 +18,6 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import os
 import signal
 import sys
 from pathlib import Path
@@ -26,24 +25,22 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from aiohttp import web
 from botbuilder.core.integration import aiohttp_error_middleware
 from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
 
 from adapters.teams.bot import TeamsBot
 from adapters.teams.gateway_client import TeamsGatewayClient
+from clara_core.config import get_settings
 from config.logging import get_logger, init_logging
 
 init_logging()
 logger = get_logger("adapters.teams")
 
 # Configuration
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL") or "ws://127.0.0.1:18789"
-PORT = int(os.getenv("TEAMS_PORT") or "3978")
+_settings = get_settings()
+GATEWAY_URL = _settings.gateway.url
+PORT = _settings.teams.port
 
 
 class BotConfig:
@@ -54,10 +51,10 @@ class BotConfig:
     """
 
     PORT = PORT
-    APP_ID = os.getenv("TEAMS_APP_ID", "")
-    APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD", "")
-    APP_TYPE = os.getenv("TEAMS_APP_TYPE", "MultiTenant")
-    APP_TENANTID = os.getenv("TEAMS_APP_TENANT_ID", "")
+    APP_ID = _settings.teams.app_id
+    APP_PASSWORD = _settings.teams.app_password
+    APP_TYPE = _settings.teams.app_type
+    APP_TENANTID = _settings.teams.app_tenant_id
 
 
 CONFIG = BotConfig()

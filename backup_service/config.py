@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from clara_core.config import get_settings
 
 
 @dataclass
 class BackupConfig:
-    """Configuration for the backup service, loaded from environment variables."""
+    """Configuration for the backup service, loaded from settings."""
 
     # Databases
     clara_db_url: str = ""
@@ -51,38 +52,40 @@ class BackupConfig:
 
     @classmethod
     def from_env(cls) -> BackupConfig:
-        """Load configuration from environment variables."""
+        """Load configuration from settings."""
+        s = get_settings()
+        backup = s.backup
         return cls(
             # Databases
-            clara_db_url=os.getenv("DATABASE_URL", ""),
-            rook_db_url=os.getenv("ROOK_DATABASE_URL", os.getenv("MEM0_DATABASE_URL", "")),
+            clara_db_url=s.database.url,
+            rook_db_url=s.memory.vector_store.database_url,
             # Storage
-            storage_type=os.getenv("BACKUP_STORAGE", "local"),
-            local_backup_dir=Path(os.getenv("BACKUP_LOCAL_DIR", "./backups")),
+            storage_type=backup.storage,
+            local_backup_dir=Path(backup.local_dir),
             # S3
-            s3_bucket=os.getenv("S3_BUCKET", ""),
-            s3_endpoint_url=os.getenv("S3_ENDPOINT_URL", "https://s3.wasabisys.com"),
-            s3_access_key=os.getenv("S3_ACCESS_KEY", ""),
-            s3_secret_key=os.getenv("S3_SECRET_KEY", ""),
-            s3_region=os.getenv("S3_REGION", "us-east-1"),
+            s3_bucket=backup.s3.bucket,
+            s3_endpoint_url=backup.s3.endpoint_url,
+            s3_access_key=backup.s3.access_key,
+            s3_secret_key=backup.s3.secret_key,
+            s3_region=backup.s3.region,
             # Behavior
-            retention_days=int(os.getenv("BACKUP_RETENTION_DAYS", "7")),
-            compression_level=int(os.getenv("BACKUP_COMPRESSION_LEVEL", "9")),
-            dump_timeout=int(os.getenv("BACKUP_DUMP_TIMEOUT", "600")),
-            respawn_hours=int(os.getenv("RESPAWN_PROTECTION_HOURS", "23")),
-            force=os.getenv("FORCE_BACKUP", "").lower() == "true",
+            retention_days=backup.retention_days,
+            compression_level=backup.compression_level,
+            dump_timeout=backup.dump_timeout,
+            respawn_hours=backup.respawn_protection_hours,
+            force=backup.force,
             # FalkorDB
-            falkordb_host=os.getenv("FALKORDB_HOST", ""),
-            falkordb_port=int(os.getenv("FALKORDB_PORT", "6379")),
-            falkordb_password=os.getenv("FALKORDB_PASSWORD", ""),
+            falkordb_host=s.memory.graph_store.falkordb_host,
+            falkordb_port=s.memory.graph_store.falkordb_port,
+            falkordb_password=s.memory.graph_store.falkordb_password,
             # Config file backup
-            config_paths=[p.strip() for p in os.getenv("BACKUP_CONFIG_PATHS", "").split(",") if p.strip()],
+            config_paths=[p.strip() for p in backup.config_paths.split(",") if p.strip()],
             # DB retry
-            db_retry_attempts=int(os.getenv("DB_RETRY_ATTEMPTS", "5")),
-            db_retry_delay=int(os.getenv("DB_RETRY_DELAY", "2")),
+            db_retry_attempts=backup.db_retry_attempts,
+            db_retry_delay=backup.db_retry_delay,
             # Health / cron
-            health_port=int(os.getenv("HEALTH_PORT", os.getenv("PORT", "8080"))),
-            cron_schedule=os.getenv("BACKUP_CRON_SCHEDULE", "0 3 * * *"),
+            health_port=backup.health_port,
+            cron_schedule=backup.cron_schedule,
         )
 
     @property

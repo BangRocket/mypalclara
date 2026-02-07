@@ -5,13 +5,13 @@ Uses Pycord's application commands system.
 """
 
 import logging
-import os
 from typing import Optional
 
 import discord
 from discord import option
 from discord.ext import commands
 
+from clara_core.config import get_settings
 from db import SessionLocal
 from db.models import GuildConfig
 
@@ -696,9 +696,7 @@ class ClaraCommands(commands.Cog):
                 return
 
             # Get redirect URI
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
+            api_url = get_settings().discord.api_url
             if api_url:
                 redirect_uri = f"{api_url}/oauth/mcp/callback"
             else:
@@ -761,9 +759,7 @@ class ClaraCommands(commands.Cog):
                 return
 
             # Get redirect URI (must match what was used in oauth_start)
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
+            api_url = get_settings().discord.api_url
             if api_url:
                 redirect_uri = f"{api_url}/oauth/mcp/callback"
             else:
@@ -947,9 +943,10 @@ class ClaraCommands(commands.Cog):
             auto_tier = config.auto_tier_enabled == "true" if config else False
 
             # Get env defaults
-            env_tier = os.getenv("MODEL_TIER", "mid")
-            env_auto = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
-            provider = os.getenv("LLM_PROVIDER", "openrouter")
+            _s = get_settings()
+            env_tier = _s.llm.auto_tier.default_tier or "mid"
+            env_auto = _s.llm.auto_tier.enabled
+            provider = _s.llm.provider
 
             fields = [
                 ("Provider", provider, True),
@@ -1040,7 +1037,7 @@ class ClaraCommands(commands.Cog):
             quiet_end = config.ors_quiet_end if config else None
 
             # Check environment default
-            env_enabled = os.getenv("ORS_ENABLED", "false").lower() == "true"
+            env_enabled = get_settings().proactive.enabled
 
             fields = [
                 ("Status", "Enabled" if (ors_enabled or env_enabled) else "Disabled", True),
@@ -1684,7 +1681,7 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            provider = os.getenv("LLM_PROVIDER", "openrouter")
+            provider = get_settings().llm.provider
 
             # Get connected servers count
             from clara_core.mcp import get_mcp_manager

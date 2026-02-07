@@ -423,9 +423,16 @@ _discord_handler: DiscordLogHandler | None = None
 _initialized = False
 
 
+def _get_log_level_setting() -> str:
+    """Get the raw log level string from settings."""
+    from clara_core.config import get_settings
+
+    return get_settings().logging.level
+
+
 def _get_console_level() -> int:
-    """Get console log level from environment variable."""
-    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    """Get console log level from settings."""
+    level_name = _get_log_level_setting().upper()
     return getattr(logging, level_name, logging.INFO)
 
 
@@ -442,7 +449,7 @@ def init_logging(session_factory=None, console_level: int | None = None):
     # Debug: show what level we're using
     level_name = logging.getLevelName(console_level)
     print(
-        f"[logging] Initializing with console level: {level_name} (LOG_LEVEL={os.getenv('LOG_LEVEL', 'not set')})",
+        f"[logging] Initializing with console level: {level_name} (LOG_LEVEL={_get_log_level_setting()})",
         file=sys.stderr,
     )
 

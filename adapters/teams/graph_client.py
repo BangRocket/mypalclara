@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -51,9 +50,12 @@ class GraphClient:
             app_password: Azure Bot App Password (defaults to TEAMS_APP_PASSWORD env var)
             tenant_id: Azure tenant ID (defaults to TEAMS_TENANT_ID or botframework.com)
         """
-        self.app_id = app_id or os.getenv("TEAMS_APP_ID", "")
-        self.app_password = app_password or os.getenv("TEAMS_APP_PASSWORD", "")
-        self.tenant_id = tenant_id or os.getenv("TEAMS_GRAPH_TENANT_ID", DEFAULT_TENANT)
+        from clara_core.config import get_settings
+
+        s = get_settings().teams
+        self.app_id = app_id or s.app_id
+        self.app_password = app_password or s.app_password
+        self.tenant_id = tenant_id or s.app_tenant_id or DEFAULT_TENANT
 
         # Graph API is disabled if no tenant is configured
         self._enabled = bool(self.tenant_id)

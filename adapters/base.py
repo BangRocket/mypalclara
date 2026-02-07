@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -234,7 +233,9 @@ class GatewayClient(ABC):
         """
         self.platform = platform
         self.capabilities = capabilities or ["streaming"]
-        self.gateway_url = gateway_url or os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
+        from clara_core.config import get_settings
+
+        self.gateway_url = gateway_url or get_settings().gateway.url
 
         self.node_id = f"{platform}-{uuid.uuid4().hex[:8]}"
         self.session_id: str | None = None

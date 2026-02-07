@@ -39,10 +39,7 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from clara_core.config import get_settings
 from mypalclara.gateway.banner import Colors, print_banner
 
 _C = Colors
@@ -92,41 +89,41 @@ Examples:
 """,
     )
 
-    # Global options
+    # Global options (defaults applied lazily from settings in main())
     parser.add_argument(
         "--host",
-        default=os.getenv("CLARA_GATEWAY_HOST", "127.0.0.1"),
+        default=None,
         help="Bind address (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("CLARA_GATEWAY_PORT", "18789")),
+        default=None,
         help="Port to listen on (default: 18789)",
     )
     parser.add_argument(
         "--hooks-dir",
-        default=os.getenv("CLARA_HOOKS_DIR", "./hooks"),
+        default=None,
         help="Directory containing hooks.yaml (default: ./hooks)",
     )
     parser.add_argument(
         "--scheduler-dir",
-        default=os.getenv("CLARA_SCHEDULER_DIR", "."),
+        default=None,
         help="Directory containing scheduler.yaml (default: .)",
     )
     parser.add_argument(
         "--adapters-config",
-        default=os.getenv("CLARA_ADAPTERS_CONFIG"),
+        default=None,
         help="Path to adapters.yaml (default: gateway/adapters.yaml)",
     )
     parser.add_argument(
         "--pidfile",
-        default=os.getenv("CLARA_GATEWAY_PIDFILE", "/tmp/clara-gateway.pid"),
+        default=None,
         help="PID file path (default: /tmp/clara-gateway.pid)",
     )
     parser.add_argument(
         "--logfile",
-        default=os.getenv("CLARA_GATEWAY_LOGFILE"),
+        default=None,
         help="Log file path when daemonized (default: none)",
     )
 
@@ -540,10 +537,34 @@ async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] 
     logger.info("Gateway stopped")
 
 
+def _apply_settings_defaults(args: argparse.Namespace) -> None:
+    """Apply settings defaults for any args not provided on the command line."""
+    settings = get_settings()
+    gw = settings.gateway
+
+    if args.host is None:
+        args.host = gw.host
+    if args.port is None:
+        args.port = gw.port
+    if args.hooks_dir is None:
+        args.hooks_dir = gw.hooks_dir
+    if args.scheduler_dir is None:
+        args.scheduler_dir = gw.scheduler_dir
+    if args.adapters_config is None:
+        args.adapters_config = gw.adapters_config or None
+    if args.pidfile is None:
+        args.pidfile = gw.pidfile
+    if args.logfile is None:
+        args.logfile = gw.logfile or None
+
+
 def main() -> None:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
+
+    # Apply settings defaults for args not provided on the command line
+    _apply_settings_defaults(args)
 
     # If no command, run in foreground with adapters (same as 'start -f')
     if args.command is None:

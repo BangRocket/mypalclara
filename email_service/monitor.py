@@ -6,12 +6,12 @@ Polls email accounts and sends Discord alerts for important messages.
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import discord
 
+from clara_core.config import get_settings
 from config.logging import get_logger
 from db.connection import SessionLocal
 from db.models import EmailAccount, EmailAlert, EmailRule
@@ -26,9 +26,10 @@ if TYPE_CHECKING:
 logger = get_logger("email.monitor")
 
 # Configuration
-EMAIL_MONITORING_ENABLED = os.getenv("EMAIL_MONITORING_ENABLED", "false").lower() == "true"
-EMAIL_DEFAULT_POLL_INTERVAL = int(os.getenv("EMAIL_DEFAULT_POLL_INTERVAL", "5"))
-EMAIL_ERROR_BACKOFF_MAX = int(os.getenv("EMAIL_ERROR_BACKOFF_MAX", "60"))
+_email_settings = get_settings().email
+EMAIL_MONITORING_ENABLED = _email_settings.monitoring_enabled
+EMAIL_DEFAULT_POLL_INTERVAL = _email_settings.default_poll_interval
+EMAIL_ERROR_BACKOFF_MAX = _email_settings.error_backoff_max
 
 # Track next check times per account
 _next_checks: dict[str, datetime] = {}

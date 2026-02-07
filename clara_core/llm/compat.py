@@ -15,7 +15,6 @@ These functions wrap the new LLMProvider interface for compatibility.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Generator
 from typing import TYPE_CHECKING, Any
 
@@ -420,9 +419,17 @@ def _inject_tools_into_messages(
 
 # ============== Tool Description Generator ==============
 
-# Tool description settings from environment
-TOOL_DESC_TIER = os.getenv("TOOL_DESC_TIER", "high").lower()
-TOOL_DESC_MAX_WORDS = int(os.getenv("TOOL_DESC_MAX_WORDS", "20"))
+
+def _get_tool_desc_tier() -> str:
+    from clara_core.config import get_settings
+
+    return get_settings().tools.desc_tier.lower()
+
+
+def _get_tool_desc_max_words() -> int:
+    from clara_core.config import get_settings
+
+    return get_settings().tools.desc_max_words
 
 
 async def generate_tool_description(
@@ -449,7 +456,7 @@ async def generate_tool_description(
     import asyncio
 
     if max_words is None:
-        max_words = TOOL_DESC_MAX_WORDS
+        max_words = _get_tool_desc_max_words()
 
     # Expand args to show more context
     args_summary = json.dumps(args, default=str, indent=2)
@@ -481,7 +488,7 @@ Your description (no quotes, no period at end):"""
 
     try:
         # Use configurable tier (default: high for richer descriptions)
-        tier = TOOL_DESC_TIER
+        tier = _get_tool_desc_tier()
         if tier not in ("high", "mid", "low"):
             tier = "high"
 
