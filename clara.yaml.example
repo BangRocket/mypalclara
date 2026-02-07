@@ -193,7 +193,7 @@ gateway:
 # --- Bot Personality ---
 bot:
   name: "Clara"
-  personality_file: ""      # Path to .txt file
+  personality_file: ""      # Path to .md file
   personality: ""           # Inline text
 
 # --- Backup ---

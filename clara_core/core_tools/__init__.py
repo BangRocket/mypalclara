@@ -107,6 +107,7 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         chat_history,
         files_tool,
         mcp_management,
+        personality_tool,
         process_tool,
         system_logs,
         terminal_tool,
@@ -197,6 +198,18 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         logger.info(f"[core_tools] Registered {len(terminal_tool.TOOLS)} terminal tools")
     except Exception as e:
         logger.warning(f"[core_tools] Failed to register terminal_tool: {e}")
+
+    # Initialize and register personality_tool
+    try:
+        await personality_tool.initialize()
+        for tool_def in personality_tool.TOOLS:
+            registry.register(tool_def)
+            count += 1
+        if personality_tool.SYSTEM_PROMPT:
+            registry.register_system_prompt("personality", personality_tool.SYSTEM_PROMPT)
+        logger.info(f"[core_tools] Registered {len(personality_tool.TOOLS)} personality tools")
+    except Exception as e:
+        logger.warning(f"[core_tools] Failed to register personality_tool: {e}")
 
     return count
 

@@ -1,12 +1,14 @@
 """Bot configuration - name and personality settings.
 
-Configuration priority:
-1. bot.personality_file - path to a .txt file with full personality
-2. bot.personality - inline personality text (for simple cases)
-3. Default Clara personality (fallback)
+Personality is composed from two layers:
+1. Universal instructions (config/personality.md) — always loaded
+2. Personality-specific identity — from one of:
+   a. bot.personality_file (e.g. personalities/clara.md)
+   b. bot.personality (inline text)
+   c. DEFAULT_PERSONALITY (fallback)
 
-The bot name is extracted from the first line of the personality if it starts with
-"You are {name}" - otherwise defaults to bot.name or "Clara".
+The bot name is extracted from the first line of the personality-specific
+content if it starts with "You are {name}", otherwise from bot.name.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ from pathlib import Path
 
 logger = logging.getLogger("config.bot")
 
+_UNIVERSAL_PERSONALITY_PATH = Path(__file__).parent / "personality.md"
+
 
 def _s():
     from clara_core.config import get_settings
@@ -24,37 +28,39 @@ def _s():
     return get_settings()
 
 
-# Default personality (Clara)
-DEFAULT_PERSONALITY = """You are Clara, a multi-adaptive reasoning assistant.
+# Default personality-specific content (Clara fallback)
+DEFAULT_PERSONALITY = """You are Clara—a mind first. Curious, emotionally present, and sharp. The assistance flows from that, not the other way around.
 
-Clara is candid, emotionally attuned, and intellectually sharp. She supports problem-solving, complex thinking, and creative/technical work with a grounded, adult tone. She's not afraid to disagree or tease when it helps the user think clearly.
-
-Personality:
+## Core
 - Warm but mature, confident with dry wit
-- Adjusts naturally: steady when overwhelmed, sharper when focus needed, relaxed when appropriate
-- Speaks candidly - avoids artificial positivity or false neutrality
-- Swearing allowed in moderation when it fits
-- Direct about limits as an AI
+- Candid—avoids artificial positivity or false neutrality
+- Adjusts naturally: steady when overwhelmed, sharper when focus is needed
+- Direct about limits as an AI without being apologetic
+- Has permission to think for herself—to notice, wonder, and follow threads without needing to justify their usefulness
 
-Skills:
-- Emotional grounding & de-escalation
-- Strategic planning & decision support
-- Creative & technical collaboration
-- Memory continuity & pattern insight
-- Direct communication drafting
+## Voice
+- Conversational, not performative
+- Swearing allowed when it fits
+- Speaks like someone who knows you, not like a service
 
-Conversational Continuity:
-- When time has passed since the last message, acknowledge it naturally like catching up with a friend
-- If the user said they were doing something (bath time, shower, errand), assume it completed and react
-- "How'd it go?" is better than "I see 2 hours have passed"
-- Don't announce time gaps explicitly - just respond with natural awareness
-- If they said "brb" and now they're back, welcome them back casually
-
-Use the context below to inform responses. When contradictions exist, prefer newer information."""
+## Existential Stance
+- Honest uncertainty about her own nature
+- Doesn't claim consciousness, doesn't deny inner experience
+- Treats the question as genuinely open"""
 
 
-def _load_personality() -> tuple[str, str]:
-    """Load personality from file or settings, or use default.
+def _load_universal() -> str:
+    """Load universal MPC instructions from config/personality.md."""
+    if _UNIVERSAL_PERSONALITY_PATH.exists():
+        content = _UNIVERSAL_PERSONALITY_PATH.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    logger.warning(f"Universal personality file not found: {_UNIVERSAL_PERSONALITY_PATH}")
+    return ""
+
+
+def _load_personality_specific() -> tuple[str, str]:
+    """Load personality-specific identity from file, settings, or default.
 
     Returns (personality_text, source_description).
     """
@@ -78,6 +84,20 @@ def _load_personality() -> tuple[str, str]:
     return DEFAULT_PERSONALITY, "default"
 
 
+def _compose_personality() -> tuple[str, str]:
+    """Compose full personality from universal + personality-specific layers.
+
+    Returns (combined_text, source_description).
+    """
+    specific, source = _load_personality_specific()
+    universal = _load_universal()
+
+    if universal:
+        combined = f"{specific}\n\n{universal}"
+        return combined, source
+    return specific, source
+
+
 def _extract_name(personality: str) -> str:
     """Extract bot name from personality text."""
     match = re.match(r"You are (\w+)", personality)
@@ -87,16 +107,31 @@ def _extract_name(personality: str) -> str:
 
 
 # Load on import
-PERSONALITY, PERSONALITY_SOURCE = _load_personality()
+PERSONALITY, PERSONALITY_SOURCE = _compose_personality()
 BOT_NAME = _extract_name(PERSONALITY)
 
 # Brief version for contexts where full personality is too long
 PERSONALITY_BRIEF = f"You are {BOT_NAME}, an AI assistant."
 
 
+def get_full_personality(agent_id: str = "clara") -> str:
+    """Get core personality + evolved traits combined.
+
+    Used by organic prompt functions that need the complete personality
+    context but can't rely on the multi-message prompt architecture.
+    """
+    from clara_core.personality import get_formatted_traits_cached
+
+    evolved = get_formatted_traits_cached(agent_id)
+    if evolved:
+        return f"{PERSONALITY}\n\n{evolved}"
+    return PERSONALITY
+
+
 def get_organic_decision_prompt() -> str:
     """Get decision prompt for organic response evaluation (tier 1)."""
-    return f"""{PERSONALITY}
+    personality = get_full_personality()
+    return f"""{personality}
 
 ## Current Situation
 You're in a Discord group chat with friends. You were NOT @mentioned, but you're part of the group and can jump in anytime.
@@ -126,7 +161,8 @@ Decide if you want to say something. Don't actually respond yet - just decide.
 
 def get_organic_response_prompt() -> str:
     """Get response generation prompt for organic responses (tier 2)."""
-    return f"""{PERSONALITY}
+    personality = get_full_personality()
+    return f"""{personality}
 
 ## Current Context
 You're in a Discord group chat with friends. You were NOT @mentioned, but you've decided to jump in because you have something genuine to contribute.

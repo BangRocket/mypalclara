@@ -699,6 +699,58 @@ class ToolAuditLog(Base):
 
 
 # =============================================================================
+# Personality Evolution Models
+# =============================================================================
+
+
+class PersonalityTrait(Base):
+    """An evolved personality trait that Clara manages herself.
+
+    Traits are scoped by agent_id for multi-bot support and soft-deleted
+    via the active flag so history is preserved.
+    """
+
+    __tablename__ = "personality_traits"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    agent_id = Column(String, nullable=False, default="clara")
+    category = Column(String(50), nullable=False)  # interests, communication_style, values, etc.
+    trait_key = Column(String(100), nullable=False)  # short identifier within category
+    content = Column(Text, nullable=False)  # the trait description
+    source = Column(String(20), nullable=False, default="self")  # self, user, seed
+    reason = Column(Text, nullable=True)  # why added/updated
+    active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_personality_trait_agent_category", "agent_id", "category"),
+        Index("ix_personality_trait_agent_active", "agent_id", "active"),
+    )
+
+
+class PersonalityTraitHistory(Base):
+    """Audit log for personality trait changes."""
+
+    __tablename__ = "personality_trait_history"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    trait_id = Column(String, ForeignKey("personality_traits.id"), nullable=False, index=True)
+    agent_id = Column(String, nullable=False)
+    event = Column(String(20), nullable=False)  # add, update, remove, restore
+    old_content = Column(Text, nullable=True)
+    new_content = Column(Text, nullable=True)
+    old_category = Column(String(50), nullable=True)
+    new_category = Column(String(50), nullable=True)
+    reason = Column(Text, nullable=True)
+    source = Column(String(20), nullable=False, default="self")  # self, user, system
+    trigger_context = Column(Text, nullable=True)  # JSON conversation snippet
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_personality_history_agent_created", "agent_id", "created_at"),)
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
@@ -746,6 +798,9 @@ __all__ = [
     "WebSession",
     # Tool audit log
     "ToolAuditLog",
+    # Personality evolution
+    "PersonalityTrait",
+    "PersonalityTraitHistory",
     # MCP models
     "MCPServer",
     "MCPOAuthToken",
