@@ -1211,6 +1211,17 @@ class MemoryManager:
         if evolved_traits:
             messages.append(SystemMessage(content=evolved_traits))
 
+        # Inject tool system prompts (guidance on how to use available tools)
+        tool_prompts = ""
+        try:
+            from clara_core.plugins.system import get_registry
+
+            tool_prompts = get_registry().get_system_prompts()
+            if tool_prompts:
+                messages.append(SystemMessage(content=tool_prompts))
+        except Exception:
+            pass  # Registry not initialized yet
+
         if context_parts:
             messages.append(SystemMessage(content="\n\n".join(context_parts)))
 
@@ -1233,6 +1244,8 @@ class MemoryManager:
         components.append(f"personality={len(system_base)} chars")
         if evolved_traits:
             components.append(f"evolved={len(evolved_traits)} chars")
+        if tool_prompts:
+            components.append(f"tool_prompts={len(tool_prompts)} chars")
         if user_mems:
             components.append(f"user_mems={len(user_mems)}")
         if proj_mems:
