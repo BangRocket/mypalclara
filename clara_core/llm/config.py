@@ -5,7 +5,6 @@ Provides a unified configuration object for all LLM providers.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -27,19 +26,6 @@ class LLMConfig:
     - anthropic: Native Anthropic SDK (with base_url for clewdr proxy)
     - bedrock: Amazon Bedrock (Claude models via AWS)
     - azure: Azure OpenAI Service
-
-    Attributes:
-        provider: LLM provider name
-        model: Model name/identifier
-        api_key: API key for authentication
-        base_url: Base URL for API endpoint (optional)
-        max_tokens: Maximum tokens in response
-        temperature: Sampling temperature (0.0-2.0)
-        tier: Model tier for tier-based selection
-        extra_headers: Additional HTTP headers (e.g., Cloudflare Access)
-        aws_region: AWS region for Bedrock (default: us-east-1)
-        azure_deployment: Azure OpenAI deployment name
-        azure_api_version: Azure OpenAI API version
     """
 
     provider: str
@@ -68,56 +54,20 @@ class LLMConfig:
         tier: ModelTier | None = None,
         for_tools: bool = False,
     ) -> "LLMConfig":
-        """Create config from environment variables.
+        """Create config from unified settings.
 
         Args:
-            provider: Provider name. If None, uses LLM_PROVIDER env var.
-            tier: Model tier. If None, uses MODEL_TIER env var if set.
-            for_tools: If True, uses TOOL_* overrides and prevents low tier.
-
-        Returns:
-            LLMConfig instance configured from environment.
-
-        Environment Variables:
-            LLM_PROVIDER: Provider selection
-                (openrouter, nanogpt, openai, anthropic, bedrock, azure)
-            MODEL_TIER: Default tier (high, mid, low)
-
-            OpenRouter:
-                OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_MODEL_{HIGH,MID,LOW}
-                OPENROUTER_SITE, OPENROUTER_TITLE
-
-            NanoGPT:
-                NANOGPT_API_KEY, NANOGPT_MODEL, NANOGPT_MODEL_{HIGH,MID,LOW}
-
-            Custom OpenAI:
-                CUSTOM_OPENAI_API_KEY, CUSTOM_OPENAI_BASE_URL
-                CUSTOM_OPENAI_MODEL, CUSTOM_OPENAI_MODEL_{HIGH,MID,LOW}
-
-            Anthropic:
-                ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL
-                ANTHROPIC_MODEL, ANTHROPIC_MODEL_{HIGH,MID,LOW}
-
-            Amazon Bedrock:
-                AWS_REGION (default: us-east-1)
-                AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (or use IAM role)
-                BEDROCK_MODEL, BEDROCK_MODEL_{HIGH,MID,LOW}
-
-            Azure OpenAI:
-                AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY
-                AZURE_DEPLOYMENT_NAME, AZURE_API_VERSION (default: 2024-02-15-preview)
-                AZURE_MODEL, AZURE_MODEL_{HIGH,MID,LOW}
-
-            Tool Overrides:
-                TOOL_API_KEY, TOOL_BASE_URL
-
-            Cloudflare Access:
-                CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET
+            provider: Provider name. If None, uses settings.
+            tier: Model tier. If None, uses default_tier if set.
+            for_tools: If True, uses tool overrides and prevents low tier.
         """
+        from clara_core.config import get_settings
         from clara_core.llm.tiers import get_base_model, get_current_tier, get_model_for_tier
 
+        s = get_settings()
+
         if provider is None:
-            provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+            provider = s.llm.provider.lower()
 
         # Determine effective tier
         effective_tier = tier or get_current_tier()
@@ -134,28 +84,30 @@ class LLMConfig:
 
         # Get provider-specific configuration
         if provider == "openrouter":
-            api_key = os.getenv("OPENROUTER_API_KEY")
+            ps = s.llm.openrouter
+            api_key = ps.api_key or None
             base_url = "https://openrouter.ai/api/v1"
-            site = os.getenv("OPENROUTER_SITE", "http://localhost:3000")
-            title = os.getenv("OPENROUTER_TITLE", "MyPalClara")
             extra_headers = {
-                "HTTP-Referer": site,
-                "X-Title": title,
+                "HTTP-Referer": ps.site,
+                "X-Title": ps.title,
             }
 
         elif provider == "nanogpt":
-            api_key = os.getenv("NANOGPT_API_KEY")
+            ps = s.llm.nanogpt
+            api_key = ps.api_key or None
             base_url = "https://nano-gpt.com/api/v1"
             extra_headers = None
 
         elif provider == "openai":
-            api_key = os.getenv("CUSTOM_OPENAI_API_KEY")
-            base_url = os.getenv("CUSTOM_OPENAI_BASE_URL", "https://api.openai.com/v1")
+            ps = s.llm.openai
+            api_key = ps.api_key or None
+            base_url = ps.base_url
             extra_headers = _get_cf_access_headers()
 
         elif provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            base_url = os.getenv("ANTHROPIC_BASE_URL")
+            ps = s.llm.anthropic
+            api_key = ps.api_key or None
+            base_url = ps.base_url or None
             extra_headers = _get_cf_access_headers()
             # Override User-Agent for proxy compatibility (e.g., clewdr)
             if base_url:
@@ -164,15 +116,14 @@ class LLMConfig:
                 extra_headers["User-Agent"] = "Clara/1.0"
 
         elif provider == "bedrock":
-            # Amazon Bedrock uses AWS credentials (env vars, IAM role, or profile)
-            # No API key needed - uses boto3 credential chain
             api_key = None
             base_url = None
             extra_headers = None
 
         elif provider == "azure":
-            api_key = os.getenv("AZURE_OPENAI_API_KEY")
-            base_url = os.getenv("AZURE_OPENAI_ENDPOINT")
+            ps = s.llm.azure
+            api_key = ps.api_key or None
+            base_url = ps.endpoint or None
             extra_headers = None
 
         else:
@@ -180,12 +131,11 @@ class LLMConfig:
 
         # Apply tool overrides if requested
         if for_tools:
-            tool_api_key = os.getenv("TOOL_API_KEY")
-            tool_base_url = os.getenv("TOOL_BASE_URL")
-            if tool_api_key:
-                api_key = tool_api_key
-            if tool_base_url:
-                base_url = tool_base_url
+            ts = s.tools
+            if ts.api_key:
+                api_key = ts.api_key
+            if ts.base_url:
+                base_url = ts.base_url
 
         # Provider-specific config
         aws_region = None
@@ -193,11 +143,11 @@ class LLMConfig:
         azure_api_version = None
 
         if provider == "bedrock":
-            aws_region = os.getenv("AWS_REGION", "us-east-1")
+            aws_region = s.llm.bedrock.aws_region
 
         elif provider == "azure":
-            azure_deployment = os.getenv("AZURE_DEPLOYMENT_NAME")
-            azure_api_version = os.getenv("AZURE_API_VERSION", "2024-02-15-preview")
+            azure_deployment = s.llm.azure.deployment_name or None
+            azure_api_version = s.llm.azure.api_version
 
         return cls(
             provider=provider,
@@ -212,14 +162,7 @@ class LLMConfig:
         )
 
     def with_tier(self, tier: ModelTier) -> "LLMConfig":
-        """Create a new config with a different tier.
-
-        Args:
-            tier: New model tier
-
-        Returns:
-            New LLMConfig with updated tier and model
-        """
+        """Create a new config with a different tier."""
         from clara_core.llm.tiers import get_model_for_tier
 
         return LLMConfig(
@@ -240,18 +183,13 @@ class LLMConfig:
 
 
 def _get_cf_access_headers() -> dict[str, str] | None:
-    """Get Cloudflare Access headers if configured.
+    """Get Cloudflare Access headers if configured."""
+    from clara_core.config import get_settings
 
-    For endpoints behind Cloudflare Access (like cloudflared tunnels),
-    set these environment variables:
-    - CF_ACCESS_CLIENT_ID: Service token client ID
-    - CF_ACCESS_CLIENT_SECRET: Service token client secret
-    """
-    client_id = os.getenv("CF_ACCESS_CLIENT_ID")
-    client_secret = os.getenv("CF_ACCESS_CLIENT_SECRET")
-    if client_id and client_secret:
+    cf = get_settings().llm.cloudflare_access
+    if cf.client_id and cf.client_secret:
         return {
-            "CF-Access-Client-Id": client_id,
-            "CF-Access-Client-Secret": client_secret,
+            "CF-Access-Client-Id": cf.client_id,
+            "CF-Access-Client-Secret": cf.client_secret,
         }
     return None

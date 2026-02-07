@@ -83,9 +83,9 @@ class TestLLMConfig:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "anthropic",
-            "ANTHROPIC_API_KEY": "test-key",
-            "ANTHROPIC_MODEL": "claude-opus-4-5",
+            "LLM__PROVIDER": "anthropic",
+            "LLM__ANTHROPIC__API_KEY": "test-key",
+            "LLM__ANTHROPIC__MODEL": "claude-opus-4-5",
         },
     )
     def test_config_from_env_anthropic(self):
@@ -98,9 +98,9 @@ class TestLLMConfig:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "openrouter",
-            "OPENROUTER_API_KEY": "or-key",
-            "OPENROUTER_MODEL": "anthropic/claude-sonnet-4",
+            "LLM__PROVIDER": "openrouter",
+            "LLM__OPENROUTER__API_KEY": "or-key",
+            "LLM__OPENROUTER__MODEL": "anthropic/claude-sonnet-4",
         },
     )
     def test_config_from_env_openrouter(self):
@@ -122,9 +122,9 @@ class TestLLMConfig:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "bedrock",
-            "AWS_REGION": "us-west-2",
-            "BEDROCK_MODEL": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "LLM__PROVIDER": "bedrock",
+            "LLM__BEDROCK__AWS_REGION": "us-west-2",
+            "LLM__BEDROCK__MODEL": "anthropic.claude-3-5-sonnet-20241022-v2:0",
         },
     )
     def test_config_from_env_bedrock(self):
@@ -138,11 +138,11 @@ class TestLLMConfig:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "azure",
-            "AZURE_OPENAI_ENDPOINT": "https://myresource.openai.azure.com",
-            "AZURE_OPENAI_API_KEY": "azure-key",
-            "AZURE_DEPLOYMENT_NAME": "gpt-4o-deployment",
-            "AZURE_API_VERSION": "2024-02-15-preview",
+            "LLM__PROVIDER": "azure",
+            "LLM__AZURE__ENDPOINT": "https://myresource.openai.azure.com",
+            "LLM__AZURE__API_KEY": "azure-key",
+            "LLM__AZURE__DEPLOYMENT_NAME": "gpt-4o-deployment",
+            "LLM__AZURE__API_VERSION": "2024-02-15-preview",
         },
     )
     def test_config_from_env_azure(self):
@@ -263,12 +263,12 @@ class TestToolCall:
 class TestTierFunctions:
     """Tests for tier-related functions."""
 
-    @patch.dict("os.environ", {"MODEL_TIER": "high"})
+    @patch.dict("os.environ", {"LLM__AUTO_TIER__DEFAULT_TIER": "high"})
     def test_get_current_tier_from_env(self):
         """Test getting current tier from environment."""
         assert get_current_tier() == "high"
 
-    @patch.dict("os.environ", {"MODEL_TIER": ""})
+    @patch.dict("os.environ", {"LLM__AUTO_TIER__DEFAULT_TIER": ""})
     def test_get_current_tier_not_set(self):
         """Test current tier returns None when not set."""
         assert get_current_tier() is None
@@ -276,10 +276,10 @@ class TestTierFunctions:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "anthropic",
-            "ANTHROPIC_MODEL_HIGH": "claude-opus-4-5",
-            "ANTHROPIC_MODEL_MID": "claude-sonnet-4-5",
-            "ANTHROPIC_MODEL_LOW": "claude-haiku-4-5",
+            "LLM__PROVIDER": "anthropic",
+            "LLM__ANTHROPIC__MODEL_HIGH": "claude-opus-4-5",
+            "LLM__ANTHROPIC__MODEL_MID": "claude-sonnet-4-5",
+            "LLM__ANTHROPIC__MODEL_LOW": "claude-haiku-4-5",
         },
     )
     def test_get_model_for_tier(self):
@@ -288,7 +288,7 @@ class TestTierFunctions:
         assert get_model_for_tier("mid", "anthropic") == "claude-sonnet-4-5"
         assert get_model_for_tier("low", "anthropic") == "claude-haiku-4-5"
 
-    @patch.dict("os.environ", {"LLM_PROVIDER": "openrouter"})
+    @patch.dict("os.environ", {"LLM__PROVIDER": "openrouter"})
     def test_get_tier_info(self):
         """Test getting tier info."""
         info = get_tier_info()
@@ -302,10 +302,10 @@ class TestTierFunctions:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "bedrock",
-            "BEDROCK_MODEL_HIGH": "anthropic.claude-3-opus-20240229-v1:0",
-            "BEDROCK_MODEL_MID": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "BEDROCK_MODEL_LOW": "anthropic.claude-3-5-haiku-20241022-v1:0",
+            "LLM__PROVIDER": "bedrock",
+            "LLM__BEDROCK__MODEL_HIGH": "anthropic.claude-3-opus-20240229-v1:0",
+            "LLM__BEDROCK__MODEL_MID": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "LLM__BEDROCK__MODEL_LOW": "anthropic.claude-3-5-haiku-20241022-v1:0",
         },
     )
     def test_get_model_for_tier_bedrock(self):
@@ -317,10 +317,10 @@ class TestTierFunctions:
     @patch.dict(
         "os.environ",
         {
-            "LLM_PROVIDER": "azure",
-            "AZURE_MODEL_HIGH": "gpt-4-turbo",
-            "AZURE_MODEL_MID": "gpt-4o",
-            "AZURE_MODEL_LOW": "gpt-4o-mini",
+            "LLM__PROVIDER": "azure",
+            "LLM__AZURE__MODEL_HIGH": "gpt-4-turbo",
+            "LLM__AZURE__MODEL_MID": "gpt-4o",
+            "LLM__AZURE__MODEL_LOW": "gpt-4o-mini",
         },
     )
     def test_get_model_for_tier_azure(self):
@@ -397,16 +397,15 @@ class TestUnifiedToolCalling:
         langchain._model_cache.clear()
 
         with patch.object(langchain_openai, "ChatOpenAI") as mock_chat_openai:
-            # Setup mock
+            # Setup mock — with tools=[], bind_tools is NOT called,
+            # so invoke is called directly on the model
             mock_model = MagicMock()
-            mock_bound_model = MagicMock()
 
             mock_response = MagicMock()
             mock_response.content = "Test response"
             mock_response.tool_calls = None
 
-            mock_bound_model.invoke.return_value = mock_response
-            mock_model.bind_tools.return_value = mock_bound_model
+            mock_model.invoke.return_value = mock_response
             mock_chat_openai.return_value = mock_model
 
             # Test
@@ -1009,10 +1008,12 @@ class TestUnifiedLLM:
             llm._provider = mock_provider
 
             # Call with dict messages (what memory system sends)
-            result = llm.generate_response([
-                {"role": "system", "content": "You are a helper."},
-                {"role": "user", "content": "Extract facts."},
-            ])
+            result = llm.generate_response(
+                [
+                    {"role": "system", "content": "You are a helper."},
+                    {"role": "user", "content": "Extract facts."},
+                ]
+            )
 
             assert result == "test response"
 

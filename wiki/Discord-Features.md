@@ -12,6 +12,7 @@ Clara's Discord bot provides a rich conversational interface with streaming resp
    - Message Content Intent
    - Server Members Intent
    - Presence Intent
+   - Voice States Intent (for voice chat)
 
 ### Configuration
 
@@ -131,6 +132,31 @@ When multiple images exceed the batch limit:
 1. Images processed in sequential batches
 2. Context preserved between batches
 3. Combined response returned
+
+## Voice Chat
+
+Clara can join voice channels, listen via speech-to-text, and respond with synthesized speech. See [[Voice-Chat]] for full documentation.
+
+### Quick Usage
+
+1. Join a voice channel
+2. `/voice join` — Clara connects and starts listening to you
+3. Speak naturally — transcriptions appear in text, audio responses play in voice
+4. `/voice leave` to disconnect
+
+### Voice Commands
+
+| Command | Description |
+|---------|-------------|
+| `/voice join` | Join your voice channel and start listening |
+| `/voice leave` | Leave the voice channel |
+| `/voice status` | Show voice session status |
+
+### Requirements
+
+- `ffmpeg` installed on the system
+- `REPLICATE_API_TOKEN` for TTS
+- `OPENAI_API_KEY` or `GROQ_API_KEY` for STT
 
 ## Slash Commands
 

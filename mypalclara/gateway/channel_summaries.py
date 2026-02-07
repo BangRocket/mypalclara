@@ -9,12 +9,12 @@ Handles:
 from __future__ import annotations
 
 import asyncio
-import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from clara_core.config import get_settings
 from config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 logger = get_logger("gateway.summaries")
 
 # Configuration
-SUMMARY_AGE_MINUTES = int(os.getenv("DISCORD_SUMMARY_AGE_MINUTES", "30"))
+SUMMARY_AGE_MINUTES = get_settings().discord.summary_age_minutes
 
 # Thread pool for blocking operations
 SUMMARY_EXECUTOR = ThreadPoolExecutor(
-    max_workers=int(os.getenv("GATEWAY_SUMMARY_THREADS", "5")),
+    max_workers=get_settings().gateway.summary_threads,
     thread_name_prefix="gateway-summary-",
 )
 

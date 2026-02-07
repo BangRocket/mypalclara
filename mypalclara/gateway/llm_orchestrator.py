@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
+from clara_core.config import get_settings
 from clara_core.llm.messages import (
     AssistantMessage,
     ContentPart,
@@ -39,23 +39,23 @@ logger = get_logger("gateway.llm")
 
 # Dedicated thread pool for blocking LLM calls
 LLM_EXECUTOR = ThreadPoolExecutor(
-    max_workers=int(os.getenv("GATEWAY_LLM_THREADS", "10")),
+    max_workers=get_settings().gateway.llm_threads,
     thread_name_prefix="gateway-llm-",
 )
 
 # Configuration
-MAX_TOOL_ITERATIONS = int(os.getenv("GATEWAY_MAX_TOOL_ITERATIONS", "75"))
-MAX_TOOL_RESULT_CHARS = int(os.getenv("GATEWAY_MAX_TOOL_RESULT_CHARS", "50000"))
+MAX_TOOL_ITERATIONS = get_settings().gateway.max_tool_iterations
+MAX_TOOL_RESULT_CHARS = get_settings().gateway.max_tool_result_chars
 
 # Tool calling mode:
 #   "langchain" (default) - LangChain bind_tools() for unified tool calling across all providers
 #   "native" - Direct API-based tool calling (OpenAI/Anthropic format)
 #   "xml" - OpenClaw-style system prompt injection (fallback for providers without tool support)
-TOOL_CALL_MODE = os.getenv("TOOL_CALL_MODE", "langchain").lower()
+TOOL_CALL_MODE = get_settings().tools.call_mode.lower()
 
 # Auto-continue configuration
-AUTO_CONTINUE_ENABLED = os.getenv("AUTO_CONTINUE_ENABLED", "true").lower() == "true"
-AUTO_CONTINUE_MAX = int(os.getenv("AUTO_CONTINUE_MAX", "3"))
+AUTO_CONTINUE_ENABLED = get_settings().gateway.auto_continue_enabled
+AUTO_CONTINUE_MAX = get_settings().gateway.auto_continue_max
 
 # Permission-seeking patterns that trigger auto-continue
 AUTO_CONTINUE_PATTERNS = [

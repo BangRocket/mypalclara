@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Literal
 
 from sqlalchemy import select
@@ -14,8 +13,14 @@ from .models import ChannelConfig
 # Default mode for unconfigured channels
 DEFAULT_MODE = "mention"
 
-# Role name that grants Clara-Admin permissions (configurable via env)
-CLARA_ADMIN_ROLE = os.getenv("CLARA_ADMIN_ROLE", "Clara-Admin")
+
+def _get_admin_role() -> str:
+    from clara_core.config import get_settings
+
+    return get_settings().discord.admin_role
+
+
+CLARA_ADMIN_ROLE = _get_admin_role()
 
 ChannelMode = Literal["active", "mention", "off"]
 

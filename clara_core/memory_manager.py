@@ -9,7 +9,6 @@ Provides the MemoryManager singleton that handles:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -26,8 +25,15 @@ logger = get_logger("mem0")
 thread_logger = get_logger("thread")
 memory_logger = get_logger("memory")
 
-# Timezone for message timestamps (defaults to America/New_York)
-DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "America/New_York")
+
+# Timezone for message timestamps
+def _default_timezone() -> str:
+    from clara_core.config import get_settings
+
+    return get_settings().default_timezone
+
+
+DEFAULT_TIMEZONE = _default_timezone()
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session as OrmSession
@@ -124,9 +130,10 @@ def load_initial_profile(user_id: str) -> None:
     """
     from clara_core.memory import ROOK
 
-    skip_profile = os.getenv("SKIP_PROFILE_LOAD", "true").lower() == "true"
-    if skip_profile:
-        logger.debug("Profile loading disabled (SKIP_PROFILE_LOAD=true)")
+    from clara_core.config import get_settings
+
+    if get_settings().memory.skip_profile_load:
+        logger.debug("Profile loading disabled (skip_profile_load=true)")
         return
 
     logger.warning("load_initial_profile is deprecated and will be removed")
@@ -236,9 +243,11 @@ class MemoryManager:
             The initialized MemoryManager instance
         """
         if cls._instance is None:
-            # Get agent_id from BOT_NAME env var if not provided
+            # Get agent_id from settings if not provided
             if agent_id is None:
-                agent_id = os.getenv("BOT_NAME", "clara").lower()
+                from clara_core.config import get_settings
+
+                agent_id = get_settings().bot.name.lower()
             cls._instance = cls(
                 llm_callable=llm_callable,
                 agent_id=agent_id,
@@ -321,9 +330,9 @@ class MemoryManager:
             # Get or create default project for this user
             project = db.query(Project).filter_by(owner_id=user_id).first()
             if not project:
-                import os
+                from clara_core.config import get_settings
 
-                project_name = os.getenv("DEFAULT_PROJECT", "Default Project")
+                project_name = get_settings().default_project
                 project = Project(owner_id=user_id, name=project_name)
                 db.add(project)
                 db.commit()
@@ -1195,6 +1204,24 @@ class MemoryManager:
             SystemMessage(content=system_base),
         ]
 
+        # Inject evolved personality traits (self-managed by Clara)
+        from clara_core.personality import get_formatted_traits_cached
+
+        evolved_traits = get_formatted_traits_cached(self.agent_id)
+        if evolved_traits:
+            messages.append(SystemMessage(content=evolved_traits))
+
+        # Inject tool system prompts (guidance on how to use available tools)
+        tool_prompts = ""
+        try:
+            from clara_core.plugins.system import get_registry
+
+            tool_prompts = get_registry().get_system_prompts()
+            if tool_prompts:
+                messages.append(SystemMessage(content=tool_prompts))
+        except Exception:
+            pass  # Registry not initialized yet
+
         if context_parts:
             messages.append(SystemMessage(content="\n\n".join(context_parts)))
 
@@ -1215,6 +1242,10 @@ class MemoryManager:
         # Log prompt composition summary
         components = []
         components.append(f"personality={len(system_base)} chars")
+        if evolved_traits:
+            components.append(f"evolved={len(evolved_traits)} chars")
+        if tool_prompts:
+            components.append(f"tool_prompts={len(tool_prompts)} chars")
         if user_mems:
             components.append(f"user_mems={len(user_mems)}")
         if proj_mems:

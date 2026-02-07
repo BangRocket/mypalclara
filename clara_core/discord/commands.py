@@ -5,13 +5,13 @@ Uses Pycord's application commands system.
 """
 
 import logging
-import os
 from typing import Optional
 
 import discord
 from discord import option
 from discord.ext import commands
 
+from clara_core.config import get_settings
 from db import SessionLocal
 from db.models import GuildConfig
 
@@ -696,9 +696,7 @@ class ClaraCommands(commands.Cog):
                 return
 
             # Get redirect URI
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
+            api_url = get_settings().discord.api_url
             if api_url:
                 redirect_uri = f"{api_url}/oauth/mcp/callback"
             else:
@@ -761,9 +759,7 @@ class ClaraCommands(commands.Cog):
                 return
 
             # Get redirect URI (must match what was used in oauth_start)
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
+            api_url = get_settings().discord.api_url
             if api_url:
                 redirect_uri = f"{api_url}/oauth/mcp/callback"
             else:
@@ -947,9 +943,10 @@ class ClaraCommands(commands.Cog):
             auto_tier = config.auto_tier_enabled == "true" if config else False
 
             # Get env defaults
-            env_tier = os.getenv("MODEL_TIER", "mid")
-            env_auto = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
-            provider = os.getenv("LLM_PROVIDER", "openrouter")
+            _s = get_settings()
+            env_tier = _s.llm.auto_tier.default_tier or "mid"
+            env_auto = _s.llm.auto_tier.enabled
+            provider = _s.llm.provider
 
             fields = [
                 ("Provider", provider, True),
@@ -1040,7 +1037,7 @@ class ClaraCommands(commands.Cog):
             quiet_end = config.ors_quiet_end if config else None
 
             # Check environment default
-            env_enabled = os.getenv("ORS_ENABLED", "false").lower() == "true"
+            env_enabled = get_settings().proactive.enabled
 
             fields = [
                 ("Status", "Enabled" if (ors_enabled or env_enabled) else "Disabled", True),
@@ -1530,6 +1527,130 @@ class ClaraCommands(commands.Cog):
             await ctx.respond(embed=create_error_embed("Error", str(e)))
 
     # ==========================================================================
+    # Voice Commands
+    # ==========================================================================
+
+    voice = discord.SlashCommandGroup("voice", "Voice chat with Clara")
+
+    @voice.command(name="join", description="Join your voice channel and start listening")
+    async def voice_join(self, ctx: discord.ApplicationContext):
+        """Join the invoker's voice channel."""
+        if not await safe_defer(ctx):
+            return
+
+        try:
+            voice_manager = getattr(self.bot, "voice_manager", None)
+            if not voice_manager:
+                await ctx.respond(embed=create_error_embed("Unavailable", "Voice is not available."))
+                return
+
+            # Check if user is in a voice channel
+            if not ctx.author.voice or not ctx.author.voice.channel:
+                await ctx.respond(
+                    embed=create_error_embed("Not in voice", "Join a voice channel first."),
+                    ephemeral=True,
+                )
+                return
+
+            voice_channel = ctx.author.voice.channel
+
+            # Check bot permissions
+            perms = voice_channel.permissions_for(ctx.guild.me)
+            if not perms.connect or not perms.speak:
+                await ctx.respond(
+                    embed=create_error_embed(
+                        "Missing Permissions",
+                        "I need **Connect** and **Speak** permissions in that voice channel.",
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            # Check if already in a session
+            if voice_manager.get_session(ctx.guild.id):
+                await ctx.respond(
+                    embed=create_info_embed("Already connected", "Use `/voice leave` first."),
+                    ephemeral=True,
+                )
+                return
+
+            session = await voice_manager.join(
+                voice_channel=voice_channel,
+                text_channel=ctx.channel,
+                invoker=ctx.author,
+            )
+
+            await ctx.respond(
+                embed=create_success_embed(
+                    "Joined voice",
+                    f"Listening to **{ctx.author.display_name}** in **{voice_channel.name}**.\n"
+                    f"Transcriptions will appear here. Use `/voice leave` to disconnect.",
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"[commands] voice join error: {e}")
+            await ctx.respond(embed=create_error_embed("Error", str(e)))
+
+    @voice.command(name="leave", description="Leave the voice channel")
+    async def voice_leave(self, ctx: discord.ApplicationContext):
+        """Leave the voice channel."""
+        if not await safe_defer(ctx):
+            return
+
+        try:
+            voice_manager = getattr(self.bot, "voice_manager", None)
+            if not voice_manager:
+                await ctx.respond(embed=create_error_embed("Unavailable", "Voice is not available."))
+                return
+
+            session = voice_manager.get_session(ctx.guild.id)
+            if not session:
+                await ctx.respond(
+                    embed=create_info_embed("Not connected", "I'm not in a voice channel."),
+                    ephemeral=True,
+                )
+                return
+
+            await voice_manager.leave(ctx.guild.id)
+            await ctx.respond(embed=create_success_embed("Left voice", "Disconnected from voice channel."))
+
+        except Exception as e:
+            logger.error(f"[commands] voice leave error: {e}")
+            await ctx.respond(embed=create_error_embed("Error", str(e)))
+
+    @voice.command(name="status", description="Show voice session status")
+    async def voice_status(self, ctx: discord.ApplicationContext):
+        """Show voice session status."""
+        try:
+            voice_manager = getattr(self.bot, "voice_manager", None)
+            if not voice_manager:
+                await ctx.respond(embed=create_error_embed("Unavailable", "Voice is not available."))
+                return
+
+            session = voice_manager.get_session(ctx.guild.id)
+            if not session:
+                await ctx.respond(
+                    embed=create_info_embed("No active session", "Use `/voice join` to start."),
+                    ephemeral=True,
+                )
+                return
+
+            vc = session.voice_client
+            fields = [
+                ("Channel", vc.channel.name if vc.channel else "Unknown", True),
+                ("Listening to", session.invoker.display_name, True),
+                ("Connected", "Yes" if vc.is_connected() else "No", True),
+                ("Playing", "Yes" if vc.is_playing() else "No", True),
+            ]
+
+            await ctx.respond(embed=create_status_embed("Voice Session", fields=fields))
+
+        except Exception as e:
+            logger.error(f"[commands] voice status error: {e}")
+            await ctx.respond(embed=create_error_embed("Error", str(e)))
+
+    # ==========================================================================
     # Clara Utility Commands
     # ==========================================================================
 
@@ -1560,7 +1681,7 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            provider = os.getenv("LLM_PROVIDER", "openrouter")
+            provider = get_settings().llm.provider
 
             # Get connected servers count
             from clara_core.mcp import get_mcp_manager

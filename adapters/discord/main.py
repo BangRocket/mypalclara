@@ -24,15 +24,13 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import discord
 from discord.ext import commands as discord_commands
 
 from adapters.discord.channel_modes import get_channel_mode
 from adapters.discord.gateway_client import DiscordGatewayClient
+from adapters.discord.voice import VoiceManager
+from clara_core.config import get_settings
 from clara_core.discord import setup as setup_slash_commands
 from config.logging import get_logger, init_logging
 
@@ -40,21 +38,17 @@ init_logging()
 logger = get_logger("adapters.discord")
 
 # Configuration
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
-STOP_PHRASES = [
-    p.strip().lower()
-    for p in os.getenv(
-        "DISCORD_STOP_PHRASES",
-        "clara stop,stop clara,nevermind,never mind",
-    ).split(",")
-]
+_settings = get_settings()
+BOT_TOKEN = _settings.discord.bot_token
+GATEWAY_URL = _settings.gateway.url
+STOP_PHRASES = [p.strip().lower() for p in _settings.discord.stop_phrases.split(",")]
 
 # Intents for Discord
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
+intents.voice_states = True
 
 
 class GatewayDiscordBot(discord_commands.Bot):
@@ -67,6 +61,7 @@ class GatewayDiscordBot(discord_commands.Bot):
             help_command=None,
         )
         self.gateway_client: DiscordGatewayClient | None = None
+        self.voice_manager: VoiceManager | None = None
         self._gateway_task: asyncio.Task | None = None
         self._commands_synced: bool = False
 
@@ -118,6 +113,11 @@ class GatewayDiscordBot(discord_commands.Bot):
             )
             self._gateway_task = asyncio.create_task(self._run_gateway())
             logger.info("Gateway client initialized")
+
+            # Initialize voice manager
+            self.voice_manager = VoiceManager(self, self.gateway_client)
+            self.gateway_client.voice_manager = self.voice_manager
+            logger.info("Voice manager initialized")
 
     async def on_message(self, message: discord.Message) -> None:
         """Handle incoming Discord messages."""
@@ -214,8 +214,22 @@ class GatewayDiscordBot(discord_commands.Bot):
 
         return None
 
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Handle voice state changes for voice session management."""
+        if self.voice_manager:
+            await self.voice_manager.handle_voice_state_update(member, before, after)
+
     async def close(self) -> None:
         """Clean shutdown."""
+        # Leave all voice sessions
+        if self.voice_manager:
+            for guild_id in list(self.voice_manager.sessions):
+                await self.voice_manager.leave(guild_id)
         if self.gateway_client:
             await self.gateway_client.disconnect()
         if self._gateway_task:

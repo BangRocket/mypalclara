@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from clara_core.config import get_settings
 from config.logging import get_logger
 
 logger = get_logger("sandbox.incus")
@@ -41,12 +42,13 @@ logger = get_logger("sandbox.incus")
 INCUS_AVAILABLE = shutil.which("incus") is not None
 
 # Configuration
-INCUS_IMAGE = os.getenv("INCUS_SANDBOX_IMAGE", "images:debian/12/cloud")
-INCUS_TYPE = os.getenv("INCUS_SANDBOX_TYPE", "container")  # "container" or "vm"
-INCUS_TIMEOUT = int(os.getenv("INCUS_SANDBOX_TIMEOUT", "900"))
-INCUS_MEMORY = os.getenv("INCUS_SANDBOX_MEMORY", "512MiB")
-INCUS_CPU = os.getenv("INCUS_SANDBOX_CPU", "1")
-INCUS_REMOTE = os.getenv("INCUS_REMOTE", "local")
+_incus = get_settings().sandbox.incus
+INCUS_IMAGE = _incus.image
+INCUS_TYPE = _incus.type
+INCUS_TIMEOUT = _incus.timeout
+INCUS_MEMORY = _incus.memory
+INCUS_CPU = _incus.cpu
+INCUS_REMOTE = _incus.remote
 SANDBOX_IDLE_TIMEOUT = INCUS_TIMEOUT
 
 # Profile for Python development environment

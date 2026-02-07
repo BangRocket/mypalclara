@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from clara_core.config import get_settings
 from clara_core.llm import get_base_model, get_current_tier, get_model_for_tier
 from config.bot import BOT_NAME
 from config.logging import get_logger
@@ -44,17 +44,18 @@ logger = get_logger("ors")
 # Configuration
 # =============================================================================
 
-ORS_ENABLED = os.getenv("ORS_ENABLED", os.getenv("PROACTIVE_ENABLED", "false")).lower() == "true"
-ORS_BASE_INTERVAL_MINUTES = int(os.getenv("ORS_BASE_INTERVAL_MINUTES", "15"))
-ORS_MIN_SPEAK_GAP_HOURS = float(os.getenv("ORS_MIN_SPEAK_GAP_HOURS", "2"))
-ORS_ACTIVE_DAYS = int(os.getenv("ORS_ACTIVE_DAYS", "7"))
-ORS_NOTE_DECAY_DAYS = int(os.getenv("ORS_NOTE_DECAY_DAYS", "7"))  # Days before note relevance decays to 0
-ORS_IDLE_TIMEOUT_MINUTES = int(os.getenv("ORS_IDLE_TIMEOUT_MINUTES", "30"))  # Minutes before extracting convo summary
+_proactive = get_settings().proactive
+ORS_ENABLED = _proactive.enabled
+ORS_BASE_INTERVAL_MINUTES = _proactive.base_interval_minutes
+ORS_MIN_SPEAK_GAP_HOURS = _proactive.min_speak_gap_hours
+ORS_ACTIVE_DAYS = _proactive.active_days
+ORS_NOTE_DECAY_DAYS = _proactive.note_decay_days
+ORS_IDLE_TIMEOUT_MINUTES = _proactive.idle_timeout_minutes
 
 
 def get_ors_model_name() -> str:
     """Get the model name being used for ORS decisions."""
-    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    provider = get_settings().llm.provider.lower()
     tier = get_current_tier()
     if tier:
         return get_model_for_tier(tier, provider)

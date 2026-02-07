@@ -223,10 +223,10 @@ class ToolRegistry:
         Platform-specific tools (Docker, email, files) are registered
         separately when those subsystems are initialized.
         """
-        # Web search tool (available on all platforms if TAVILY_API_KEY is set)
-        import os
+        # Web search tool (available on all platforms if tavily_api_key is set)
+        from clara_core.config import get_settings
 
-        if os.getenv("TAVILY_API_KEY"):
+        if get_settings().sandbox.tavily_api_key:
             self.register(
                 name="web_search",
                 description="Search the web for current information. Use this when you need up-to-date information that may not be in your training data.",
@@ -245,15 +245,15 @@ class ToolRegistry:
 
     async def _web_search_handler(self, args: dict, context: Any) -> str:
         """Built-in web search handler using Tavily."""
-        import os
-
         import httpx
+
+        from clara_core.config import get_settings
 
         query = args.get("query", "")
         if not query:
             return "Error: No search query provided"
 
-        api_key = os.getenv("TAVILY_API_KEY")
+        api_key = get_settings().sandbox.tavily_api_key
         if not api_key:
             return "Error: Web search not configured (TAVILY_API_KEY not set)"
 

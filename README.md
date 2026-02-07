@@ -4,7 +4,8 @@ A personal AI assistant with persistent memory, tool use, and multi-platform sup
 
 ## Features
 
-- **Gateway Architecture** — Central WebSocket server with thin platform adapters (Discord, Teams, CLI)
+- **Gateway Architecture** — Central WebSocket server with thin platform adapters (Discord, Teams, CLI, Web)
+- **Web Interface** — React-based knowledge base, chat, graph explorer, and identity management
 - **Persistent Memory (Rook)** — Vector search (pgvector/Qdrant) with optional graph relationships (FalkorDB/Kuzu)
 - **6 LLM Backends** — OpenRouter, Anthropic, NanoGPT, OpenAI-compatible, Amazon Bedrock, Azure OpenAI
 - **Model Tiers** — Dynamic model selection (`!high`, `!mid`, `!low`) with auto-tier based on complexity
@@ -30,10 +31,10 @@ A personal AI assistant with persistent memory, tool use, and multi-platform sup
 └──────────────────────────────────────────────────────────────┘
         │ WebSocket
         ▼
-┌────────────┐  ┌────────────┐  ┌────────────┐
-│  Discord   │  │   Teams    │  │    CLI     │
-│  Adapter   │  │  Adapter   │  │  Adapter   │
-└────────────┘  └────────────┘  └────────────┘
+┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+│  Discord   │  │   Teams    │  │    CLI     │  │    Web     │
+│  Adapter   │  │  Adapter   │  │  Adapter   │  │  (FastAPI) │
+└────────────┘  └────────────┘  └────────────┘  └────────────┘
 ```
 
 ## Quick Start
@@ -247,6 +248,43 @@ Configure with `/clara mode active|mention|off`.
 
 Clara supports Microsoft Teams via the Bot Framework SDK. Requires Azure Bot resource configuration. See [Teams Adapter](wiki/Teams-Adapter.md) for setup instructions.
 
+## Web Interface
+
+Browser-based UI for managing Clara's knowledge base, chatting, exploring the entity graph, and linking platform identities.
+
+### Features
+
+- **Knowledge Base** — Grid/list views, semantic search, Tiptap block editor, tags, saved filter sets, export/import
+- **Chat** — Streaming responses via WebSocket, tool call display, file uploads, syntax highlighting
+- **Graph Explorer** — React Flow visualization of FalkorDB entity graph
+- **Intentions** — Create and manage standing instructions for Clara
+- **Adapter Linking** — Unify identities across Discord, Google, etc. via OAuth2
+- **Mobile Responsive** — Collapsible sidebar, responsive layout
+
+### Quick Start
+
+```bash
+# Development (two terminals)
+poetry run uvicorn mypalclara.web.app:create_app --factory --reload --port 8000
+cd web-ui && pnpm dev
+
+# Production (Docker)
+docker-compose --profile web up
+
+# Or via script
+poetry run clara-web
+```
+
+### Configuration
+
+```bash
+WEB_SECRET_KEY=your-secret-key
+DISCORD_OAUTH_CLIENT_ID=...
+DISCORD_OAUTH_CLIENT_SECRET=...
+```
+
+See [Web Interface](wiki/Web-Interface.md) for full documentation.
+
 ## Production
 
 ### Docker Compose
@@ -254,6 +292,7 @@ Clara supports Microsoft Teams via the Bot Framework SDK. Requires Azure Bot res
 ```bash
 docker-compose --profile discord up              # Discord standalone
 docker-compose --profile gateway --profile adapters up  # Gateway + adapters
+docker-compose --profile web up                  # Web interface
 ```
 
 Services: PostgreSQL (main + vectors), FalkorDB (graph), optional Qdrant and Redis.
@@ -290,6 +329,7 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 ## Documentation
 
 - [Wiki](wiki/) — Full documentation (installation, configuration, architecture, troubleshooting)
+- [Web Interface](wiki/Web-Interface.md) — Web UI setup, API reference, frontend architecture
 - [CLAUDE.md](CLAUDE.md) — Development guide and API reference
 
 ## License

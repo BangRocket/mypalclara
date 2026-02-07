@@ -1,0 +1,295 @@
+# Clara Configuration
+# Copy to clara.yaml and edit as needed.
+# Env vars override YAML (using __ as nested delimiter, e.g. LLM__PROVIDER=anthropic).
+
+# --- Top-level ---
+user_id: "demo-user"
+default_project: "Default Project"
+default_timezone: "America/New_York"
+data_dir: "."
+files_dir: "./clara_files"
+max_file_size: 52428800  # 50MB
+
+# --- LLM Providers ---
+llm:
+  provider: "openrouter"  # openrouter, nanogpt, openai, anthropic, bedrock, azure
+  openai_api_key: ""      # Always required for embeddings
+
+  openrouter:
+    api_key: ""
+    model: "anthropic/claude-sonnet-4"
+    model_high: "anthropic/claude-opus-4"
+    model_mid: "anthropic/claude-sonnet-4"
+    model_low: "anthropic/claude-haiku"
+    site: "http://localhost:3000"
+    title: "MyPalClara"
+
+  nanogpt:
+    api_key: ""
+    model: "moonshotai/Kimi-K2-Instruct-0905"
+    model_high: "anthropic/claude-opus-4"
+    model_mid: "moonshotai/Kimi-K2-Instruct-0905"
+    model_low: "openai/gpt-4o-mini"
+
+  openai:
+    api_key: ""
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o"
+    model_high: "claude-opus-4"
+    model_mid: "gpt-4o"
+    model_low: "gpt-4o-mini"
+
+  anthropic:
+    api_key: ""
+    base_url: ""  # For proxies like clewdr
+    model: "claude-sonnet-4-5"
+    model_high: "claude-opus-4-5"
+    model_mid: "claude-sonnet-4-5"
+    model_low: "claude-haiku-4-5"
+
+  bedrock:
+    aws_region: "us-east-1"
+    aws_access_key_id: ""
+    aws_secret_access_key: ""
+    model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    model_high: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    model_mid: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    model_low: "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+  azure:
+    endpoint: ""
+    api_key: ""
+    deployment_name: ""
+    api_version: "2024-02-15-preview"
+    model: "gpt-4o"
+    model_high: "gpt-4o"
+    model_mid: "gpt-4o"
+    model_low: "gpt-4o-mini"
+
+  cloudflare_access:
+    client_id: ""
+    client_secret: ""
+
+  auto_tier:
+    enabled: false
+    default_tier: ""  # "", "high", "mid", "low"
+
+# --- Memory (Rook) ---
+memory:
+  skip_profile_load: true
+  redis_url: ""
+
+  rook:
+    provider: "openrouter"  # openrouter, nanogpt, openai, anthropic
+    model: "openai/gpt-4o-mini"
+    api_key: ""
+    base_url: ""
+
+  vector_store:
+    database_url: ""        # PostgreSQL+pgvector
+    qdrant_url: ""          # Self-hosted Qdrant
+    qdrant_api_key: ""
+    collection_name: "clara_memories"
+    migration_mode: "primary_only"
+
+  graph_store:
+    enabled: false
+    provider: "falkordb"    # falkordb or kuzu
+    falkordb_host: "localhost"
+    falkordb_port: 6379
+    falkordb_password: ""
+    falkordb_graph_name: "clara_memory"
+
+  embedding:
+    model: "text-embedding-3-small"
+    cache_enabled: true
+
+# --- Database ---
+database:
+  url: ""                   # PostgreSQL URL (empty = SQLite)
+  data_dir: "."
+
+# --- Discord ---
+discord:
+  bot_token: ""
+  client_id: ""
+  allowed_servers: ""
+  allowed_channels: ""
+  allowed_roles: ""
+  max_messages: 25
+  summary_age_minutes: 30
+  channel_history_limit: 50
+  monitor_port: 8001
+  monitor_enabled: true
+  stop_phrases: "clara stop,stop clara,nevermind,never mind"
+  admin_role: "Clara-Admin"
+  api_url: ""
+  max_image_dimension: 1568
+  max_image_size: 4194304
+  max_images_per_request: 1
+  max_text_file_size: 102400
+  oauth_client_id: ""
+  oauth_client_secret: ""
+  oauth_redirect_uri: "http://localhost:5173/auth/callback/discord"
+
+# --- Voice ---
+voice:
+  idle_timeout: 300
+  enable_interruption: true
+
+  stt:
+    provider: "openai"      # openai or groq
+    model: "whisper-1"
+    groq_api_key: ""
+
+  tts:
+    replicate_api_token: ""
+    speaker: "Serena"
+    language: "auto"
+
+  vad:
+    aggressiveness: 2       # 0-3
+    silence_duration: 1.5
+    frame_duration_ms: 30   # 10, 20, or 30
+
+# --- Web Interface ---
+web:
+  host: "0.0.0.0"
+  port: 8000
+  secret_key: "change-me-in-production"
+  jwt_algorithm: "HS256"
+  jwt_expire_minutes: 1440
+  cors_origins: "http://localhost:5173"
+  static_dir: ""
+  frontend_url: "http://localhost:5173"
+  dev_mode: false
+  dev_user_name: "Dev User"
+  reload: false
+
+  google_oauth:
+    client_id: ""
+    client_secret: ""
+    redirect_uri: "http://localhost:5173/auth/callback/google"
+
+# --- Gateway ---
+gateway:
+  host: "127.0.0.1"
+  port: 18789
+  url: "ws://127.0.0.1:18789"
+  secret: ""
+  pidfile: "/tmp/clara-gateway.pid"
+  logfile: ""
+  hooks_dir: "./hooks"
+  scheduler_dir: "."
+  adapters_config: ""
+  io_threads: 20
+  llm_threads: 10
+  summary_threads: 5
+  max_tool_iterations: 75
+  max_tool_result_chars: 50000
+  auto_continue_enabled: true
+  auto_continue_max: 3
+
+# --- Bot Personality ---
+bot:
+  name: "Clara"
+  personality_file: ""      # Path to .md file
+  personality: ""           # Inline text
+
+# --- Backup ---
+backup:
+  storage: "local"          # "local" or "s3"
+  local_dir: "./backups"
+  retention_days: 7
+  compression_level: 9
+  dump_timeout: 600
+  respawn_protection_hours: 23
+  force: false
+  config_paths: ""
+  db_retry_attempts: 5
+  db_retry_delay: 2
+  health_port: 8080
+  cron_schedule: "0 3 * * *"
+
+  s3:
+    bucket: ""
+    endpoint_url: "https://s3.wasabisys.com"
+    access_key: ""
+    secret_key: ""
+    region: "us-east-1"
+
+# --- Sandbox ---
+sandbox:
+  mode: "auto"              # docker, incus, incus-vm, auto
+  tavily_api_key: ""
+  github_token: ""
+  git_user_name: "Clara Bot"
+  git_user_email: "clara@bot.local"
+
+  docker:
+    image: "python:3.12-slim"
+    timeout: 900
+    memory: "512m"
+    cpu: 1.0
+
+  incus:
+    image: "images:debian/12/cloud"
+    type: "container"
+    timeout: 900
+    memory: "512MiB"
+    cpu: "1"
+    remote: "local"
+
+# --- Email ---
+email:
+  address: ""
+  password: ""
+  imap_server: "imap.titan.email"
+  imap_port: 993
+  smtp_server: "smtp.titan.email"
+  smtp_port: 465
+  smtp_timeout: 10
+  notify_user: ""
+  notify_enabled: false
+  check_interval: 60
+  monitoring_enabled: false
+  default_poll_interval: 5
+  error_backoff_max: 60
+  encryption_key: ""
+
+# --- MCP Plugins ---
+mcp:
+  servers_dir: ".mcp_servers"
+  oauth_dir: ""
+  smithery_api_key: ""
+
+# --- Logging ---
+logging:
+  level: "INFO"
+
+# --- Tools ---
+tools:
+  api_key: ""
+  base_url: ""
+  model: ""
+  call_mode: "langchain"    # langchain, native, xml
+  desc_tier: "high"
+  desc_max_words: 20
+  hot_reload: false
+
+# --- Proactive (ORS) ---
+proactive:
+  enabled: false
+  base_interval_minutes: 15
+  min_speak_gap_hours: 2.0
+  active_days: 7
+  note_decay_days: 7
+  idle_timeout_minutes: 30
+
+# --- Teams ---
+teams:
+  app_id: ""
+  app_password: ""
+  app_type: "MultiTenant"
+  app_tenant_id: ""
+  port: 3978

@@ -17,7 +17,6 @@ import base64
 import hashlib
 import json
 import logging
-import os
 import secrets
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -27,10 +26,13 @@ from urllib.parse import urlencode
 
 import httpx
 
+from clara_core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # OAuth token storage directory
-OAUTH_TOKENS_DIR = Path(os.getenv("MCP_OAUTH_DIR", ".mcp_servers/.oauth"))
+_mcp_oauth_dir = get_settings().mcp.oauth_dir
+OAUTH_TOKENS_DIR = Path(_mcp_oauth_dir) if _mcp_oauth_dir else Path(".mcp_servers/.oauth")
 
 
 @dataclass

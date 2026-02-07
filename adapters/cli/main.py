@@ -13,16 +13,11 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -30,15 +25,18 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from adapters.cli.commands import CommandDispatcher
 from adapters.cli.gateway_client import CLIGatewayClient
+from clara_core.config import get_settings
 from config.logging import get_logger, init_logging
 
 init_logging()
 logger = get_logger("adapters.cli")
 
 # Configuration
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
-USER_ID = os.getenv("CLI_USER_ID", "cli-user")
+_settings = get_settings()
+GATEWAY_URL = _settings.gateway.url
+USER_ID = _settings.user_id
 HISTORY_FILE = Path.home() / ".clara_cli_history"
 
 
@@ -46,12 +44,21 @@ async def main() -> None:
     """Run the CLI interface."""
     console = Console()
 
+    # Initialize database for identity linking
+    try:
+        from db import init_db
+
+        init_db()
+    except Exception:
+        pass  # DB unavailable — identity linking will show errors
+
     # Print welcome
     console.print(
         Panel(
             "[bold blue]Clara CLI[/bold blue]\n"
             f"Gateway: {GATEWAY_URL}\n"
-            "Type 'exit' or 'quit' to exit. Ctrl+C to cancel.",
+            "Type 'exit' or 'quit' to exit. Ctrl+C to cancel.\n"
+            "Type '!help' for commands.",
             title="Welcome",
             border_style="blue",
         )
@@ -78,6 +85,9 @@ async def main() -> None:
         history=FileHistory(str(HISTORY_FILE)),
     )
 
+    # Create command dispatcher
+    dispatcher = CommandDispatcher(client=client, console=console, session=session)
+
     try:
         while True:
             try:
@@ -94,6 +104,15 @@ async def main() -> None:
 
                 # Skip empty input
                 if not user_input.strip():
+                    continue
+
+                # Try command dispatch first
+                result = await dispatcher.dispatch(user_input)
+                if result.handled:
+                    if result.output:
+                        console.print(result.output)
+                    if result.error:
+                        console.print(f"[red]{result.error}[/red]")
                     continue
 
                 # Detect tier override
@@ -131,6 +150,9 @@ async def main() -> None:
                 break
 
     finally:
+        # Stop voice if active
+        if dispatcher.voice_manager and dispatcher.voice_manager.is_active:
+            await dispatcher.voice_manager.stop()
         await client.disconnect()
         console.print("[grey]Disconnected[/grey]")
 

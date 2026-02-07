@@ -107,6 +107,7 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         chat_history,
         files_tool,
         mcp_management,
+        personality_tool,
         process_tool,
         system_logs,
         terminal_tool,
@@ -198,6 +199,18 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
     except Exception as e:
         logger.warning(f"[core_tools] Failed to register terminal_tool: {e}")
 
+    # Initialize and register personality_tool
+    try:
+        await personality_tool.initialize()
+        for tool_def in personality_tool.TOOLS:
+            registry.register(tool_def)
+            count += 1
+        if personality_tool.SYSTEM_PROMPT:
+            registry.register_system_prompt("personality", personality_tool.SYSTEM_PROMPT)
+        logger.info(f"[core_tools] Registered {len(personality_tool.TOOLS)} personality tools")
+    except Exception as e:
+        logger.warning(f"[core_tools] Failed to register personality_tool: {e}")
+
     return count
 
 
@@ -249,7 +262,9 @@ async def setup_official_mcp_servers() -> dict[str, bool]:
             args = None
             if server_config.name == "filesystem":
                 # Allow access to CLARA_FILES_DIR or current directory
-                files_dir = os.getenv("CLARA_FILES_DIR", "./clara_files")
+                from clara_core.config import get_settings
+
+                files_dir = get_settings().files_dir
                 args = [files_dir]
 
             # Install the server

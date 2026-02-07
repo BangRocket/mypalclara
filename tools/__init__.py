@@ -37,7 +37,6 @@ Tool Module Contract:
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -132,7 +131,9 @@ async def init_tools(
 
     # Determine hot-reload setting
     if hot_reload is None:
-        hot_reload = os.getenv("TOOL_HOT_RELOAD", "false").lower() == "true"
+        from clara_core.config import get_settings
+
+        hot_reload = get_settings().tools.hot_reload
 
     if hot_reload:
         loader.start_watching()

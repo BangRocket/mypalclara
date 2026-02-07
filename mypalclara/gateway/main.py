@@ -123,31 +123,46 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
+    from clara_core.config import get_settings
+
     parser = argparse.ArgumentParser(description="Clara Gateway Server")
 
     parser.add_argument(
         "--host",
-        default=os.getenv("CLARA_GATEWAY_HOST", "127.0.0.1"),
-        help="Bind address (default: 127.0.0.1)",
+        default=None,
+        help="Bind address (default: from settings)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("CLARA_GATEWAY_PORT", "18789")),
-        help="Port to listen on (default: 18789)",
+        default=None,
+        help="Port to listen on (default: from settings)",
     )
     parser.add_argument(
         "--hooks-dir",
-        default=os.getenv("CLARA_HOOKS_DIR", "./hooks"),
-        help="Directory containing hooks.yaml (default: ./hooks)",
+        default=None,
+        help="Directory containing hooks.yaml (default: from settings)",
     )
     parser.add_argument(
         "--scheduler-dir",
-        default=os.getenv("CLARA_SCHEDULER_DIR", "."),
-        help="Directory containing scheduler.yaml (default: .)",
+        default=None,
+        help="Directory containing scheduler.yaml (default: from settings)",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Apply settings defaults for unset args
+    gw = get_settings().gateway
+    if args.host is None:
+        args.host = gw.host
+    if args.port is None:
+        args.port = gw.port
+    if args.hooks_dir is None:
+        args.hooks_dir = gw.hooks_dir
+    if args.scheduler_dir is None:
+        args.scheduler_dir = gw.scheduler_dir
+
+    return args
 
 
 if __name__ == "__main__":

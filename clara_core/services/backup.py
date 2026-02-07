@@ -44,16 +44,19 @@ class BackupConfig:
 
     @classmethod
     def from_env(cls) -> BackupConfig:
-        """Load configuration from environment variables."""
+        """Load configuration from settings."""
+        from clara_core.config import get_settings
+
+        s = get_settings()
         return cls(
-            clara_db_url=os.getenv("DATABASE_URL", ""),
-            mem0_db_url=os.getenv("MEM0_DATABASE_URL", ""),
-            s3_bucket=os.getenv("S3_BUCKET", "clara-backups"),
-            s3_endpoint_url=os.getenv("S3_ENDPOINT_URL", "https://s3.wasabisys.com"),
-            s3_access_key=os.getenv("S3_ACCESS_KEY", ""),
-            s3_secret_key=os.getenv("S3_SECRET_KEY", ""),
-            s3_region=os.getenv("S3_REGION", "us-east-1"),
-            retention_days=int(os.getenv("BACKUP_RETENTION_DAYS", "7")),
+            clara_db_url=s.database.url,
+            mem0_db_url=s.memory.vector_store.database_url,
+            s3_bucket=s.backup.s3.bucket or "clara-backups",
+            s3_endpoint_url=s.backup.s3.endpoint_url,
+            s3_access_key=s.backup.s3.access_key,
+            s3_secret_key=s.backup.s3.secret_key,
+            s3_region=s.backup.s3.region,
+            retention_days=s.backup.retention_days,
         )
 
 
