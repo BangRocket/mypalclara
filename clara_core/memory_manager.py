@@ -196,20 +196,22 @@ class MemoryManager:
     def __init__(
         self,
         llm_callable: Callable[[list[dict]], str],
-        agent_id: str = "clara",
+        agent_id: str | None = None,
         on_memory_event: Callable[[str, dict[str, Any]], None] | None = None,
     ):
         """Initialize MemoryManager.
 
         Args:
             llm_callable: Function that takes messages and returns LLM response
-            agent_id: Bot persona identifier for entity-scoped memory (default: "clara")
+            agent_id: Bot persona identifier for entity-scoped memory (default: SYSTEM_AGENT_ID)
             on_memory_event: Optional callback for memory events (retrieval, extraction).
                 Called with (event_type, data) where event_type is "memory_retrieved"
                 or "memory_extracted" and data contains event-specific information.
         """
+        from clara_core.config._sections.bot import SYSTEM_AGENT_ID
+
         self.llm = llm_callable
-        self.agent_id = agent_id
+        self.agent_id = agent_id if agent_id is not None else SYSTEM_AGENT_ID
         self._on_memory_event = on_memory_event
         # FSRS integration: track memory IDs from last retrieval for promotion
         self._last_retrieved_memory_ids: dict[str, list[str]] = {}

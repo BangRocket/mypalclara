@@ -138,7 +138,7 @@ def benchmark_key_memories(iterations: int, user_id: str = "benchmark-user") -> 
         elapsed_ms, _ = time_operation(
             ROOK.get_all,
             user_id=user_id,
-            agent_id="clara",
+            agent_id="mypalclara",
             filters={"is_key": "true"},
             limit=15,
         )
@@ -171,7 +171,7 @@ def benchmark_user_search(iterations: int, user_id: str = "benchmark-user") -> B
             ROOK.search,
             query,
             user_id=user_id,
-            agent_id="clara",
+            agent_id="mypalclara",
         )
         result.times_ms.append(elapsed_ms)
 
@@ -206,7 +206,7 @@ def benchmark_project_search(
             ROOK.search,
             query,
             user_id=user_id,
-            agent_id="clara",
+            agent_id="mypalclara",
             filters={"project_id": project_id},
         )
         result.times_ms.append(elapsed_ms)

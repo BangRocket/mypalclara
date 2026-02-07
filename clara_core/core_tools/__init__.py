@@ -109,6 +109,7 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         mcp_management,
         personality_tool,
         process_tool,
+        scheduler_tool,
         system_logs,
         terminal_tool,
     )
@@ -210,6 +211,18 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         logger.info(f"[core_tools] Registered {len(personality_tool.TOOLS)} personality tools")
     except Exception as e:
         logger.warning(f"[core_tools] Failed to register personality_tool: {e}")
+
+    # Initialize and register scheduler_tool
+    try:
+        await scheduler_tool.initialize()
+        for tool_def in scheduler_tool.TOOLS:
+            registry.register(tool_def)
+            count += 1
+        if scheduler_tool.SYSTEM_PROMPT:
+            registry.register_system_prompt("scheduler", scheduler_tool.SYSTEM_PROMPT)
+        logger.info(f"[core_tools] Registered {len(scheduler_tool.TOOLS)} scheduler tools")
+    except Exception as e:
+        logger.warning(f"[core_tools] Failed to register scheduler_tool: {e}")
 
     return count
 

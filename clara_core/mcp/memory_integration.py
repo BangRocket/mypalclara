@@ -43,7 +43,7 @@ class MCPMemoryIntegration:
        tasks and surfaces these preferences
 
     Usage:
-        integration = MCPMemoryIntegration(agent_id="clara")
+        integration = MCPMemoryIntegration(agent_id="mypalclara")
 
         # After a successful tool call
         await integration.store_tool_success(
@@ -61,7 +61,7 @@ class MCPMemoryIntegration:
         )
     """
 
-    def __init__(self, agent_id: str = "clara") -> None:
+    def __init__(self, agent_id: str = "mypalclara") -> None:
         """Initialize MCP memory integration.
 
         Args:
@@ -457,7 +457,7 @@ class MCPMemoryIntegration:
 _integration: MCPMemoryIntegration | None = None
 
 
-def get_mcp_memory_integration(agent_id: str = "clara") -> MCPMemoryIntegration:
+def get_mcp_memory_integration(agent_id: str = "mypalclara") -> MCPMemoryIntegration:
     """Get the global MCP memory integration instance.
 
     Args:

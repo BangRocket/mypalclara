@@ -843,6 +843,9 @@ class MessageProcessor:
         except Exception as e:
             logger.warning(f"Background memory ops failed for {response_id}: {e}")
 
+        # Notify ORS of user activity (non-blocking, fire-and-forget)
+        await self._notify_ors(request, context)
+
     async def _track_sentiment(
         self,
         request: MessageRequest,
@@ -901,6 +904,44 @@ class MessageProcessor:
             logger.debug(f"Promoted {len(memory_ids)} memories for user {user_id}")
         except Exception as e:
             logger.warning(f"Failed to promote memories: {e}")
+
+    async def _notify_ors(
+        self,
+        request: MessageRequest,
+        context: dict[str, Any],
+    ) -> None:
+        """Notify the Organic Response System of user activity.
+
+        Fire-and-forget: failures are logged at debug level and never
+        block the user response.
+        """
+        try:
+            from proactive.engine import is_enabled, on_user_message
+
+            if not is_enabled():
+                return
+
+            await on_user_message(
+                user_id=context["user_id"],
+                channel_id=context.get("channel_id", ""),
+                message_preview=request.content[:200] if request.content else None,
+            )
+
+            # Track proactive responses — if user replies within 1 hour of
+            # receiving a proactive message, mark it as responded.
+            from proactive.engine import get_proactive_history, on_proactive_response
+
+            history = get_proactive_history(context["user_id"], limit=1)
+            if history and not history[0].get("response_received"):
+                sent_str = history[0].get("sent_at")
+                if sent_str:
+                    from datetime import UTC, datetime, timedelta
+
+                    sent_at = datetime.fromisoformat(sent_str)
+                    if (datetime.now(UTC).replace(tzinfo=None) - sent_at) < timedelta(hours=1):
+                        await on_proactive_response(context["user_id"], context.get("channel_id", ""))
+        except Exception as e:
+            logger.debug(f"ORS notification failed (non-critical): {e}")
 
     def _get_tool_emoji(self, tool_name: str) -> str:
         """Get emoji for a tool.

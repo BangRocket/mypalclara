@@ -133,7 +133,7 @@ def finalize_conversation_emotional_context(
     is_dm: bool,
     energy: str,
     summary: str,
-    agent_id: str = "clara",
+    agent_id: str = "mypalclara",
     on_event: Callable[[str, dict], None] | None = None,
 ) -> EmotionalSummary | None:
     """
