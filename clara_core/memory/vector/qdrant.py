@@ -35,6 +35,7 @@ class Qdrant(VectorStoreBase):
         url: str = None,
         api_key: str = None,
         on_disk: bool = False,
+        timeout: int = 30,
     ):
         """Initialize the Qdrant vector store.
 
@@ -48,6 +49,7 @@ class Qdrant(VectorStoreBase):
             url: Full URL for Qdrant server.
             api_key: API key for Qdrant server.
             on_disk: Enables persistent storage.
+            timeout: HTTP timeout in seconds for remote Qdrant (default: 30).
         """
         if client:
             self.client = client
@@ -70,6 +72,7 @@ class Qdrant(VectorStoreBase):
                         shutil.rmtree(path)
             else:
                 self.is_local = False
+                params["timeout"] = timeout
 
             self.client = QdrantClient(**params)
 
