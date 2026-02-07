@@ -64,6 +64,11 @@ class ToolExecutor:
         self._initialized = True
         logger.info("ToolExecutor initialized")
 
+    async def shutdown(self) -> None:
+        """Shut down tool systems, including MCP servers."""
+        if self._mcp_manager and self._mcp_initialized:
+            await self._mcp_manager.shutdown()
+
     async def _init_modular_tools(self) -> None:
         """Initialize modular tools system."""
         try:
