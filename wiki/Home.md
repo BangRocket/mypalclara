@@ -16,6 +16,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 
 ### Platform Adapters
 - [[Discord-Features]] - Discord bot features and commands
+- [[Voice-Chat]] - Discord voice chat (STT/TTS)
 - [[Teams-Adapter]] - Microsoft Teams integration
 - [[CLI-Adapter]] - Terminal interface
 - [[Web-Interface]] - Browser-based UI (knowledge base, chat, graph explorer)
@@ -39,6 +40,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 | Feature | Description |
 |---------|-------------|
 | Multi-Platform | Discord, Teams, CLI, Web adapters via gateway |
+| Voice Chat | Discord voice with Whisper STT + Qwen3-TTS |
 | Persistent Memory | Rook with vector + graph storage |
 | 6 LLM Backends | OpenRouter, Anthropic, NanoGPT, OpenAI, Bedrock, Azure |
 | MCP Plugins | Install tools from Smithery, npm, GitHub |
@@ -76,6 +78,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 | [[Gateway]] | WebSocket hub, hooks, scheduler |
 | [[Memory-System]] | Rook memory, vectors, graph store |
 | [[Discord-Features]] | Discord bot guide |
+| [[Voice-Chat]] | Discord voice chat |
 | [[Teams-Adapter]] | Microsoft Teams setup |
 | [[CLI-Adapter]] | Terminal interface |
 | [[Web-Interface]] | Browser UI: knowledge base, chat, graph, settings |

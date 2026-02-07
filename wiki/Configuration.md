@@ -212,6 +212,28 @@ DISCORD_MONITOR_PORT=8001
 DISCORD_LOG_CHANNEL_ID=123456  # Mirror logs
 ```
 
+### Voice Chat
+
+Requires `ffmpeg` installed on the system. See [[Voice-Chat]] for full documentation.
+
+```bash
+# STT
+VOICE_STT_PROVIDER=openai          # "openai" or "groq"
+VOICE_STT_MODEL=whisper-1          # OpenAI: "whisper-1", Groq: "whisper-large-v3-turbo"
+GROQ_API_KEY=your-groq-key         # Required if provider=groq
+
+# TTS
+REPLICATE_API_TOKEN=your-token     # Required for Qwen3-TTS
+VOICE_TTS_SPEAKER=Serena           # Speaker preset
+VOICE_TTS_LANGUAGE=auto
+
+# Behavior
+VOICE_VAD_AGGRESSIVENESS=2         # 0-3 (higher = more aggressive)
+VOICE_SILENCE_DURATION=1.5         # Seconds of silence before utterance ends
+VOICE_IDLE_TIMEOUT=300             # Auto-leave after N seconds idle
+VOICE_ENABLE_INTERRUPTION=true     # Stop playback when user speaks
+```
+
 ## Gateway
 
 ```bash

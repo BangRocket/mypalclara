@@ -75,6 +75,7 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 | `mypalclara/web/` | Web interface backend (FastAPI, auth, REST API, chat WS) |
 | `web-ui/` | Web interface frontend (React 19, Vite, Tailwind, TypeScript) |
 | `adapters/` | Platform adapters (Discord, Teams, Slack, etc.) |
+| `adapters/discord/voice/` | Discord voice chat (STT, TTS, VAD) |
 | `clara_core/memory/` | Rook memory system (Qdrant/pgvector, embeddings) |
 | `clara_core/mcp/` | MCP plugin system (servers, tools, OAuth) |
 | `clara_core/email/` | Email monitoring and alerts |
@@ -268,6 +269,26 @@ DISCORD_ALLOWED_SERVERS=...       # Comma-separated server IDs
 DISCORD_ALLOWED_CHANNELS=...      # Comma-separated channel IDs
 DISCORD_MAX_MESSAGES=25           # Max conversation chain length
 DISCORD_STOP_PHRASES="clara stop,stop clara,nevermind"
+```
+
+### Voice Chat
+Requires `ffmpeg` installed on the system.
+```bash
+# STT (Speech-to-Text)
+VOICE_STT_PROVIDER=openai          # "openai" or "groq"
+VOICE_STT_MODEL=whisper-1          # OpenAI: "whisper-1", Groq: "whisper-large-v3-turbo"
+GROQ_API_KEY=...                   # Required if provider=groq
+
+# TTS (Text-to-Speech)
+REPLICATE_API_TOKEN=...            # Required for Qwen3-TTS
+VOICE_TTS_SPEAKER=Serena           # Preset speaker voice
+VOICE_TTS_LANGUAGE=auto
+
+# Behavior
+VOICE_VAD_AGGRESSIVENESS=2         # webrtcvad 0-3 (higher = more aggressive)
+VOICE_SILENCE_DURATION=1.5         # Seconds of silence before utterance ends
+VOICE_IDLE_TIMEOUT=300             # Auto-leave after N seconds idle (0=disabled)
+VOICE_ENABLE_INTERRUPTION=true     # Stop playback when user speaks
 ```
 
 ### Rook Memory Provider
