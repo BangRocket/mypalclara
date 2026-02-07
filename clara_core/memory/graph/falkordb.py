@@ -311,7 +311,7 @@ class MemoryGraph:
 
         entity_type_map = {}
 
-        if not search_results:
+        if not search_results or not isinstance(search_results, dict):
             logger.debug("LLM returned no results for entity extraction")
             return entity_type_map
 
@@ -357,7 +357,7 @@ class MemoryGraph:
         extracted_entities = self.llm.generate_response(messages=messages, tools=[RELATIONS_TOOL])
 
         entities = []
-        if extracted_entities and extracted_entities.get("tool_calls"):
+        if extracted_entities and isinstance(extracted_entities, dict) and extracted_entities.get("tool_calls"):
             entities = extracted_entities["tool_calls"][0].get("arguments", {}).get("entities", [])
 
         entities = self._remove_spaces_from_entities(entities)
@@ -438,7 +438,7 @@ class MemoryGraph:
         )
 
         to_be_deleted = []
-        if not memory_updates:
+        if not memory_updates or not isinstance(memory_updates, dict):
             return to_be_deleted
         for item in memory_updates.get("tool_calls", []):
             if item.get("name") == "delete_graph_memory":
@@ -634,9 +634,9 @@ class MemoryGraph:
         WHERE {" AND ".join(where_conditions)}
         WITH source_candidate, (1 - vec.cosineDistance(source_candidate.embedding, vecf32($source_embedding))) AS similarity
         WHERE similarity >= $threshold
+        RETURN id(source_candidate), similarity
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN id(source_candidate)
         """
 
         params = {"source_embedding": source_embedding, "user_id": filters["user_id"], "threshold": self.threshold}
@@ -663,9 +663,9 @@ class MemoryGraph:
         WHERE {" AND ".join(where_conditions)}
         WITH destination_candidate, (1 - vec.cosineDistance(destination_candidate.embedding, vecf32($dest_embedding))) AS similarity
         WHERE similarity >= $threshold
+        RETURN id(destination_candidate), similarity
         ORDER BY similarity DESC
         LIMIT 1
-        RETURN id(destination_candidate)
         """
 
         params = {"dest_embedding": dest_embedding, "user_id": filters["user_id"], "threshold": self.threshold}

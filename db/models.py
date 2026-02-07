@@ -405,6 +405,9 @@ class MemoryDynamics(Base):
     # Classification category (personal, professional, preferences, goals, emotional, temporal)
     category = Column(String(50), nullable=True, default=None)
 
+    # Tags (JSON array stored as string, e.g. '["work","important"]')
+    tags = Column(Text, nullable=True, default=None)
+
     # Access tracking
     last_accessed_at = Column(DateTime, nullable=True)
     access_count = Column(Integer, default=0)
@@ -574,6 +577,95 @@ class MemoryHistory(Base):
 
 
 # =============================================================================
+# Web Interface Identity Models
+# =============================================================================
+
+
+class CanonicalUser(Base):
+    """Unified user identity across platforms.
+
+    Maps to one or more PlatformLinks, providing a single identity
+    for the web interface and cross-platform memory queries.
+    """
+
+    __tablename__ = "canonical_users"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    display_name = Column(String, nullable=False)
+    primary_email = Column(String, nullable=True, unique=True)
+    avatar_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    platform_links = relationship("PlatformLink", back_populates="canonical_user")
+    oauth_tokens = relationship("OAuthToken", back_populates="canonical_user")
+    web_sessions = relationship("WebSession", back_populates="canonical_user")
+
+
+class PlatformLink(Base):
+    """Maps a platform user to a canonical user.
+
+    The prefixed_user_id matches the existing user_id format used
+    throughout the system (e.g., 'discord-123', 'teams-abc').
+    """
+
+    __tablename__ = "platform_links"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    canonical_user_id = Column(String, ForeignKey("canonical_users.id"), nullable=False)
+    platform = Column(String, nullable=False)  # discord, teams, slack, google, etc.
+    platform_user_id = Column(String, nullable=False)  # Raw platform ID
+    prefixed_user_id = Column(String, nullable=False, unique=True)  # e.g., discord-123
+    display_name = Column(String, nullable=True)
+    linked_at = Column(DateTime, default=utcnow)
+    linked_via = Column(String, nullable=True)  # oauth, manual, backfill
+
+    __table_args__ = (Index("ix_platform_link_platform_user", "platform", "platform_user_id", unique=True),)
+
+    canonical_user = relationship("CanonicalUser", back_populates="platform_links")
+
+
+class OAuthToken(Base):
+    """OAuth2 tokens for web interface authentication."""
+
+    __tablename__ = "oauth_tokens"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    canonical_user_id = Column(String, ForeignKey("canonical_users.id"), nullable=False)
+    provider = Column(String, nullable=False)  # discord, google, teams
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    scopes = Column(Text, nullable=True)  # JSON array
+    provider_user_id = Column(String, nullable=True)
+    provider_data = Column(Text, nullable=True)  # JSON
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (Index("ix_oauth_token_user_provider", "canonical_user_id", "provider", unique=True),)
+
+    canonical_user = relationship("CanonicalUser", back_populates="oauth_tokens")
+
+
+class WebSession(Base):
+    """Active web sessions for the web interface."""
+
+    __tablename__ = "web_sessions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    canonical_user_id = Column(String, ForeignKey("canonical_users.id"), nullable=False)
+    session_token_hash = Column(String, nullable=False, unique=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, default=utcnow)
+    revoked = Column(Boolean, default=False)
+
+    canonical_user = relationship("CanonicalUser", back_populates="web_sessions")
+
+
+# =============================================================================
 # Tool Audit Log Model
 # =============================================================================
 
@@ -647,6 +739,11 @@ __all__ = [
     "MemorySupersession",
     # Memory history (Rook)
     "MemoryHistory",
+    # Web interface identity
+    "CanonicalUser",
+    "PlatformLink",
+    "OAuthToken",
+    "WebSession",
     # Tool audit log
     "ToolAuditLog",
     # MCP models

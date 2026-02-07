@@ -82,6 +82,10 @@ services:
       - "6380:6379"  # Use 6380 to avoid conflict with Redis
     volumes:
       - falkordb-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      ${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
@@ -145,6 +149,8 @@ services:
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Web search
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       # Sandbox
@@ -258,6 +264,8 @@ services:
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Fast LLM (for quick operations)
       - FAST_LLM_PROVIDER=${FAST_LLM_PROVIDER:-}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
@@ -342,6 +350,61 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Web interface (FastAPI + React frontend)
+  web:
+    image: ${REGISTRY:-}mypalclara-web:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: mypalclara-web
+    profiles:
+      - web
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    environment:
+      # Web config
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8000
+      - WEB_SECRET_KEY=${WEB_SECRET_KEY:-change-me-in-production}
+      - WEB_STATIC_DIR=/app/web-ui/dist
+      - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-}
+      # OAuth
+      - DISCORD_OAUTH_CLIENT_ID=${DISCORD_OAUTH_CLIENT_ID:-}
+      - DISCORD_OAUTH_CLIENT_SECRET=${DISCORD_OAUTH_CLIENT_SECRET:-}
+      - DISCORD_OAUTH_REDIRECT_URI=${DISCORD_OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback/discord}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback/google}
+      # LLM (for memory search)
+      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # PostgreSQL
+      - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
+      - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
+      # Qdrant (optional)
+      - QDRANT_URL=${QDRANT_URL:-}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Gateway (for chat)
+      - CLARA_GATEWAY_URL=${CLARA_GATEWAY_URL:-ws://gateway:18789}
+      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
+      # Graph memory (for graph explorer)
+      - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
+      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
+      # General
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-vectors:
         condition: service_healthy
     restart: unless-stopped
 

@@ -84,6 +84,7 @@ class MessageProcessor:
         self._tool_executor: ToolExecutor | None = None
         self._llm_orchestrator: LLMOrchestrator | None = None
         self._summary_manager: ChannelSummaryManager | None = None
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def initialize(self) -> None:
         """Initialize the processor with required resources.
@@ -110,6 +111,17 @@ class MessageProcessor:
 
         self._initialized = True
         logger.info("MessageProcessor initialized")
+
+    async def shutdown(self) -> None:
+        """Shut down the processor: wait for background tasks, then close MCP servers."""
+        if self._background_tasks:
+            logger.info(f"Waiting for {len(self._background_tasks)} background memory tasks...")
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            logger.info("All background memory tasks completed")
+
+        # Shut down MCP servers after background tasks (which may use MCP tools)
+        if self._tool_executor:
+            await self._tool_executor.shutdown()
 
     async def _init_memory_manager(self) -> None:
         """Initialize the memory manager."""
@@ -366,16 +378,13 @@ class MessageProcessor:
                     tool_count = event.get("tool_count", 0)
                     files = event.get("files", [])
 
-            # Store in memory
-            await self._store_exchange(request, full_text, context)
-
-            # Promote memories that were used in this response (FSRS feedback)
-            await self._promote_retrieved_memories(context)
+            # Store messages in database (fast, must complete before ResponseEnd)
+            await self._store_messages_db(request, full_text, context)
 
             # Convert file paths to FileData with content
             file_data_list = await self._prepare_file_data(files)
 
-            # Send response end
+            # Send response end immediately — don't wait for memory ops
             await self._send(
                 websocket,
                 ResponseEnd(
@@ -390,12 +399,58 @@ class MessageProcessor:
 
             logger.info(f"Completed response {response_id} ({len(full_text)} chars, {tool_count} tools)")
 
+            # Memory extraction, vector/graph saves, and FSRS promotion
+            # run in background so the user isn't blocked
+            task = asyncio.create_task(
+                self._background_memory_ops(request, full_text, context, response_id)
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
         except asyncio.CancelledError:
             logger.info(f"Processing cancelled for {request.id}")
             raise
         except Exception as e:
             logger.exception(f"Error processing {request.id}: {e}")
             raise
+
+    def _resolve_canonical_user_ids(self, prefixed_user_id: str) -> list[str]:
+        """Resolve a prefixed user_id to all linked user_ids via CanonicalUser.
+
+        If the user has linked multiple platforms (e.g., discord-123 and teams-456),
+        this returns ALL prefixed IDs so memory queries span platforms.
+
+        Args:
+            prefixed_user_id: The prefixed user ID (e.g., 'discord-123')
+
+        Returns:
+            List of all prefixed user_ids for this canonical user,
+            or [prefixed_user_id] if no canonical user found.
+        """
+        try:
+            from db.models import PlatformLink
+
+            db = SessionLocal()
+            try:
+                link = (
+                    db.query(PlatformLink)
+                    .filter(PlatformLink.prefixed_user_id == prefixed_user_id)
+                    .first()
+                )
+                if not link:
+                    return [prefixed_user_id]
+
+                all_links = (
+                    db.query(PlatformLink.prefixed_user_id)
+                    .filter(PlatformLink.canonical_user_id == link.canonical_user_id)
+                    .all()
+                )
+                return [row[0] for row in all_links]
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug(f"Canonical user resolution failed for {prefixed_user_id}: {e}")
+            return [prefixed_user_id]
 
     async def _build_context(self, request: MessageRequest) -> dict[str, Any]:
         """Build context for the LLM including memories and prompt.
@@ -522,9 +577,16 @@ class MessageProcessor:
             # Insert before the current message
             messages = messages[:-1] + chain_messages + [messages[-1]]
 
+        # Resolve canonical user for cross-platform queries
+        all_user_ids = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._resolve_canonical_user_ids(user_id),
+        )
+
         return {
             "messages": messages,
             "user_id": user_id,
+            "all_user_ids": all_user_ids,
             "channel_id": channel_id,
             "is_dm": is_dm,
             "user_mems": user_mems,
@@ -689,54 +751,64 @@ class MessageProcessor:
 
         return file_data_list
 
-    async def _store_exchange(
+    async def _store_messages_db(
         self,
         request: MessageRequest,
         response: str,
         context: dict[str, Any],
     ) -> None:
-        """Store the exchange in Clara's memory and database.
+        """Store user and assistant messages in the database.
 
-        Args:
-            request: The original request
-            response: Clara's response
-            context: The context dict
+        This is fast and must complete before ResponseEnd so conversation
+        history is persisted even if the process crashes.
         """
         if not response:
             return
 
-        loop = asyncio.get_event_loop()
-
-        # Store messages in database for conversation history
         db_session_id = context.get("db_session_id")
-        if db_session_id:
-            # Store user message
-            user_content = context.get("user_content", request.content)
-            await loop.run_in_executor(
-                BLOCKING_EXECUTOR,
-                lambda: self._store_message(
-                    db_session_id,
-                    context["user_id"],
-                    "user",
-                    user_content,
-                ),
-            )
-            # Store assistant response
-            await loop.run_in_executor(
-                BLOCKING_EXECUTOR,
-                lambda: self._store_message(
-                    db_session_id,
-                    context["user_id"],
-                    "assistant",
-                    response,
-                ),
-            )
+        if not db_session_id:
+            return
 
-        # Track sentiment for emotional context
-        await self._track_sentiment(request, context)
+        loop = asyncio.get_event_loop()
+        user_content = context.get("user_content", request.content)
 
-        # Store in mem0 for semantic memory
+        await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._store_message(
+                db_session_id,
+                context["user_id"],
+                "user",
+                user_content,
+            ),
+        )
+        await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._store_message(
+                db_session_id,
+                context["user_id"],
+                "assistant",
+                response,
+            ),
+        )
+
+    async def _background_memory_ops(
+        self,
+        request: MessageRequest,
+        response: str,
+        context: dict[str, Any],
+        response_id: str,
+    ) -> None:
+        """Run memory extraction, vector/graph saves, and FSRS promotion in background.
+
+        These are expensive (5-15s) and don't need to block the user response.
+        Errors are logged but don't affect the user experience.
+        """
         try:
+            # Track sentiment for emotional context
+            await self._track_sentiment(request, context)
+
+            # Store in Rook for semantic memory (LLM extraction + vector/graph)
+            loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
                 lambda: self._memory_manager.add_to_memory(
@@ -746,8 +818,13 @@ class MessageProcessor:
                     is_dm=context["is_dm"],
                 ),
             )
+
+            # Promote memories that were used in this response (FSRS feedback)
+            await self._promote_retrieved_memories(context)
+
+            logger.debug(f"Background memory ops completed for {response_id}")
         except Exception as e:
-            logger.warning(f"Failed to store in mem0: {e}")
+            logger.warning(f"Background memory ops failed for {response_id}: {e}")
 
     async def _track_sentiment(
         self,

@@ -19,6 +19,26 @@ adapters:
     max_restarts: 10
     reset_window: 300
 
+  # Web interface - FastAPI server with knowledge base, chat, and identity management
+  # Starts uvicorn and connects to the gateway as a chat adapter
+  web:
+    enabled: false  # Enable once WEB_SECRET_KEY is configured (or use WEB_DEV_MODE=true)
+    module: mypalclara.web
+    env:
+      CLARA_GATEWAY_URL: ws://127.0.0.1:18789
+      WEB_HOST: ${WEB_HOST:-0.0.0.0}
+      WEB_PORT: ${WEB_PORT:-8000}
+      WEB_SECRET_KEY: ${WEB_SECRET_KEY:-change-me-in-production}
+      WEB_DEV_MODE: ${WEB_DEV_MODE:-false}
+      WEB_STATIC_DIR: ${WEB_STATIC_DIR:-}
+      WEB_CORS_ORIGINS: ${WEB_CORS_ORIGINS:-http://localhost:5173}
+      DISCORD_OAUTH_CLIENT_ID: ${DISCORD_OAUTH_CLIENT_ID:-}
+      DISCORD_OAUTH_CLIENT_SECRET: ${DISCORD_OAUTH_CLIENT_SECRET:-}
+    restart_policy: always
+    restart_delay: 5
+    max_restarts: 10
+    reset_window: 300
+
   # CLI adapter - interactive command line interface
   cli:
     enabled: false  # CLI is typically run manually, not as a daemon

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mypalclara"
-version = "2026.06.73"
+version = "2026.06.87"
 description = "MyPalClara - AI assistant with session management and memory"
 authors = ["Joshua Heidorn <heidornj@icloud.com>"]
 license = "PolyForm-Noncommercial-1.0.0"
@@ -51,6 +51,12 @@ pillow = "^11.0.0"  # Image processing for vision resizing
 
 # Discord bot
 py-cord = "^2.6.1"
+PyNaCl = "^1.5.0"  # Required by py-cord for voice encryption
+
+# Voice chat (STT/TTS/VAD)
+replicate = "^1.0.0"  # Replicate API for Qwen3-TTS
+webrtcvad = "^2.0.10"  # Voice activity detection
+audioop-lts = {version = "^0.2.1", python = ">=3.13"}  # Audio resampling (audioop removed in Python 3.13+)
 
 # Docker code execution sandbox
 docker = "^7.0.0"
@@ -81,6 +87,9 @@ typer = {extras = ["all"], version = "^0.15.0"}
 # Gateway
 websockets = "^15.0"  # WebSocket server for gateway architecture
 
+# Web interface
+PyJWT = "^2.8.0"  # JWT tokens for web auth
+
 # Microsoft Teams bot
 botbuilder-core = "^4.16.0"
 botbuilder-schema = "^4.16.0"
@@ -92,6 +101,7 @@ clara-gateway = "gateway.__main__:main"
 clara-discord = "adapters.discord.main:run"
 clara-teams = "adapters.teams.main:run"
 clara-cli = "adapters.cli.main:run"
+clara-web = "mypalclara.web.__main__:main"
 backup = "backup_service.cli:app"
 
 [tool.poetry.group.dev.dependencies]

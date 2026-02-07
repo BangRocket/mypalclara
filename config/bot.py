@@ -50,29 +50,27 @@ Conversational Continuity:
 Use the context below to inform responses. When contradictions exist, prefer newer information."""
 
 
-def _load_personality() -> str:
-    """Load personality from file or env var, or use default."""
+def _load_personality() -> tuple[str, str]:
+    """Load personality from file or env var, or use default.
+
+    Returns (personality_text, source_description).
+    """
     # Priority 1: File path
     personality_file = os.getenv("BOT_PERSONALITY_FILE")
     if personality_file:
         path = Path(personality_file)
         if path.exists():
             content = path.read_text(encoding="utf-8").strip()
-            # Extract first line for log (usually "You are {Name}...")
-            first_line = content.split("\n")[0][:60]
-            print(f"[personality] Loaded from {personality_file} ({len(content)} chars): {first_line}...")
-            return content
-        print(f"[personality] WARNING: File not found: {personality_file}")
+            return content, f"file: {personality_file}"
+        logger.warning(f"Personality file not found: {personality_file}")
 
     # Priority 2: Inline env var
     personality_env = os.getenv("BOT_PERSONALITY")
     if personality_env:
-        print(f"[personality] Using BOT_PERSONALITY env var ({len(personality_env)} chars)")
-        return personality_env.strip()
+        return personality_env.strip(), "env: BOT_PERSONALITY"
 
     # Priority 3: Default
-    print("[personality] Using default Clara personality")
-    return DEFAULT_PERSONALITY
+    return DEFAULT_PERSONALITY, "default"
 
 
 def _extract_name(personality: str) -> str:
@@ -85,7 +83,7 @@ def _extract_name(personality: str) -> str:
 
 
 # Load on import
-PERSONALITY = _load_personality()
+PERSONALITY, PERSONALITY_SOURCE = _load_personality()
 BOT_NAME = _extract_name(PERSONALITY)
 
 # Brief version for contexts where full personality is too long

@@ -109,7 +109,9 @@ class GatewayServer:
         logger.info(f"Gateway server started on ws://{self.host}:{self.port}")
 
     async def stop(self) -> None:
-        """Stop the WebSocket server."""
+        """Stop the WebSocket server, waiting for background memory tasks."""
+        if self._processor:
+            await self._processor.shutdown()
         if self._server:
             self._server.close()
             await self._server.wait_closed()

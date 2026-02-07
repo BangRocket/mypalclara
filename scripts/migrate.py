@@ -33,7 +33,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, pool, text
 
 
 def get_alembic_config() -> Config:
@@ -53,10 +53,14 @@ def get_alembic_config() -> Config:
 
 
 def get_engine():
-    """Get SQLAlchemy engine from config."""
+    """Get SQLAlchemy engine from config.
+
+    Uses NullPool to prevent pooled connections from holding locks
+    that block subsequent migration operations.
+    """
     cfg = get_alembic_config()
     url = cfg.get_main_option("sqlalchemy.url")
-    return create_engine(url)
+    return create_engine(url, poolclass=pool.NullPool)
 
 
 def get_current_revision() -> str | None:
