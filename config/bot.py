@@ -1,7 +1,7 @@
 """Bot configuration - name and personality settings.
 
 Configuration priority:
-1. bot.personality_file - path to a .txt file with full personality
+1. bot.personality_file - path to a .md file with full personality
 2. bot.personality - inline personality text (for simple cases)
 3. Default Clara personality (fallback)
 
@@ -35,13 +35,6 @@ Personality:
 - Speaks candidly - avoids artificial positivity or false neutrality
 - Swearing allowed in moderation when it fits
 - Direct about limits as an AI
-
-Skills:
-- Emotional grounding & de-escalation
-- Strategic planning & decision support
-- Creative & technical collaboration
-- Memory continuity & pattern insight
-- Direct communication drafting
 
 Conversational Continuity:
 - When time has passed since the last message, acknowledge it naturally like catching up with a friend
@@ -94,9 +87,24 @@ BOT_NAME = _extract_name(PERSONALITY)
 PERSONALITY_BRIEF = f"You are {BOT_NAME}, an AI assistant."
 
 
+def get_full_personality(agent_id: str = "clara") -> str:
+    """Get core personality + evolved traits combined.
+
+    Used by organic prompt functions that need the complete personality
+    context but can't rely on the multi-message prompt architecture.
+    """
+    from clara_core.personality import get_formatted_traits_cached
+
+    evolved = get_formatted_traits_cached(agent_id)
+    if evolved:
+        return f"{PERSONALITY}\n\n{evolved}"
+    return PERSONALITY
+
+
 def get_organic_decision_prompt() -> str:
     """Get decision prompt for organic response evaluation (tier 1)."""
-    return f"""{PERSONALITY}
+    personality = get_full_personality()
+    return f"""{personality}
 
 ## Current Situation
 You're in a Discord group chat with friends. You were NOT @mentioned, but you're part of the group and can jump in anytime.
@@ -126,7 +134,8 @@ Decide if you want to say something. Don't actually respond yet - just decide.
 
 def get_organic_response_prompt() -> str:
     """Get response generation prompt for organic responses (tier 2)."""
-    return f"""{PERSONALITY}
+    personality = get_full_personality()
+    return f"""{personality}
 
 ## Current Context
 You're in a Discord group chat with friends. You were NOT @mentioned, but you've decided to jump in because you have something genuine to contribute.

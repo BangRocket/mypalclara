@@ -1204,6 +1204,13 @@ class MemoryManager:
             SystemMessage(content=system_base),
         ]
 
+        # Inject evolved personality traits (self-managed by Clara)
+        from clara_core.personality import get_formatted_traits_cached
+
+        evolved_traits = get_formatted_traits_cached(self.agent_id)
+        if evolved_traits:
+            messages.append(SystemMessage(content=evolved_traits))
+
         if context_parts:
             messages.append(SystemMessage(content="\n\n".join(context_parts)))
 
@@ -1224,6 +1231,8 @@ class MemoryManager:
         # Log prompt composition summary
         components = []
         components.append(f"personality={len(system_base)} chars")
+        if evolved_traits:
+            components.append(f"evolved={len(evolved_traits)} chars")
         if user_mems:
             components.append(f"user_mems={len(user_mems)}")
         if proj_mems:

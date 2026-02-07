@@ -240,7 +240,7 @@ Backs up the FalkorDB graph database using `redis-cli --rdb`, which streams an R
 
 Archives specified paths (files or directories) into a single `.tar.gz`. Useful for backing up `.env`, personality config, and MCP server configurations. Missing paths are skipped.
 
-Docker Compose default: `/app/.env,/app/config/personality.txt,/app/.mcp_servers`
+Docker Compose default: `/app/.env,/app/config/personality.md,/app/.mcp_servers`
 
 ## Docker Compose
 

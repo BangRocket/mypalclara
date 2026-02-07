@@ -197,7 +197,7 @@ services:
       - DISCORD_MAX_MESSAGES=${DISCORD_MAX_MESSAGES:-25}
       # Bot personality
       - BOT_NAME=${BOT_NAME:-Clara}
-      - BOT_PERSONALITY_FILE=${BOT_PERSONALITY_FILE:-config/personality.txt}
+      - BOT_PERSONALITY_FILE=${BOT_PERSONALITY_FILE:-config/personality.md}
       # Organic responses
       - ORGANIC_RESPONSE_ENABLED=${ORGANIC_RESPONSE_ENABLED:-false}
       - ORGANIC_CONFIDENCE_THRESHOLD=${ORGANIC_CONFIDENCE_THRESHOLD:-0.7}
@@ -297,7 +297,7 @@ services:
       - mypalclara-files:/app/clara_files
       - ${MCP_SERVERS_PATH:-./mcp_servers}:/app/mcp_servers  # MCP server files (cloned repos, etc.)
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock  # For Docker sandbox
-      - ./${BOT_PERSONALITY_FILE:-config/personality.txt}:/app/${BOT_PERSONALITY_FILE:-config/personality.txt}:ro
+      - ./${BOT_PERSONALITY_FILE:-config/personality.md}:/app/${BOT_PERSONALITY_FILE:-config/personality.md}:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -433,7 +433,7 @@ services:
       - FALKORDB_PORT=6379
       - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
       # Config file backup
-      - BACKUP_CONFIG_PATHS=/app/.env,/app/config/personality.txt,/app/.mcp_servers
+      - BACKUP_CONFIG_PATHS=/app/.env,/app/config/personality.md,/app/.mcp_servers
     volumes:
       - backup-data:/backups
       - ./.env:/app/.env:ro

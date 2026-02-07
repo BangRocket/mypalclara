@@ -191,7 +191,7 @@ Run `poetry install` to update dependencies.
 
 ### Discord Image
 - Added `adapters/` directory to image
-- Added default `personality.txt` for mount compatibility
+- Added default `personality.md` for mount compatibility
 
 ### Rust MCP Server
 - Updated to Rust nightly for edition2024 support
