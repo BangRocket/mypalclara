@@ -401,9 +401,7 @@ class MessageProcessor:
 
             # Memory extraction, vector/graph saves, and FSRS promotion
             # run in background so the user isn't blocked
-            task = asyncio.create_task(
-                self._background_memory_ops(request, full_text, context, response_id)
-            )
+            task = asyncio.create_task(self._background_memory_ops(request, full_text, context, response_id))
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
 
@@ -432,11 +430,7 @@ class MessageProcessor:
 
             db = SessionLocal()
             try:
-                link = (
-                    db.query(PlatformLink)
-                    .filter(PlatformLink.prefixed_user_id == prefixed_user_id)
-                    .first()
-                )
+                link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == prefixed_user_id).first()
                 if not link:
                     return [prefixed_user_id]
 
@@ -703,6 +697,29 @@ class MessageProcessor:
             parts.append(f"- Text files attached: {text_count}")
         if file_count:
             parts.append(f"- Other files attached: {file_count}")
+
+        # Voice conversation context
+        if request.metadata.get("source") == "voice":
+            parts.append("")
+            parts.append("## Voice Conversation")
+            parts.append(
+                "You are in a live voice conversation. The user is speaking through a microphone"
+                " — their messages are speech-to-text transcriptions. Your response will be read"
+                " aloud by text-to-speech."
+            )
+            parts.append("")
+            parts.append("Guidelines:")
+            parts.append("- Keep responses concise and conversational — spoken language, not written")
+            parts.append("- No markdown formatting, bullet lists, tables, or code blocks")
+            parts.append("- No URLs or links")
+            parts.append("- Use contractions and natural speech patterns")
+            parts.append("- Shorter sentences — long compound sentences are hard to follow when spoken")
+            parts.append(
+                "- If the user's message seems garbled, they may have been misheard"
+                " — ask for clarification rather than guessing"
+            )
+            parts.append("- For code or technical content, offer to type it out in the text channel instead")
+            parts.append("- Brief is better — a 2-sentence answer often beats a 5-paragraph one")
 
         return "\n".join(parts)
 

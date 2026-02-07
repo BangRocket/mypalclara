@@ -248,8 +248,6 @@ class DiscordGatewayClient(GatewayClient):
                         session.voice_request_ids.discard(request_id)
                         # Send text reply to the voice session's text channel
                         try:
-                            from adapters.discord.message_builder import split_message
-
                             chunks = split_message(message.full_text) if message.full_text else [""]
                             for chunk in chunks:
                                 await session.text_channel.send(chunk)

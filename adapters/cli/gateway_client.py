@@ -32,7 +32,7 @@ logger = get_logger("adapters.cli.gateway")
         display_name="CLI",
         description="Terminal interface with Rich formatting",
         icon="💻",
-        capabilities=["streaming"],
+        capabilities=["streaming", "voice", "mcp_management"],
         required_env=[],
         optional_env=["CLARA_GATEWAY_URL"],
         python_packages=["rich>=13.0.0"],
@@ -60,7 +60,7 @@ class CLIGatewayClient(GatewayClient):
         """
         super().__init__(
             platform="cli",
-            capabilities=["streaming"],
+            capabilities=["streaming", "voice", "mcp_management"],
             gateway_url=gateway_url,
         )
         self.console = console or Console()
@@ -69,6 +69,8 @@ class CLIGatewayClient(GatewayClient):
         self._current_text = ""
         self._current_tools = 0
         self._response_event: asyncio.Event | None = None
+        self.voice_manager: Any | None = None
+        self._voice_request_ids: set[str] = set()
 
     async def send_cli_message(
         self,
@@ -150,6 +152,17 @@ class CLIGatewayClient(GatewayClient):
 
     async def on_response_end(self, message: Any) -> None:
         """Handle response completion."""
+        # Check for voice-originated requests
+        if message.request_id in self._voice_request_ids:
+            self._voice_request_ids.discard(message.request_id)
+            # Print text response
+            self.console.print("\n[bold blue]Clara:[/bold blue]")
+            self.console.print(Markdown(message.full_text))
+            # Fire TTS pipeline (async, non-blocking)
+            if self.voice_manager and self.voice_manager.is_active:
+                asyncio.create_task(self.voice_manager.synthesize_and_play(message.full_text))
+            return
+
         self._current_text = message.full_text
         self._current_tools = message.tool_count
 

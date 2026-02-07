@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from adapters.cli.commands import CommandDispatcher
 from adapters.cli.gateway_client import CLIGatewayClient
 from config.logging import get_logger, init_logging
 
@@ -46,12 +47,21 @@ async def main() -> None:
     """Run the CLI interface."""
     console = Console()
 
+    # Initialize database for identity linking
+    try:
+        from db import init_db
+
+        init_db()
+    except Exception:
+        pass  # DB unavailable — identity linking will show errors
+
     # Print welcome
     console.print(
         Panel(
             "[bold blue]Clara CLI[/bold blue]\n"
             f"Gateway: {GATEWAY_URL}\n"
-            "Type 'exit' or 'quit' to exit. Ctrl+C to cancel.",
+            "Type 'exit' or 'quit' to exit. Ctrl+C to cancel.\n"
+            "Type '!help' for commands.",
             title="Welcome",
             border_style="blue",
         )
@@ -78,6 +88,9 @@ async def main() -> None:
         history=FileHistory(str(HISTORY_FILE)),
     )
 
+    # Create command dispatcher
+    dispatcher = CommandDispatcher(client=client, console=console, session=session)
+
     try:
         while True:
             try:
@@ -94,6 +107,15 @@ async def main() -> None:
 
                 # Skip empty input
                 if not user_input.strip():
+                    continue
+
+                # Try command dispatch first
+                result = await dispatcher.dispatch(user_input)
+                if result.handled:
+                    if result.output:
+                        console.print(result.output)
+                    if result.error:
+                        console.print(f"[red]{result.error}[/red]")
                     continue
 
                 # Detect tier override
@@ -131,6 +153,9 @@ async def main() -> None:
                 break
 
     finally:
+        # Stop voice if active
+        if dispatcher.voice_manager and dispatcher.voice_manager.is_active:
+            await dispatcher.voice_manager.stop()
         await client.disconnect()
         console.print("[grey]Disconnected[/grey]")
 
