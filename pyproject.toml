@@ -58,6 +58,7 @@ replicate = "^1.0.0"  # Replicate API for Qwen3-TTS
 webrtcvad = "^2.0.10"  # Voice activity detection
 sounddevice = "^0.5.0"  # PortAudio bindings for local mic/speaker (CLI voice)
 audioop-lts = {version = "^0.2.1", python = ">=3.13"}  # Audio resampling (audioop removed in Python 3.13+)
+setuptools = {version = ">=70.0", python = ">=3.13"}  # pkg_resources needed by webrtcvad (removed from stdlib in 3.13)
 
 # Docker code execution sandbox
 docker = "^7.0.0"
