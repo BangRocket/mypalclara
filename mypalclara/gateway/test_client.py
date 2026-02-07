@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -127,7 +126,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--url",
-        default=os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789"),
+        default=None,
         help="Gateway WebSocket URL",
     )
     parser.add_argument(
@@ -137,7 +136,14 @@ def parse_args() -> argparse.Namespace:
         help="Message to send",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.url is None:
+        from clara_core.config import get_settings
+
+        args.url = get_settings().gateway.url
+
+    return args
 
 
 if __name__ == "__main__":

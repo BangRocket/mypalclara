@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -30,10 +29,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from clara_core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # Default directory for MCP server files and configs
-MCP_SERVERS_DIR = Path(os.getenv("MCP_SERVERS_DIR", ".mcp_servers"))
+MCP_SERVERS_DIR = Path(get_settings().mcp.servers_dir)
 
 
 def gen_uuid() -> str:

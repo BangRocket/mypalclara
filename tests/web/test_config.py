@@ -18,12 +18,12 @@ class TestWebConfig:
         assert config.jwt_algorithm == "HS256"
         assert config.jwt_expire_minutes == 1440
 
-    @patch.dict("os.environ", {"WEB_PORT": "9999", "WEB_HOST": "127.0.0.1"})
+    @patch.dict("os.environ", {"WEB__PORT": "9999", "WEB__HOST": "127.0.0.1"})
     def test_env_override(self):
-        """Config picks up environment variables."""
+        """Config picks up environment variables via settings."""
         config = WebConfig()
         assert config.host == "127.0.0.1"
-        # port is read at class definition time, so this test validates the pattern
+        assert config.port == 9999
 
     def test_get_web_config_returns_instance(self):
         """get_web_config returns a WebConfig."""

@@ -71,7 +71,6 @@ from clara_core.llm.providers.langchain import (
 )
 from clara_core.llm.providers.registry import ProviderRegistry, get_provider
 from clara_core.llm.tiers import (
-    DEFAULT_MODELS,
     DEFAULT_TIER,
     ModelTier,
     get_base_model,
@@ -120,7 +119,6 @@ __all__ = [
     # Tiers
     "ModelTier",
     "DEFAULT_TIER",
-    "DEFAULT_MODELS",
     "get_model_for_tier",
     "get_base_model",
     "get_current_tier",

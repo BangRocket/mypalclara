@@ -6,23 +6,21 @@ This module configures Alembic to:
 - Import Base metadata from db.models for autogenerate support
 """
 
-import os
 from logging.config import fileConfig
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
+
+from clara_core.config import get_settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# Override sqlalchemy.url with DATABASE_URL if set (production PostgreSQL)
-if os.getenv("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
+# Override sqlalchemy.url with database URL from settings (production PostgreSQL)
+_db_url = get_settings().database.url
+if _db_url:
+    config.set_main_option("sqlalchemy.url", _db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

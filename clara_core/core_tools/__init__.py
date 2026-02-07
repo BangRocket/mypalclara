@@ -249,7 +249,9 @@ async def setup_official_mcp_servers() -> dict[str, bool]:
             args = None
             if server_config.name == "filesystem":
                 # Allow access to CLARA_FILES_DIR or current directory
-                files_dir = os.getenv("CLARA_FILES_DIR", "./clara_files")
+                from clara_core.config import get_settings
+
+                files_dir = get_settings().files_dir
                 args = [files_dir]
 
             # Install the server

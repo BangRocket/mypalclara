@@ -3,7 +3,7 @@
 This module provides configuration and initialization for Clara's memory system.
 The memory system is called "Rook" internally.
 
-Environment variables use ROOK_* prefix with MEM0_* fallback for compatibility.
+Configuration is sourced from clara_core.config.get_settings().
 """
 
 from __future__ import annotations
@@ -12,29 +12,50 @@ import logging
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 # Use Clara's native memory system
 from clara_core.memory.core.memory import ClaraMemory
-
-load_dotenv()
 
 logger = logging.getLogger("clara.rook.config")
 
 
-def _get_env(rook_key: str, mem0_key: str, default: str | None = None) -> str | None:
-    """Get env var with ROOK_* preferred, MEM0_* as fallback."""
-    return os.getenv(rook_key) or os.getenv(mem0_key, default)
+def _s():
+    """Lazy accessor for settings (avoids import-time circular deps)."""
+    from clara_core.config import get_settings
+
+    return get_settings()
 
 
-# Rook has its own independent provider config (separate from chat LLM)
-# ROOK_* preferred, MEM0_* fallback for backward compatibility
-ROOK_PROVIDER = _get_env("ROOK_PROVIDER", "MEM0_PROVIDER", "openrouter").lower()
-ROOK_MODEL = _get_env("ROOK_MODEL", "MEM0_MODEL", "openai/gpt-4o-mini")
+# --- Module-level config derived from settings ---
+# These are evaluated at import time for backward compatibility with code
+# that imports them directly (e.g., config.rook).
 
-# Optional overrides - if not set, uses the provider's default key/url
-ROOK_API_KEY = _get_env("ROOK_API_KEY", "MEM0_API_KEY")
-ROOK_BASE_URL = _get_env("ROOK_BASE_URL", "MEM0_BASE_URL")
+
+def _rook_provider():
+    return _s().memory.rook.provider.lower()
+
+
+def _rook_model():
+    return _s().memory.rook.model
+
+
+def _rook_api_key():
+    return _s().memory.rook.api_key or None
+
+
+def _rook_base_url():
+    return _s().memory.rook.base_url or None
+
+
+def _openai_api_key():
+    return _s().llm.openai_api_key or None
+
+
+# Eagerly evaluated for backward compat (many modules import these directly)
+ROOK_PROVIDER = _rook_provider()
+ROOK_MODEL = _rook_model()
+ROOK_API_KEY = _rook_api_key()
+ROOK_BASE_URL = _rook_base_url()
+OPENAI_API_KEY = _openai_api_key()
 
 # Backward compatibility aliases
 MEM0_PROVIDER = ROOK_PROVIDER
@@ -42,30 +63,27 @@ MEM0_MODEL = ROOK_MODEL
 MEM0_API_KEY = ROOK_API_KEY
 MEM0_BASE_URL = ROOK_BASE_URL
 
-# OpenAI API for embeddings (always required)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Provider defaults
+# Provider defaults (base URLs and fallback API key sources)
 PROVIDER_DEFAULTS = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
-        "api_key_env": "OPENROUTER_API_KEY",
+        "api_key_getter": lambda: _s().llm.openrouter.api_key,
     },
     "nanogpt": {
         "base_url": "https://nano-gpt.com/api/v1",
-        "api_key_env": "NANOGPT_API_KEY",
+        "api_key_getter": lambda: _s().llm.nanogpt.api_key,
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
+        "api_key_getter": lambda: _s().llm.openai_api_key,
     },
     "openai-custom": {
-        "base_url": os.getenv("CUSTOM_OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        "api_key_env": "CUSTOM_OPENAI_API_KEY",
+        "base_url": lambda: _s().llm.openai.base_url,
+        "api_key_getter": lambda: _s().llm.openai.api_key,
     },
     "anthropic": {
-        "base_url": os.getenv("ANTHROPIC_BASE_URL"),  # None = default API
-        "api_key_env": "ANTHROPIC_API_KEY",
+        "base_url": lambda: _s().llm.anthropic.base_url or None,
+        "api_key_getter": lambda: _s().llm.anthropic.api_key,
     },
 }
 
@@ -77,7 +95,7 @@ _env_vars_to_clear = [
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "ROOK_API_KEY",
-    "MEM0_API_KEY",  # Legacy fallback
+    "MEM0_API_KEY",
 ]
 
 
@@ -97,35 +115,33 @@ def _restore_env_vars():
 
 
 # Store memory data in a local directory
-BASE_DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent.parent.parent)))
+BASE_DATA_DIR = Path(_s().data_dir)
 QDRANT_DATA_DIR = BASE_DATA_DIR / "qdrant_data"
 
 # PostgreSQL with pgvector for production (optional)
-# ROOK_DATABASE_URL preferred, MEM0_DATABASE_URL as fallback
-ROOK_DATABASE_URL = _get_env("ROOK_DATABASE_URL", "MEM0_DATABASE_URL")
+ROOK_DATABASE_URL = _s().memory.vector_store.database_url or None
 MEM0_DATABASE_URL = ROOK_DATABASE_URL  # Backward compatibility alias
 
-# Self-hosted Qdrant (takes priority over pgvector and local Qdrant)
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+# Self-hosted Qdrant
+QDRANT_URL = _s().memory.vector_store.qdrant_url or None
+QDRANT_API_KEY = _s().memory.vector_store.qdrant_api_key or None
 
-# Vector store migration mode (for blue-green deployment)
-# Options: primary_only, dual_write, dual_read, secondary_only
-VECTOR_STORE_MODE = os.getenv("VECTOR_STORE_MODE", "primary_only")
+# Vector store migration mode
+VECTOR_STORE_MODE = _s().memory.vector_store.migration_mode
 
 # Only create Qdrant directory if we're using local Qdrant
 if not ROOK_DATABASE_URL and not QDRANT_URL:
     QDRANT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Graph memory configuration (optional - for relationship tracking)
-ENABLE_GRAPH_MEMORY = os.getenv("ENABLE_GRAPH_MEMORY", "false").lower() == "true"
-GRAPH_STORE_PROVIDER = os.getenv("GRAPH_STORE_PROVIDER", "falkordb").lower()
+# Graph memory configuration
+ENABLE_GRAPH_MEMORY = _s().memory.graph_store.enabled
+GRAPH_STORE_PROVIDER = _s().memory.graph_store.provider.lower()
 
 # FalkorDB configuration
-FALKORDB_HOST = os.getenv("FALKORDB_HOST", "localhost")
-FALKORDB_PORT = int(os.getenv("FALKORDB_PORT", "6379"))
-FALKORDB_PASSWORD = os.getenv("FALKORDB_PASSWORD")
-FALKORDB_GRAPH_NAME = os.getenv("FALKORDB_GRAPH_NAME", "clara_memory")
+FALKORDB_HOST = _s().memory.graph_store.falkordb_host
+FALKORDB_PORT = _s().memory.graph_store.falkordb_port
+FALKORDB_PASSWORD = _s().memory.graph_store.falkordb_password or None
+FALKORDB_GRAPH_NAME = _s().memory.graph_store.falkordb_graph_name
 
 # Kuzu configuration
 KUZU_DATA_DIR = BASE_DATA_DIR / "kuzu_data"
@@ -165,11 +181,7 @@ def _get_graph_store_config() -> dict | None:
 
 
 def _get_llm_config() -> dict | None:
-    """Build LLM config based on ROOK_PROVIDER.
-
-    Uses the unified provider from clara_core.llm for consistent behavior
-    across all LLM operations (chat, memory, tools).
-    """
+    """Build LLM config based on ROOK_PROVIDER."""
     if ROOK_PROVIDER not in PROVIDER_DEFAULTS:
         logger.warning(f"Unknown ROOK_PROVIDER={ROOK_PROVIDER} - LLM disabled")
         return None
@@ -177,25 +189,26 @@ def _get_llm_config() -> dict | None:
     provider_config = PROVIDER_DEFAULTS[ROOK_PROVIDER]
 
     # Get API key: explicit ROOK_API_KEY > provider's default key
-    api_key = ROOK_API_KEY or os.getenv(provider_config["api_key_env"])
+    api_key = ROOK_API_KEY or provider_config["api_key_getter"]()
     if not api_key:
         logger.info(f"No API key found for ROOK_PROVIDER={ROOK_PROVIDER} - LLM disabled")
         return None
 
     # Get base URL: explicit ROOK_BASE_URL > provider's default URL
-    base_url = ROOK_BASE_URL or provider_config["base_url"]
+    default_base_url = provider_config["base_url"]
+    if callable(default_base_url):
+        default_base_url = default_base_url()
+    base_url = ROOK_BASE_URL or default_base_url
 
     logger.info(f"Rook LLM Provider: {ROOK_PROVIDER} (via unified)")
     logger.info(f"Rook LLM Model: {ROOK_MODEL}")
     if base_url:
         logger.info(f"Rook LLM Base URL: {base_url}")
 
-    # Use unified provider for all backends
-    # This ensures consistent behavior with clara_core.llm
     return {
         "provider": "unified",
         "config": {
-            "provider": ROOK_PROVIDER,  # Actual provider (openrouter, anthropic, etc.)
+            "provider": ROOK_PROVIDER,
             "model": ROOK_MODEL,
             "api_key": api_key,
             "base_url": base_url,
@@ -212,9 +225,8 @@ llm_config = _get_llm_config()
 graph_store_config = _get_graph_store_config()
 
 # Collection name
-ROOK_COLLECTION_NAME = _get_env("ROOK_COLLECTION_NAME", "MEM0_COLLECTION_NAME", "clara_memories")
+ROOK_COLLECTION_NAME = _s().memory.vector_store.collection_name
 MEM0_COLLECTION_NAME = ROOK_COLLECTION_NAME  # Backward compatibility alias
-
 
 # Embedding dimensions for text-embedding-3-small
 EMBEDDING_MODEL_DIMS = 1536
@@ -224,7 +236,7 @@ def _build_vector_store_config() -> dict:
     """Build vector store configuration.
 
     Priority order:
-    1. QDRANT_URL (self-hosted Qdrant) - NEW, recommended for production
+    1. QDRANT_URL (self-hosted Qdrant) - recommended for production
     2. ROOK_DATABASE_URL (pgvector) - legacy production option
     3. Local Qdrant (development)
     """
@@ -236,7 +248,7 @@ def _build_vector_store_config() -> dict:
                 "collection_name": ROOK_COLLECTION_NAME,
                 "embedding_model_dims": EMBEDDING_MODEL_DIMS,
                 "url": QDRANT_URL,
-                "on_disk": True,  # Persist to disk
+                "on_disk": True,
             },
         }
         if QDRANT_API_KEY:
@@ -277,30 +289,28 @@ def _build_vector_store_config() -> dict:
 # Build vector store config
 vector_store_config = _build_vector_store_config()
 
-# Embedding cache toggle
-MEMORY_EMBEDDING_CACHE = os.getenv("MEMORY_EMBEDDING_CACHE", "true").lower() == "true"
-
 # Build config - embeddings always use OpenAI (with optional caching)
+embedding_model = _s().memory.embedding.model
 config = {
     "vector_store": vector_store_config,
     "embedder": {
         "provider": "openai",
         "config": {
-            "model": "text-embedding-3-small",
+            "model": embedding_model,
             "api_key": OPENAI_API_KEY,
         },
     },
 }
 
 # Log embedding cache status
-if MEMORY_EMBEDDING_CACHE:
-    redis_url = os.getenv("REDIS_URL")
+if _s().memory.embedding.cache_enabled:
+    redis_url = _s().memory.redis_url
     if redis_url:
         logger.info("Embedding cache: ENABLED (Redis)")
     else:
-        logger.info("Embedding cache: DISABLED (no REDIS_URL)")
+        logger.info("Embedding cache: DISABLED (no redis_url)")
 else:
-    logger.info("Embedding cache: DISABLED (MEMORY_EMBEDDING_CACHE=false)")
+    logger.info("Embedding cache: DISABLED (cache_enabled=false)")
 
 # Only add LLM config if we have one
 if llm_config:
@@ -313,11 +323,11 @@ if graph_store_config:
         config["graph_store"]["llm"] = llm_config.copy()
 
 # Debug summary
-logger.info("Embeddings: OpenAI text-embedding-3-small")
+logger.info(f"Embeddings: OpenAI {embedding_model}")
 if graph_store_config:
     logger.info(f"Graph memory: ENABLED ({GRAPH_STORE_PROVIDER})")
 else:
-    logger.info("Graph memory: DISABLED (set ENABLE_GRAPH_MEMORY=true to enable)")
+    logger.info("Graph memory: DISABLED (set memory.graph_store.enabled=true to enable)")
 
 # Initialize Rook (Clara's memory system singleton)
 ROOK: ClaraMemory | None = None
@@ -326,7 +336,7 @@ ROOK: ClaraMemory | None = None
 def _init_rook() -> ClaraMemory | None:
     """Initialize Rook (Clara's memory system) synchronously."""
     if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not set - Rook disabled (no embeddings)")
+        logger.warning("llm.openai_api_key not set - Rook disabled (no embeddings)")
         return None
 
     try:
@@ -345,7 +355,6 @@ def _init_rook() -> ClaraMemory | None:
 # Initialize at module load
 ROOK = _init_rook()
 
-
 # Backward compatibility aliases
-MEM0 = ROOK  # Legacy name
+MEM0 = ROOK
 Memory = ClaraMemory

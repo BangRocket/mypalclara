@@ -21,6 +21,10 @@ poetry.lock
 .env.local
 .env.*.local
 
+# Config (contains secrets)
+clara.yaml
+clara.yml
+
 # Database
 *.db
 *.db.bak

@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -25,6 +24,8 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+
+from clara_core.config import get_settings
 
 from .local_server import LocalServerProcess, MCPTool
 from .models import (
@@ -47,9 +48,7 @@ logger = logging.getLogger(__name__)
 
 # Smithery API configuration
 SMITHERY_REGISTRY_URL = "https://registry.smithery.ai/servers"
-SMITHERY_API_TOKEN = os.getenv("SMITHERY_API_TOKEN", "")
-if not SMITHERY_API_TOKEN:
-    SMITHERY_API_TOKEN = os.getenv("SMITHERY_API_KEY", "")
+SMITHERY_API_TOKEN = get_settings().mcp.smithery_api_key
 
 
 @dataclass

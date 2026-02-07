@@ -24,16 +24,13 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import discord
 from discord.ext import commands as discord_commands
 
 from adapters.discord.channel_modes import get_channel_mode
 from adapters.discord.gateway_client import DiscordGatewayClient
 from adapters.discord.voice import VoiceManager
+from clara_core.config import get_settings
 from clara_core.discord import setup as setup_slash_commands
 from config.logging import get_logger, init_logging
 
@@ -41,15 +38,10 @@ init_logging()
 logger = get_logger("adapters.discord")
 
 # Configuration
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
-STOP_PHRASES = [
-    p.strip().lower()
-    for p in os.getenv(
-        "DISCORD_STOP_PHRASES",
-        "clara stop,stop clara,nevermind,never mind",
-    ).split(",")
-]
+_settings = get_settings()
+BOT_TOKEN = _settings.discord.bot_token
+GATEWAY_URL = _settings.gateway.url
+STOP_PHRASES = [p.strip().lower() for p in _settings.discord.stop_phrases.split(",")]
 
 # Intents for Discord
 intents = discord.Intents.default()

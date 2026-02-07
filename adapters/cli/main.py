@@ -13,16 +13,11 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -32,14 +27,16 @@ from rich.panel import Panel
 
 from adapters.cli.commands import CommandDispatcher
 from adapters.cli.gateway_client import CLIGatewayClient
+from clara_core.config import get_settings
 from config.logging import get_logger, init_logging
 
 init_logging()
 logger = get_logger("adapters.cli")
 
 # Configuration
-GATEWAY_URL = os.getenv("CLARA_GATEWAY_URL", "ws://127.0.0.1:18789")
-USER_ID = os.getenv("CLI_USER_ID", "cli-user")
+_settings = get_settings()
+GATEWAY_URL = _settings.gateway.url
+USER_ID = _settings.user_id
 HISTORY_FILE = Path.home() / ".clara_cli_history"
 
 

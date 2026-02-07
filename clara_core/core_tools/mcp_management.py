@@ -556,9 +556,9 @@ async def mcp_oauth_start(args: dict[str, Any], ctx: ToolContext) -> str:
 
     # Default redirect URI - could be customized per deployment
     if not redirect_uri:
-        import os
+        from clara_core.config import get_settings
 
-        api_url = os.getenv("CLARA_API_URL", "")
+        api_url = get_settings().discord.api_url
         if api_url:
             redirect_uri = f"{api_url}/oauth/mcp/callback"
         else:
@@ -642,9 +642,9 @@ async def mcp_oauth_complete(args: dict[str, Any], ctx: ToolContext) -> str:
 
         # Default redirect URI
         if not redirect_uri:
-            import os
+            from clara_core.config import get_settings
 
-            api_url = os.getenv("CLARA_API_URL", "")
+            api_url = get_settings().discord.api_url
             if api_url:
                 redirect_uri = f"{api_url}/oauth/mcp/callback"
             else:

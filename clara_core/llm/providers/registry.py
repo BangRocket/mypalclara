@@ -6,7 +6,6 @@ with automatic provider selection based on configuration.
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -99,7 +98,9 @@ class ProviderRegistry:
         Uses native SDK (Anthropic or OpenAI) instead of LangChain.
         Useful for maximum compatibility or avoiding LangChain overhead.
         """
-        provider_name = os.getenv("LLM_PROVIDER", "openrouter").lower()
+        from clara_core.config import get_settings
+
+        provider_name = get_settings().llm.provider.lower()
 
         if provider_name == "anthropic":
             return cls.get_provider("direct_anthropic")

@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from clara_core.config import get_settings
+
 # Docker imports - optional dependency
 try:
     import docker
@@ -41,15 +43,16 @@ except ImportError:
     Container = None
 
 # Configuration
-DOCKER_IMAGE = os.getenv("DOCKER_SANDBOX_IMAGE", "python:3.12-slim")
-DOCKER_TIMEOUT = int(os.getenv("DOCKER_SANDBOX_TIMEOUT", "900"))
-DOCKER_MEMORY = os.getenv("DOCKER_SANDBOX_MEMORY", "512m")
-DOCKER_CPU = float(os.getenv("DOCKER_SANDBOX_CPU", "1.0"))
+_sandbox = get_settings().sandbox
+DOCKER_IMAGE = _sandbox.docker.image
+DOCKER_TIMEOUT = _sandbox.docker.timeout
+DOCKER_MEMORY = _sandbox.docker.memory
+DOCKER_CPU = _sandbox.docker.cpu
 SANDBOX_IDLE_TIMEOUT = DOCKER_TIMEOUT
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GIT_USER_NAME = os.getenv("GIT_USER_NAME", "Clara Bot")
-GIT_USER_EMAIL = os.getenv("GIT_USER_EMAIL", "clara@bot.local")
+TAVILY_API_KEY = _sandbox.tavily_api_key or None
+GITHUB_TOKEN = _sandbox.github_token or None
+GIT_USER_NAME = _sandbox.git_user_name
+GIT_USER_EMAIL = _sandbox.git_user_email
 
 
 # Tool definitions for OpenAI-compatible APIs

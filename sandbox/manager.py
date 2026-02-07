@@ -6,8 +6,9 @@ Automatically selects the appropriate backend based on configuration.
 
 from __future__ import annotations
 
-import os
 from typing import Any
+
+from clara_core.config import get_settings
 
 from .docker import DOCKER_AVAILABLE, DockerSandboxManager, ExecutionResult
 from .incus import INCUS_AVAILABLE, IncusSandboxManager
@@ -17,7 +18,7 @@ from .incus import INCUS_AVAILABLE, IncusSandboxManager
 # - "incus": Use Incus containers
 # - "incus-vm": Use Incus VMs (stronger isolation)
 # - "auto": Use Incus if available, fall back to Docker
-SANDBOX_MODE = os.getenv("SANDBOX_MODE", "auto")
+SANDBOX_MODE = get_settings().sandbox.mode
 
 
 class UnifiedSandboxManager:

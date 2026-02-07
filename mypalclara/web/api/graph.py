@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
@@ -17,15 +16,18 @@ router = APIRouter()
 
 def _get_graph_store():
     """Get the graph store client (FalkorDB or Kuzu)."""
-    provider = os.getenv("GRAPH_STORE_PROVIDER", "falkordb")
+    from clara_core.config import get_settings
+
+    gs = get_settings().memory.graph_store
+    provider = gs.provider
     if provider == "falkordb":
         try:
             from falkordb import FalkorDB
 
-            host = os.getenv("FALKORDB_HOST", "localhost")
-            port = int(os.getenv("FALKORDB_PORT", "6379"))
-            password = os.getenv("FALKORDB_PASSWORD")
-            graph_name = os.getenv("FALKORDB_GRAPH_NAME", "clara_memory")
+            host = gs.falkordb_host
+            port = gs.falkordb_port
+            password = gs.falkordb_password or None
+            graph_name = gs.falkordb_graph_name
 
             db = FalkorDB(host=host, port=port, password=password)
             return db.select_graph(graph_name)

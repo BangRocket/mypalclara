@@ -9,9 +9,9 @@ Handles:
 from __future__ import annotations
 
 import base64
-import os
 from typing import TYPE_CHECKING, Any
 
+from clara_core.config import get_settings
 from config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -20,10 +20,11 @@ if TYPE_CHECKING:
 logger = get_logger("adapters.discord.attachments")
 
 # Image handling configuration
-MAX_IMAGE_DIMENSION = int(os.getenv("DISCORD_MAX_IMAGE_DIMENSION", "1568"))
-MAX_IMAGE_SIZE = int(os.getenv("DISCORD_MAX_IMAGE_SIZE", str(4 * 1024 * 1024)))  # 4MB
-MAX_IMAGES_PER_REQUEST = int(os.getenv("DISCORD_MAX_IMAGES_PER_REQUEST", "1"))
-MAX_TEXT_FILE_SIZE = int(os.getenv("DISCORD_MAX_TEXT_FILE_SIZE", str(100 * 1024)))  # 100KB
+_discord_settings = get_settings().discord
+MAX_IMAGE_DIMENSION = _discord_settings.max_image_dimension
+MAX_IMAGE_SIZE = _discord_settings.max_image_size
+MAX_IMAGES_PER_REQUEST = _discord_settings.max_images_per_request
+MAX_TEXT_FILE_SIZE = _discord_settings.max_text_file_size
 
 # Supported file extensions
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})

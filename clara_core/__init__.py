@@ -29,7 +29,7 @@ def get_version() -> str:
     return __version__
 
 
-from clara_core.config import get_config, init_platform
+from clara_core.config import get_config, get_settings, init_platform
 from clara_core.llm import (
     DEFAULT_TIER,
     AssistantMessage,
@@ -65,6 +65,7 @@ __all__ = [
     # Initialization
     "init_platform",
     "get_config",
+    "get_settings",
     # Core classes
     "MemoryManager",
     "ToolRegistry",

@@ -10,11 +10,11 @@ Handles:
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
+from clara_core.config import get_settings
 from clara_core.llm.messages import AssistantMessage, SystemMessage, UserMessage
 from clara_core.llm.messages import Message as LLMMessage
 from config.logging import get_logger
@@ -42,12 +42,12 @@ logger = get_logger("gateway.processor")
 
 # Thread pool for blocking operations
 BLOCKING_EXECUTOR = ThreadPoolExecutor(
-    max_workers=int(os.getenv("GATEWAY_IO_THREADS", "20")),
+    max_workers=get_settings().gateway.io_threads,
     thread_name_prefix="gateway-io-",
 )
 
 # Auto-tier configuration
-AUTO_TIER_ENABLED = os.getenv("AUTO_TIER_SELECTION", "false").lower() == "true"
+AUTO_TIER_ENABLED = get_settings().llm.auto_tier.enabled
 
 # Tier classification prompt (uses fast model to decide)
 TIER_CLASSIFICATION_PROMPT = """Analyze this message and recent context to determine complexity level.
@@ -161,7 +161,7 @@ class MessageProcessor:
             # Get or create default project for this user
             project = db.query(Project).filter_by(owner_id=user_id).first()
             if not project:
-                project_name = os.getenv("DEFAULT_PROJECT", "Default Project")
+                project_name = get_settings().default_project
                 project = Project(owner_id=user_id, name=project_name)
                 db.add(project)
                 db.commit()

@@ -11,7 +11,6 @@ import asyncio
 import email
 import imaplib
 import json
-import os
 import re
 import smtplib
 from dataclasses import dataclass
@@ -21,23 +20,25 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from clara_core import make_llm
+from clara_core.config import get_settings
 from config.bot import BOT_NAME
 
-# Email configuration - loaded from environment or hardcoded for now
-EMAIL_ADDRESS = os.environ.get("CLARA_EMAIL_ADDRESS")
-EMAIL_PASSWORD = os.environ.get("CLARA_EMAIL_PASSWORD")
-IMAP_SERVER = os.getenv("CLARA_IMAP_SERVER", "imap.titan.email")
-IMAP_PORT = int(os.getenv("CLARA_IMAP_PORT", "993"))
+# Email configuration - loaded from settings
+_email_settings = get_settings().email
+EMAIL_ADDRESS = _email_settings.address or None
+EMAIL_PASSWORD = _email_settings.password or None
+IMAP_SERVER = _email_settings.imap_server
+IMAP_PORT = _email_settings.imap_port
 
 # Discord user ID to notify (default: None if not set)
-_notify_user_env = os.getenv("CLARA_EMAIL_NOTIFY_USER", "").strip()
+_notify_user_env = _email_settings.notify_user.strip()
 NOTIFY_USER_ID = int(_notify_user_env) if _notify_user_env else None
 
 # Whether to send Discord notifications (default: off)
-NOTIFY_ENABLED = os.getenv("CLARA_EMAIL_NOTIFY", "false").lower() == "true"
+NOTIFY_ENABLED = _email_settings.notify_enabled
 
 # Check interval in seconds
-CHECK_INTERVAL = int(os.getenv("CLARA_EMAIL_CHECK_INTERVAL", "60"))
+CHECK_INTERVAL = _email_settings.check_interval
 
 
 @dataclass
@@ -470,7 +471,7 @@ If you do respond, write as {BOT_NAME} - be helpful, friendly, and concise. Sign
 
 
 # SMTP timeout in seconds (prevents blocking the event loop indefinitely)
-SMTP_TIMEOUT = int(os.getenv("CLARA_SMTP_TIMEOUT", "30"))
+SMTP_TIMEOUT = _email_settings.smtp_timeout
 
 
 def _send_email_sync(to_addr: str, subject: str, body: str, is_reply: bool = False) -> tuple[bool, str]:
@@ -486,8 +487,8 @@ def _send_email_sync(to_addr: str, subject: str, body: str, is_reply: bool = Fal
         Tuple of (success, message)
     """
     try:
-        smtp_server = os.getenv("CLARA_SMTP_SERVER", "smtp.titan.email")
-        smtp_port = int(os.getenv("CLARA_SMTP_PORT", "465"))
+        smtp_server = _email_settings.smtp_server
+        smtp_port = _email_settings.smtp_port
 
         # Add Re: prefix if not already there and this is a reply
         if is_reply and not subject.lower().startswith("re:"):
@@ -637,8 +638,8 @@ async def handle_email_tool(tool_name: str, arguments: dict) -> str:
 
         try:
             # SMTP settings for Titan
-            smtp_server = os.getenv("CLARA_SMTP_SERVER", "smtp.titan.email")
-            smtp_port = int(os.getenv("CLARA_SMTP_PORT", "465"))
+            smtp_server = _email_settings.smtp_server
+            smtp_port = _email_settings.smtp_port
 
             msg = MIMEMultipart()
             msg["From"] = EMAIL_ADDRESS

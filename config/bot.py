@@ -1,25 +1,28 @@
 """Bot configuration - name and personality settings.
 
 Configuration priority:
-1. BOT_PERSONALITY_FILE - path to a .txt file with full personality
-2. BOT_PERSONALITY - inline personality text (for simple cases)
+1. bot.personality_file - path to a .txt file with full personality
+2. bot.personality - inline personality text (for simple cases)
 3. Default Clara personality (fallback)
 
 The bot name is extracted from the first line of the personality if it starts with
-"You are {name}" - otherwise defaults to BOT_NAME env var or "Clara".
+"You are {name}" - otherwise defaults to bot.name or "Clara".
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 from pathlib import Path
 
 logger = logging.getLogger("config.bot")
 
-# Default bot name
-BOT_NAME = os.getenv("BOT_NAME", "Clara")
+
+def _s():
+    from clara_core.config import get_settings
+
+    return get_settings()
+
 
 # Default personality (Clara)
 DEFAULT_PERSONALITY = """You are Clara, a multi-adaptive reasoning assistant.
@@ -51,12 +54,14 @@ Use the context below to inform responses. When contradictions exist, prefer new
 
 
 def _load_personality() -> tuple[str, str]:
-    """Load personality from file or env var, or use default.
+    """Load personality from file or settings, or use default.
 
     Returns (personality_text, source_description).
     """
+    s = _s()
+
     # Priority 1: File path
-    personality_file = os.getenv("BOT_PERSONALITY_FILE")
+    personality_file = s.bot.personality_file
     if personality_file:
         path = Path(personality_file)
         if path.exists():
@@ -64,10 +69,10 @@ def _load_personality() -> tuple[str, str]:
             return content, f"file: {personality_file}"
         logger.warning(f"Personality file not found: {personality_file}")
 
-    # Priority 2: Inline env var
-    personality_env = os.getenv("BOT_PERSONALITY")
-    if personality_env:
-        return personality_env.strip(), "env: BOT_PERSONALITY"
+    # Priority 2: Inline setting
+    personality_text = s.bot.personality
+    if personality_text:
+        return personality_text.strip(), "settings: bot.personality"
 
     # Priority 3: Default
     return DEFAULT_PERSONALITY, "default"
@@ -75,11 +80,10 @@ def _load_personality() -> tuple[str, str]:
 
 def _extract_name(personality: str) -> str:
     """Extract bot name from personality text."""
-    # Try to match "You are {Name}" at the start
     match = re.match(r"You are (\w+)", personality)
     if match:
         return match.group(1)
-    return BOT_NAME
+    return _s().bot.name
 
 
 # Load on import
@@ -91,11 +95,7 @@ PERSONALITY_BRIEF = f"You are {BOT_NAME}, an AI assistant."
 
 
 def get_organic_decision_prompt() -> str:
-    """Get decision prompt for organic response evaluation (tier 1).
-
-    Includes full personality so the model can make authentic decisions.
-    Does NOT generate a response - just decides if we should respond.
-    """
+    """Get decision prompt for organic response evaluation (tier 1)."""
     return f"""{PERSONALITY}
 
 ## Current Situation
@@ -125,11 +125,7 @@ Decide if you want to say something. Don't actually respond yet - just decide.
 
 
 def get_organic_response_prompt() -> str:
-    """Get response generation prompt for organic responses (tier 2).
-
-    Called only after tier 1 decides to respond with high confidence.
-    Uses full personality for authentic responses.
-    """
+    """Get response generation prompt for organic responses (tier 2)."""
     return f"""{PERSONALITY}
 
 ## Current Context
