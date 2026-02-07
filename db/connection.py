@@ -81,6 +81,20 @@ def run_alembic_migrations() -> None:
         current_rev = context.get_current_revision()
 
     script = ScriptDirectory.from_config(cfg)
+
+    # Handle multiple heads by auto-merging
+    heads = script.get_heads()
+    if len(heads) > 1:
+        logger.warning(f"Multiple migration heads detected: {heads}. Auto-merging...")
+        try:
+            command.merge(cfg, list(heads), message="auto-merge migration heads")
+            logger.info("Migration heads merged successfully")
+        except Exception as e:
+            logger.warning(f"Auto-merge failed ({e}), upgrading to all heads")
+            command.upgrade(cfg, "heads")
+            logger.info("Migrations complete (multi-head)")
+            return
+
     head_rev = script.get_current_head()
 
     if current_rev == head_rev:
