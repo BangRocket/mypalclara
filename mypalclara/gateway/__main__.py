@@ -471,6 +471,75 @@ async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] 
     # Initialize processor
     await processor.initialize()
 
+    # Wire scheduler to server (enables scheduler tool message delivery)
+    scheduler.set_server(server)
+
+    # ORS background loop (if enabled)
+    try:
+        from proactive.engine import is_enabled as ors_is_enabled
+
+        if ors_is_enabled():
+            from mypalclara.gateway.scheduler import ScheduledTask, TaskType
+
+            async def ors_task():
+                from clara_core.llm import make_llm
+                from proactive.engine import ors_main_loop
+
+                async def llm_call(messages):
+                    loop = asyncio.get_event_loop()
+                    llm = make_llm()
+                    return await loop.run_in_executor(None, llm, messages)
+
+                # Adapter that routes ORS messages through the scheduler
+                class SchedulerSender:
+                    async def send_proactive_message(self, user_id, channel_id, message, purpose):
+                        return await scheduler.send_message(user_id, channel_id, message, purpose)
+
+                # Context enricher from processor's memory manager
+                def context_enricher(user_id):
+                    mm = processor._memory_manager
+                    if not mm:
+                        return {}
+                    result = {}
+                    try:
+                        mems, _, _ = mm.fetch_mem0_context(user_id, None, "")
+                        if mems:
+                            result["user_memories"] = [m if isinstance(m, str) else str(m) for m in mems[:10]]
+                    except Exception:
+                        pass
+                    try:
+                        emo = mm.fetch_emotional_context(user_id, limit=3)
+                        if emo:
+                            result["emotional_context"] = emo
+                    except Exception:
+                        pass
+                    try:
+                        topics = mm.fetch_recurring_topics(user_id, min_mentions=2, lookback_days=14)
+                        if topics:
+                            result["recurring_topics"] = topics[:10]
+                    except Exception:
+                        pass
+                    return result
+
+                await ors_main_loop(
+                    client=SchedulerSender(),
+                    llm_call=llm_call,
+                    context_enricher=context_enricher,
+                )
+
+            scheduler.add_task(
+                ScheduledTask(
+                    name="ors-main-loop",
+                    type=TaskType.ONE_SHOT,
+                    handler=ors_task,
+                    delay=10.0,
+                    description="Organic Response System main loop",
+                )
+            )
+            logger.info("ORS registered with scheduler (starts in 10s)")
+    except Exception as e:
+        logger.warning(f"ORS initialization failed: {e}")
+
     # Start scheduler
     await scheduler.start()
 
