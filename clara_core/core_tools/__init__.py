@@ -107,6 +107,7 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         chat_history,
         files_tool,
         mcp_management,
+        ors_tool,
         personality_tool,
         process_tool,
         scheduler_tool,
@@ -223,6 +224,18 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         logger.info(f"[core_tools] Registered {len(scheduler_tool.TOOLS)} scheduler tools")
     except Exception as e:
         logger.warning(f"[core_tools] Failed to register scheduler_tool: {e}")
+
+    # Initialize and register ors_tool
+    try:
+        await ors_tool.initialize()
+        for tool_def in ors_tool.TOOLS:
+            registry.register(tool_def)
+            count += 1
+        if ors_tool.SYSTEM_PROMPT:
+            registry.register_system_prompt("ors", ors_tool.SYSTEM_PROMPT)
+        logger.info(f"[core_tools] Registered {len(ors_tool.TOOLS)} ORS tools")
+    except Exception as e:
+        logger.warning(f"[core_tools] Failed to register ors_tool: {e}")
 
     return count
 
