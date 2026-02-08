@@ -177,8 +177,7 @@ SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, thinking about someone you c
 {recent_messages}
 
 **What you know:**
-- Current time: {current_time} ({day_of_week})
-- Their local time: {user_local_time}
+- Right now: {local_time} ({day_of_week})
 - Last talked: {last_interaction_time} ({time_since_last})
 - What we discussed: {last_summary}
 - Active elsewhere right now: {is_active_elsewhere}
@@ -214,7 +213,7 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 {assessment}
 
 **Current context:**
-- Time: {current_time} (their time: {user_local_time})
+- Time: {local_time}
 - Within their usual active hours: {is_active_hours}
 - Currently active in other channels: {is_active_elsewhere}
 - Time since you last reached out: {time_since_proactive}
@@ -317,6 +316,32 @@ NOTE_VALIDATION_PROMPT = """Given this note and recent conversation, assess whet
 # =============================================================================
 
 
+def _resolve_timezone(user_tz: str | None) -> tuple[str, Any]:
+    """Resolve timezone: user's stored tz > config default > UTC.
+
+    Returns (timezone_name, ZoneInfo object).
+    """
+    from zoneinfo import ZoneInfo
+
+    # Try user's stored timezone first
+    if user_tz:
+        try:
+            return user_tz, ZoneInfo(user_tz)
+        except Exception:
+            pass
+
+    # Fall back to config default
+    default_tz = get_settings().default_timezone
+    if default_tz:
+        try:
+            return default_tz, ZoneInfo(default_tz)
+        except Exception:
+            pass
+
+    # Last resort: UTC
+    return "UTC", UTC
+
+
 def get_temporal_context(user_id: str) -> dict:
     """Get time-based context including timezone."""
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -325,13 +350,15 @@ def get_temporal_context(user_id: str) -> dict:
         pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
 
         if not pattern:
+            tz_name, tz_obj = _resolve_timezone(None)
+            local_now = datetime.now(tz_obj).replace(tzinfo=None)
             return {
                 "current_time": now,
-                "day_of_week": now.strftime("%A"),
+                "local_time": local_now,
+                "timezone": tz_name,
+                "day_of_week": local_now.strftime("%A"),
                 "time_since_last_interaction": None,
                 "is_active_hours": True,  # Assume active if no data
-                "timezone": None,
-                "user_local_time": None,
                 "open_threads": [],
             }
 
@@ -339,27 +366,18 @@ def get_temporal_context(user_id: str) -> dict:
         if pattern.last_interaction_at:
             time_since_last = now - pattern.last_interaction_at
 
-        # Get user's local time if timezone is known
-        user_local_time = None
-        timezone_str = pattern.timezone
-        if timezone_str:
-            try:
-                from zoneinfo import ZoneInfo
+        # Resolve timezone: user's stored > config default > UTC
+        tz_name, tz_obj = _resolve_timezone(pattern.timezone)
+        local_now = datetime.now(tz_obj).replace(tzinfo=None)
 
-                tz = ZoneInfo(timezone_str)
-                user_local_time = datetime.now(tz).replace(tzinfo=None)
-            except Exception:
-                pass
-
-        # Check if within active hours (using local time if available)
-        check_time = user_local_time or now
+        # Check if within active hours (using local time)
         is_active = True
         if pattern.typical_active_hours:
             try:
                 hours = json.loads(pattern.typical_active_hours)
-                day_type = "weekend" if check_time.weekday() >= 5 else "weekday"
+                day_type = "weekend" if local_now.weekday() >= 5 else "weekday"
                 active_range = hours.get(day_type, [9, 22])
-                current_hour = check_time.hour
+                current_hour = local_now.hour
                 is_active = active_range[0] <= current_hour <= active_range[1]
             except (json.JSONDecodeError, KeyError, IndexError):
                 pass
@@ -374,11 +392,11 @@ def get_temporal_context(user_id: str) -> dict:
 
         return {
             "current_time": now,
-            "day_of_week": (user_local_time or now).strftime("%A"),
+            "local_time": local_now,
+            "timezone": tz_name,
+            "day_of_week": local_now.strftime("%A"),
             "time_since_last_interaction": time_since_last,
             "is_active_hours": is_active,
-            "timezone": timezone_str,
-            "user_local_time": user_local_time,
             "last_interaction_summary": pattern.last_interaction_summary,
             "last_interaction_energy": pattern.last_interaction_energy,
             "last_interaction_channel": pattern.last_interaction_channel,
@@ -864,7 +882,7 @@ async def gather_full_context(
         user_id=user_id,
         current_time=temporal["current_time"],
         user_timezone=temporal.get("timezone") or calendar_data.get("inferred_timezone"),
-        user_local_time=temporal.get("user_local_time"),
+        user_local_time=temporal.get("local_time"),
         time_since_last_interaction=temporal.get("time_since_last_interaction"),
         time_since_last_proactive=time_since_proactive,
         is_active_hours=temporal.get("is_active_hours", True),
@@ -976,12 +994,12 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
         else:
             time_since = f"{hours / 24:.1f} days ago"
 
-    # Format user local time
-    user_local_str = "Unknown"
+    # Format local time (user tz > config default > UTC)
+    local_time_str = "Unknown"
     if context.user_local_time:
-        user_local_str = context.user_local_time.strftime("%Y-%m-%d %H:%M")
+        local_time_str = context.user_local_time.strftime("%Y-%m-%d %H:%M")
         if context.user_timezone:
-            user_local_str += f" ({context.user_timezone})"
+            local_time_str += f" ({context.user_timezone})"
 
     calendar_str = "No calendar access"
     if context.upcoming_events:
@@ -1050,9 +1068,8 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
     prompt = SITUATION_ASSESSMENT_PROMPT.format(
         bot_name=BOT_NAME,
         recent_messages=recent_messages_str,
-        current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
+        local_time=local_time_str,
         day_of_week=context.day_of_week,
-        user_local_time=user_local_str,
         last_interaction_time=time_since,
         time_since_last=time_since,
         last_summary=context.last_interaction_summary or "No recent interaction",
@@ -1101,12 +1118,12 @@ async def decide_action(
     if context.explicit_boundaries:
         boundaries_str = json.dumps(context.explicit_boundaries)
 
-    # Format user local time
-    user_local_str = "Unknown"
+    # Format local time (user tz > config default > UTC)
+    local_time_str = "Unknown"
     if context.user_local_time:
-        user_local_str = context.user_local_time.strftime("%Y-%m-%d %H:%M")
+        local_time_str = context.user_local_time.strftime("%Y-%m-%d %H:%M")
         if context.user_timezone:
-            user_local_str += f" ({context.user_timezone})"
+            local_time_str += f" ({context.user_timezone})"
 
     # Format time since last real conversation
     time_since_interaction = "Unknown"
@@ -1125,8 +1142,7 @@ async def decide_action(
 
     prompt = ACTION_DECISION_PROMPT.format(
         assessment=assessment,
-        current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
-        user_local_time=user_local_str,
+        local_time=local_time_str,
         is_active_hours=context.is_active_hours,
         is_active_elsewhere=context.is_active_elsewhere,
         time_since_proactive=time_since_proactive,
