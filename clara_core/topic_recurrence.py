@@ -142,7 +142,7 @@ def store_topic_mention(
     channel_id: str,
     channel_name: str,
     is_dm: bool,
-    agent_id: str = "clara",
+    agent_id: str = "mypalclara",
 ) -> bool:
     """
     Store a topic mention to mem0.
@@ -206,7 +206,7 @@ async def extract_and_store_topics(
     conversation_text: str,
     conversation_sentiment: float,
     llm_call: Callable,
-    agent_id: str = "clara",
+    agent_id: str = "mypalclara",
     on_event: Callable[[str, dict], None] | None = None,
 ) -> list[dict]:
     """
@@ -289,7 +289,7 @@ async def extract_and_store_topics(
 def fetch_topic_mentions(
     user_id: str,
     lookback_days: int = 14,
-    agent_id: str = "clara",
+    agent_id: str = "mypalclara",
 ) -> list[dict]:
     """
     Fetch all topic mentions for a user within the lookback window.
@@ -428,7 +428,7 @@ def fetch_topic_recurrence(
     user_id: str,
     lookback_days: int = 14,
     min_mentions: int = 2,
-    agent_id: str = "clara",
+    agent_id: str = "mypalclara",
 ) -> list[dict]:
     """
     Fetch topics that have recurred for a user and compute patterns.

@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from clara_core.config._sections.bot import SYSTEM_AGENT_ID
 from config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def check_intentions(
     message: str,
     context: dict[str, Any] | None = None,
     strategy: CheckStrategy = CheckStrategy.TIERED,
-    agent_id: str = "clara",
+    agent_id: str = SYSTEM_AGENT_ID,
     db: "OrmSession | None" = None,
 ) -> list[dict[str, Any]]:
     """Check if any intentions should fire for the given context.
@@ -403,7 +404,7 @@ def create_intention(
     user_id: str,
     content: str,
     trigger_conditions: dict,
-    agent_id: str = "clara",
+    agent_id: str = SYSTEM_AGENT_ID,
     priority: int = 0,
     fire_once: bool = True,
     expires_at: datetime | None = None,
@@ -459,7 +460,7 @@ def create_intention(
 
 def list_intentions(
     user_id: str,
-    agent_id: str = "clara",
+    agent_id: str = SYSTEM_AGENT_ID,
     include_fired: bool = False,
     db: "OrmSession | None" = None,
 ) -> list[dict]:

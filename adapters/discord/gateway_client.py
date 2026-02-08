@@ -761,3 +761,47 @@ class DiscordGatewayClient(GatewayClient):
         except Exception as e:
             logger.error(f"Failed to send buttons: {e}")
             return None
+
+    # =========================================================================
+    # ORS Proactive Messages
+    # =========================================================================
+
+    async def on_proactive_message(self, message: Any) -> None:
+        """Handle proactive message from ORS — send via Discord API.
+
+        Args:
+            message: ProactiveMessage with user, channel, and content fields
+        """
+        import discord as discord_lib
+
+        try:
+            platform_id = message.user.platform_id
+            channel_id = message.channel.id
+
+            # Try DM first (proactive messages are usually DMs)
+            try:
+                discord_user_id = int(platform_id)
+                user = await self.bot.fetch_user(discord_user_id)
+                dm = await user.create_dm()
+                await dm.send(message.content)
+                logger.info(f"Sent proactive DM to {platform_id}: {message.content[:50]}...")
+                return
+            except (ValueError, discord_lib.NotFound, discord_lib.Forbidden) as e:
+                logger.debug(f"DM failed for {platform_id}: {e}, trying channel")
+
+            # Fall back to channel if we have a channel ID
+            if channel_id:
+                try:
+                    discord_channel_id = int(channel_id)
+                    channel = self.bot.get_channel(discord_channel_id)
+                    if channel:
+                        await channel.send(message.content)
+                        logger.info(f"Sent proactive message to channel {channel_id}: {message.content[:50]}...")
+                        return
+                except (ValueError, discord_lib.Forbidden) as e:
+                    logger.warning(f"Channel send failed for {channel_id}: {e}")
+
+            logger.warning(f"Could not deliver proactive message for user {platform_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to handle proactive message: {e}")

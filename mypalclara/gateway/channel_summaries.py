@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from clara_core.config import get_settings
+from config.bot import BOT_NAME
 from config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -143,7 +144,7 @@ class ChannelSummaryManager:
         # Format messages for summarization
         formatted = []
         for msg in messages:
-            role = "Clara" if msg.is_bot else msg.username
+            role = BOT_NAME if msg.is_bot else msg.username
             content = msg.content[:500]  # truncate long messages
             formatted.append(f"{role}: {content}")
 

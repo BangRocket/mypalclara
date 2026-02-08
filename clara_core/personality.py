@@ -10,6 +10,8 @@ import logging
 import time
 from typing import Any
 
+from clara_core.config._sections.bot import SYSTEM_AGENT_ID
+
 logger = logging.getLogger("personality")
 
 # Session factory, set during first use
@@ -30,7 +32,7 @@ def _get_session():
     return _session_factory()
 
 
-def invalidate_cache(agent_id: str = "clara") -> None:
+def invalidate_cache(agent_id: str = SYSTEM_AGENT_ID) -> None:
     """Invalidate the formatted traits cache for an agent."""
     _cache.pop(agent_id, None)
 
@@ -40,7 +42,7 @@ def invalidate_cache(agent_id: str = "clara") -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_active_traits(agent_id: str = "clara") -> list[Any]:
+def get_active_traits(agent_id: str = SYSTEM_AGENT_ID) -> list[Any]:
     """Get all active traits for an agent, ordered by category then trait_key."""
     from db.models import PersonalityTrait
 
@@ -67,7 +69,7 @@ def get_trait_by_id(trait_id: str) -> Any | None:
         session.close()
 
 
-def get_trait_history(agent_id: str = "clara", limit: int = 20) -> list[Any]:
+def get_trait_history(agent_id: str = SYSTEM_AGENT_ID, limit: int = 20) -> list[Any]:
     """Get recent trait change history for an agent."""
     from db.models import PersonalityTraitHistory
 
@@ -311,7 +313,7 @@ def format_traits_for_prompt(traits: list[Any]) -> str:
     )
 
 
-def get_formatted_traits_cached(agent_id: str = "clara") -> str:
+def get_formatted_traits_cached(agent_id: str = SYSTEM_AGENT_ID) -> str:
     """Get formatted traits string with caching (60s TTL).
 
     Returns empty string if no traits exist.

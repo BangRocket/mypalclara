@@ -70,6 +70,44 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
     # Initialize processor
     await processor.initialize()
 
+    # Initialize ORS if enabled
+    try:
+        from proactive.engine import is_enabled as ors_is_enabled
+
+        if ors_is_enabled():
+            from mypalclara.gateway.scheduler import ScheduledTask, TaskType
+            from proactive.gateway_bridge import GatewayORSBridge
+
+            bridge = GatewayORSBridge(server, processor)
+
+            async def ors_task():
+                from clara_core.llm import make_llm
+                from proactive.engine import ors_main_loop
+
+                async def llm_call(messages):
+                    loop = asyncio.get_event_loop()
+                    llm = make_llm()
+                    return await loop.run_in_executor(None, llm, messages)
+
+                await ors_main_loop(
+                    client=bridge,
+                    llm_call=llm_call,
+                    context_enricher=bridge.get_context_enricher(),
+                )
+
+            scheduler.add_task(
+                ScheduledTask(
+                    name="ors-main-loop",
+                    type=TaskType.ONE_SHOT,
+                    handler=ors_task,
+                    delay=10.0,
+                    description="Organic Response System main loop",
+                )
+            )
+            logger.info("ORS registered with scheduler (starts in 10s)")
+    except Exception as e:
+        logger.warning(f"ORS initialization failed: {e}")
+
     # Start scheduler
     await scheduler.start()
 

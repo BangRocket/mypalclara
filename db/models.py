@@ -483,7 +483,7 @@ class Intention(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, nullable=False, index=True)
-    agent_id = Column(String, default="clara")
+    agent_id = Column(String, default="mypalclara")
 
     # Content
     content = Column(Text, nullable=False)  # What to remind about
@@ -713,7 +713,7 @@ class PersonalityTrait(Base):
     __tablename__ = "personality_traits"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    agent_id = Column(String, nullable=False, default="clara")
+    agent_id = Column(String, nullable=False, default="mypalclara")
     category = Column(String(50), nullable=False)  # interests, communication_style, values, etc.
     trait_key = Column(String(100), nullable=False)  # short identifier within category
     content = Column(Text, nullable=False)  # the trait description
