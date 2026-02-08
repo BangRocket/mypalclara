@@ -836,6 +836,9 @@ class MessageProcessor:
                 ),
             )
 
+            # Maybe evolve personality based on conversation
+            await self._maybe_evolve_personality(request, response)
+
             # Promote memories that were used in this response (FSRS feedback)
             await self._promote_retrieved_memories(context)
 
@@ -869,6 +872,30 @@ class MessageProcessor:
             pass  # Emotional context module not available
         except Exception as e:
             logger.debug(f"Failed to track sentiment: {e}")
+
+    async def _maybe_evolve_personality(
+        self,
+        request: MessageRequest,
+        response: str,
+    ) -> None:
+        """Probabilistically evolve personality based on conversation.
+
+        Runs after memory extraction. The probability gate and LLM call
+        are handled inside the personality_evolution module.
+        """
+        try:
+            from clara_core.personality_evolution import maybe_evolve_personality
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: maybe_evolve_personality(
+                    user_message=request.content,
+                    assistant_reply=response,
+                ),
+            )
+        except Exception as e:
+            logger.debug(f"Personality evolution check failed: {e}")
 
     async def _promote_retrieved_memories(self, context: dict[str, Any]) -> None:
         """Promote memories that were retrieved for this response.
