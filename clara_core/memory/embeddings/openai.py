@@ -57,8 +57,13 @@ class OpenAIEmbedding(EmbeddingBase):
 
         Returns:
             list: The embedding vector.
+
+        Raises:
+            ValueError: If text is empty or whitespace-only.
         """
-        text = text.replace("\n", " ")
+        text = text.replace("\n", " ").strip()
+        if not text:
+            raise ValueError("Cannot embed empty or whitespace-only text")
         return (
             self.client.embeddings.create(input=[text], model=self.config.model, dimensions=self.config.embedding_dims)
             .data[0]

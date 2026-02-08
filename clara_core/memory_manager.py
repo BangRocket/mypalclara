@@ -514,8 +514,8 @@ class MemoryManager:
         if ROOK is None:
             return [], [], []
 
-        # Truncate search query if too long
-        search_query = user_message
+        # Truncate search query if too long; strip whitespace
+        search_query = user_message.strip() if user_message else ""
         if len(search_query) > MAX_SEARCH_QUERY_CHARS:
             search_query = search_query[-MAX_SEARCH_QUERY_CHARS:]
             logger.debug(f"Truncated search query to {MAX_SEARCH_QUERY_CHARS} chars")
@@ -592,16 +592,18 @@ class MemoryManager:
             return result
 
         # Execute parallel fetches
+        # Skip semantic search when query is empty (e.g., ORS context enrichment)
+        # — key memories are still useful without a query
         key_res = {"results": []}
         user_res = {"results": []}
         proj_res = {"results": []}
+        has_query = bool(search_query)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {
-                executor.submit(fetch_key_memories): "key",
-                executor.submit(fetch_user_memories): "user",
-                executor.submit(fetch_project_memories): "project",
-            }
+            futures = {executor.submit(fetch_key_memories): "key"}
+            if has_query:
+                futures[executor.submit(fetch_user_memories)] = "user"
+                futures[executor.submit(fetch_project_memories)] = "project"
 
             for future in as_completed(futures):
                 fetch_type = futures[future]
