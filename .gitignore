@@ -18,6 +18,7 @@ poetry.lock
 
 # Environment variables
 .env
+.env.archive
 .env.local
 .env.*.local
 
