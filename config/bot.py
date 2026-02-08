@@ -114,13 +114,17 @@ BOT_NAME = _extract_name(PERSONALITY)
 PERSONALITY_BRIEF = f"You are {BOT_NAME}, an AI assistant."
 
 
-def get_full_personality(agent_id: str = "clara") -> str:
+def get_full_personality(agent_id: str | None = None) -> str:
     """Get core personality + evolved traits combined.
 
     Used by organic prompt functions that need the complete personality
     context but can't rely on the multi-message prompt architecture.
     """
+    from clara_core.config._sections.bot import SYSTEM_AGENT_ID
     from clara_core.personality import get_formatted_traits_cached
+
+    if agent_id is None:
+        agent_id = SYSTEM_AGENT_ID
 
     evolved = get_formatted_traits_cached(agent_id)
     if evolved:

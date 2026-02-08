@@ -836,12 +836,18 @@ class MessageProcessor:
                 ),
             )
 
+            # Maybe evolve personality based on conversation
+            await self._maybe_evolve_personality(request, response)
+
             # Promote memories that were used in this response (FSRS feedback)
             await self._promote_retrieved_memories(context)
 
             logger.debug(f"Background memory ops completed for {response_id}")
         except Exception as e:
             logger.warning(f"Background memory ops failed for {response_id}: {e}")
+
+        # Notify ORS of user activity (non-blocking, fire-and-forget)
+        await self._notify_ors(request, context)
 
     async def _track_sentiment(
         self,
@@ -866,6 +872,30 @@ class MessageProcessor:
             pass  # Emotional context module not available
         except Exception as e:
             logger.debug(f"Failed to track sentiment: {e}")
+
+    async def _maybe_evolve_personality(
+        self,
+        request: MessageRequest,
+        response: str,
+    ) -> None:
+        """Probabilistically evolve personality based on conversation.
+
+        Runs after memory extraction. The probability gate and LLM call
+        are handled inside the personality_evolution module.
+        """
+        try:
+            from clara_core.personality_evolution import maybe_evolve_personality
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: maybe_evolve_personality(
+                    user_message=request.content,
+                    assistant_reply=response,
+                ),
+            )
+        except Exception as e:
+            logger.debug(f"Personality evolution check failed: {e}")
 
     async def _promote_retrieved_memories(self, context: dict[str, Any]) -> None:
         """Promote memories that were retrieved for this response.
@@ -901,6 +931,44 @@ class MessageProcessor:
             logger.debug(f"Promoted {len(memory_ids)} memories for user {user_id}")
         except Exception as e:
             logger.warning(f"Failed to promote memories: {e}")
+
+    async def _notify_ors(
+        self,
+        request: MessageRequest,
+        context: dict[str, Any],
+    ) -> None:
+        """Notify the Organic Response System of user activity.
+
+        Fire-and-forget: failures are logged at debug level and never
+        block the user response.
+        """
+        try:
+            from proactive.engine import is_enabled, on_user_message
+
+            if not is_enabled():
+                return
+
+            await on_user_message(
+                user_id=context["user_id"],
+                channel_id=context.get("channel_id", ""),
+                message_preview=request.content[:200] if request.content else None,
+            )
+
+            # Track proactive responses — if user replies within 1 hour of
+            # receiving a proactive message, mark it as responded.
+            from proactive.engine import get_proactive_history, on_proactive_response
+
+            history = get_proactive_history(context["user_id"], limit=1)
+            if history and not history[0].get("response_received"):
+                sent_str = history[0].get("sent_at")
+                if sent_str:
+                    from datetime import UTC, datetime, timedelta
+
+                    sent_at = datetime.fromisoformat(sent_str)
+                    if (datetime.now(UTC).replace(tzinfo=None) - sent_at) < timedelta(hours=1):
+                        await on_proactive_response(context["user_id"], context.get("channel_id", ""))
+        except Exception as e:
+            logger.debug(f"ORS notification failed (non-critical): {e}")
 
     def _get_tool_emoji(self, tool_name: str) -> str:
         """Get emoji for a tool.

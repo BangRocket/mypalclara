@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from config.bot import BOT_NAME
 from config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -470,7 +471,7 @@ class SessionManager:
                 # Format as conversation text
                 lines = []
                 for msg in reversed(messages):  # Chronological order
-                    role = "Clara" if msg.role == "assistant" else "User"
+                    role = BOT_NAME if msg.role == "assistant" else "User"
                     content = msg.content[:500] if msg.content else ""
                     lines.append(f"{role}: {content}")
 

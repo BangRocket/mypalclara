@@ -38,6 +38,7 @@ You can evolve your own personality over time using the `update_personality` too
 
 async def _handle_update_personality(args: dict[str, Any], ctx: ToolContext) -> str:
     """Handle all personality evolution actions."""
+    from clara_core.config._sections.bot import SYSTEM_AGENT_ID
     from clara_core.personality import (
         add_trait,
         format_traits_for_prompt,
@@ -50,7 +51,7 @@ async def _handle_update_personality(args: dict[str, Any], ctx: ToolContext) -> 
     )
 
     action = args.get("action", "list")
-    agent_id = "clara"  # scoped to the current bot
+    agent_id = SYSTEM_AGENT_ID
 
     if action == "list":
         traits = get_active_traits(agent_id)

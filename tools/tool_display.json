@@ -707,5 +707,13 @@
     "detail_keys": ["path"],
     "risk_level": "safe",
     "intent": "write"
+  },
+
+  "manage_schedule": {
+    "emoji": "⏰",
+    "label": "Schedule",
+    "detail_keys": ["action", "description"],
+    "risk_level": "moderate",
+    "intent": "write"
   }
 }

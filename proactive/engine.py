@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import Any
 
 from clara_core.config import get_settings
 from clara_core.llm import get_base_model, get_current_tier, get_model_for_tier
@@ -34,9 +34,6 @@ from db.models import (
     ProactiveNote,
     UserInteractionPattern,
 )
-
-if TYPE_CHECKING:
-    from discord import Client
 
 logger = get_logger("ors")
 
@@ -159,6 +156,11 @@ class ORSContext:
 
     # History
     recent_proactive_history: list[dict] = field(default_factory=list)
+
+    # Gateway enrichment (when available)
+    user_memories: list[str] = field(default_factory=list)
+    emotional_context: dict | None = None
+    recurring_topics: list[str] = field(default_factory=list)
 
 
 # =============================================================================
@@ -751,7 +753,10 @@ def get_recent_messages(
         ]
 
 
-async def gather_full_context(user_id: str) -> ORSContext:
+async def gather_full_context(
+    user_id: str,
+    context_enricher: Callable[[str], dict] | None = None,
+) -> ORSContext:
     """Gather all context sources into ORSContext."""
     temporal = get_temporal_context(user_id)
     calendar_data = await get_calendar_context(user_id)
@@ -785,6 +790,14 @@ async def gather_full_context(user_id: str) -> ORSContext:
         except (ValueError, TypeError):
             pass
 
+    # Apply gateway enrichment if available
+    enrichment: dict = {}
+    if context_enricher:
+        try:
+            enrichment = context_enricher(user_id)
+        except Exception as e:
+            logger.debug(f"Context enrichment failed: {e}")
+
     return ORSContext(
         user_id=user_id,
         current_time=temporal["current_time"],
@@ -811,6 +824,9 @@ async def gather_full_context(user_id: str) -> ORSContext:
         explicit_boundaries=patterns.get("explicit_boundaries"),
         recent_proactive_ignored=recent_ignored,
         recent_proactive_history=history,
+        user_memories=enrichment.get("user_memories", []),
+        emotional_context=enrichment.get("emotional_context"),
+        recurring_topics=enrichment.get("recurring_topics", []),
     )
 
 
@@ -915,6 +931,19 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
         response_rate=context.proactive_response_rate or "Unknown",
         proactive_history=history_str,
     )
+
+    # Append gateway enrichment data when available
+    enrichment_parts = []
+    if context.user_memories:
+        enrichment_parts.append(
+            "**Memories (from long-term memory):**\n" + "\n".join(f"- {m}" for m in context.user_memories[:5])
+        )
+    if context.emotional_context:
+        enrichment_parts.append(f"**Emotional context (recent sessions):** {context.emotional_context}")
+    if context.recurring_topics:
+        enrichment_parts.append("**Recurring topics:** " + ", ".join(context.recurring_topics[:5]))
+    if enrichment_parts:
+        prompt += "\n\n**Additional context from memory:**\n" + "\n\n".join(enrichment_parts)
 
     messages = [{"role": "user", "content": prompt}]
     response = await llm_call(messages)
@@ -1560,33 +1589,40 @@ def record_assessment(
 
 
 async def send_proactive_message(
-    client: Client,
+    client: Any,
     user_id: str,
     channel_id: str,
     message: str,
     purpose: str,
 ) -> bool:
-    """Send a proactive message and record it."""
+    """Send a proactive message and record it.
+
+    Supports both gateway bridge (duck-typed) and legacy Discord Client.
+    """
     try:
-        # Parse channel ID
-        if channel_id.startswith("discord-dm-"):
-            # DM to user
-            discord_user_id = int(channel_id.replace("discord-dm-", "").replace("discord-", ""))
-            user = await client.fetch_user(discord_user_id)
-            dm = await user.create_dm()
-            await dm.send(message)
-        elif channel_id.startswith("discord-channel-"):
-            # Channel message
-            discord_channel_id = int(channel_id.replace("discord-channel-", ""))
-            channel = client.get_channel(discord_channel_id)
-            if channel:
-                await channel.send(message)
-            else:
-                logger.warning(f"Channel not found: {channel_id}")
+        # Gateway bridge path — duck-typed dispatch
+        if hasattr(client, "send_proactive_message"):
+            success = await client.send_proactive_message(user_id, channel_id, message, purpose)
+            if not success:
                 return False
         else:
-            logger.warning(f"Unknown channel format: {channel_id}")
-            return False
+            # Legacy Discord Client path
+            if channel_id.startswith("discord-dm-"):
+                discord_user_id = int(channel_id.replace("discord-dm-", "").replace("discord-", ""))
+                user = await client.fetch_user(discord_user_id)
+                dm = await user.create_dm()
+                await dm.send(message)
+            elif channel_id.startswith("discord-channel-"):
+                discord_channel_id = int(channel_id.replace("discord-channel-", ""))
+                channel = client.get_channel(discord_channel_id)
+                if channel:
+                    await channel.send(message)
+                else:
+                    logger.warning(f"Channel not found: {channel_id}")
+                    return False
+            else:
+                logger.warning(f"Unknown channel format: {channel_id}")
+                return False
 
         # Record the message
         with SessionLocal() as session:
@@ -1632,8 +1668,9 @@ def get_active_users() -> list[str]:
 
 async def process_user(
     user_id: str,
-    client: Client,
+    client: Any,
     llm_call: Callable,
+    context_enricher: Callable[[str], dict] | None = None,
 ) -> int:
     """Process ORS cycle for a single user. Returns minutes until next check."""
     logger.debug(f"Processing ORS for user: {user_id}")
@@ -1642,7 +1679,7 @@ async def process_user(
     model_name = get_ors_model_name()
 
     # Phase 1: Gather context
-    context = await gather_full_context(user_id)
+    context = await gather_full_context(user_id, context_enricher=context_enricher)
 
     # Phase 2: Assess situation
     assessment = await assess_situation(context, llm_call)
@@ -1705,16 +1742,18 @@ async def process_user(
 
 
 async def ors_main_loop(
-    client: Client,
+    client: Any,
     llm_call: Callable,
     get_recent_messages: Callable | None = None,
+    context_enricher: Callable[[str], dict] | None = None,
 ):
     """Main ORS loop - runs continuously with adaptive timing.
 
     Args:
-        client: Discord client for sending messages
+        client: Client for sending messages (Discord Client or GatewayORSBridge)
         llm_call: Async function to call LLM
         get_recent_messages: Optional async function(user_id) -> str for conversation extraction
+        context_enricher: Optional function(user_id) -> dict with extra context from gateway
     """
     logger.info("ORS main loop starting")
 
@@ -1773,7 +1812,9 @@ async def ors_main_loop(
 
                 try:
                     logger.info(f"ORS processing user: {user_id}")
-                    minutes_until_next = await process_user(user_id, client, llm_call)
+                    minutes_until_next = await process_user(
+                        user_id, client, llm_call, context_enricher=context_enricher
+                    )
                     next_checks[user_id] = now + timedelta(minutes=minutes_until_next)
                     last_decisions[user_id] = now  # Track when we made this decision
                     processed_count += 1

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from clara_core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,8 +81,8 @@ class BackupConfig:
             falkordb_host=s.memory.graph_store.falkordb_host,
             falkordb_port=s.memory.graph_store.falkordb_port,
             falkordb_password=s.memory.graph_store.falkordb_password,
-            # Config file backup
-            config_paths=[p.strip() for p in backup.config_paths.split(",") if p.strip()],
+            # Config file backup (explicit paths + auto-discovered)
+            config_paths=cls._build_config_paths(s, backup),
             # DB retry
             db_retry_attempts=backup.db_retry_attempts,
             db_retry_delay=backup.db_retry_delay,
@@ -87,6 +90,40 @@ class BackupConfig:
             health_port=backup.health_port,
             cron_schedule=backup.cron_schedule,
         )
+
+    @classmethod
+    def _build_config_paths(cls, settings: object, backup: object) -> list[str]:
+        """Build config paths from explicit settings + auto-discovered files.
+
+        Auto-includes:
+        - The clara.yaml config file (if found)
+        - The personality file or its parent directory (from bot.personality_file)
+        """
+        # Start with explicitly configured paths
+        explicit = [p.strip() for p in backup.config_paths.split(",") if p.strip()]
+        resolved = set(explicit)
+
+        # Auto-discover: config file (clara.yaml)
+        from clara_core.config._loader import find_config_file
+
+        config_file = find_config_file()
+        if config_file and str(config_file) not in resolved:
+            resolved.add(str(config_file))
+            logger.debug(f"[backup] Auto-including config file: {config_file}")
+
+        # Auto-discover: personality file / directory
+        personality_file = getattr(settings.bot, "personality_file", "")
+        if personality_file:
+            p = Path(personality_file)
+            # Include the parent directory if it's a dedicated personalities folder
+            if p.parent.name and p.parent.is_dir() and str(p.parent) not in resolved:
+                resolved.add(str(p.parent))
+                logger.debug(f"[backup] Auto-including personality dir: {p.parent}")
+            elif p.is_file() and str(p) not in resolved:
+                resolved.add(str(p))
+                logger.debug(f"[backup] Auto-including personality file: {p}")
+
+        return sorted(resolved)
 
     @property
     def falkordb_enabled(self) -> bool:
