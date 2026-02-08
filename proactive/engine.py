@@ -32,6 +32,7 @@ from db.models import (
     ProactiveAssessment,
     ProactiveMessage,
     ProactiveNote,
+    Session,
     UserInteractionPattern,
 )
 
@@ -1754,6 +1755,49 @@ def record_assessment(
 # =============================================================================
 
 
+def _persist_proactive_to_history(user_id: str, channel_id: str, message: str):
+    """Persist a proactive message into conversation history so Clara can see it.
+
+    Finds the active session for this user+channel and creates a Message record
+    with role="assistant". This bridges the gap between ORS (which sends messages)
+    and the conversation context (which Clara reads on next interaction).
+    """
+    # Determine context_id using same logic as gateway processor
+    is_dm = channel_id.startswith("discord-dm-") or "-dm-" in channel_id
+    context_id = f"dm-{user_id}" if is_dm else f"channel-{channel_id}"
+
+    try:
+        with SessionLocal() as db:
+            # Find the most recent active session for this user + context
+            conv_session = (
+                db.query(Session)
+                .filter(
+                    Session.user_id == user_id,
+                    Session.context_id == context_id,
+                    Session.archived != "true",
+                )
+                .order_by(Session.last_activity_at.desc())
+                .first()
+            )
+
+            if not conv_session:
+                logger.debug(f"No active session for {user_id}/{context_id} — skipping history persistence")
+                return
+
+            msg = Message(
+                session_id=conv_session.id,
+                user_id=user_id,
+                role="assistant",
+                content=message,
+            )
+            db.add(msg)
+            db.commit()
+            logger.debug(f"Persisted proactive message to session {conv_session.id} for {user_id}")
+    except Exception as e:
+        # Non-fatal — the message was already sent, this is just for context
+        logger.warning(f"Failed to persist proactive message to history: {e}")
+
+
 async def send_proactive_message(
     client: Any,
     user_id: str,
@@ -1790,7 +1834,7 @@ async def send_proactive_message(
                 logger.warning(f"Unknown channel format: {channel_id}")
                 return False
 
-        # Record the message
+        # Record the message (ORS tracking)
         with SessionLocal() as session:
             record = ProactiveMessage(
                 user_id=user_id,
@@ -1801,6 +1845,9 @@ async def send_proactive_message(
             )
             session.add(record)
             session.commit()
+
+        # Persist to conversation history so Clara sees it next interaction
+        _persist_proactive_to_history(user_id, channel_id, message)
 
         logger.info(f"Sent proactive message to {user_id}: {message[:50]}...")
         return True
