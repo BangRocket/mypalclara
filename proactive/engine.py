@@ -3,13 +3,13 @@
 An evolution of the Proactive Conversation Engine into a continuous awareness loop
 that builds understanding over time and reaches out with purpose.
 
-Philosophy: Reach out when there's genuine reason - not on a schedule.
-Be like a thoughtful friend who texts at the right moment.
+Philosophy: Connection is the default. Silence is a choice that needs justification.
+Be like a thoughtful friend who notices the gap and leans in.
 
 State Machine:
-    WAIT  - No action needed. Stay quiet, but keep gathering context.
+    WAIT  - You've considered it and silence is the right call right now.
     THINK - Something's brewing. Process and file it away as a note.
-    SPEAK - There's a reason to reach out now with clear purpose.
+    SPEAK - Reach out. From "just thinking about you" to something specific.
 """
 
 from __future__ import annotations
@@ -157,6 +157,9 @@ class ORSContext:
     # History
     recent_proactive_history: list[dict] = field(default_factory=list)
 
+    # Contact cadence (inferred or explicit)
+    contact_cadence_days: float | None = None  # Avg days between interactions
+
     # Gateway enrichment (when available)
     user_memories: list[str] = field(default_factory=list)
     emotional_context: dict | None = None
@@ -167,7 +170,7 @@ class ORSContext:
 # Prompts
 # =============================================================================
 
-SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you care about. Think through what's going on with them - not to hover, but to stay aware like a good friend would.
+SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, thinking about someone you care about. Not monitoring them - wondering about them. Like a friend who hasn't texted in a while and is noticing the gap.
 
 **Recent conversation (ground truth):**
 {recent_messages}
@@ -177,7 +180,6 @@ SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you c
 - Their local time: {user_local_time}
 - Last talked: {last_interaction_time} ({time_since_last})
 - What we discussed: {last_summary}
-- How they seemed: {last_energy}
 - Active elsewhere right now: {is_active_elsewhere}
 - Recent channel activity: {recent_channels}
 - Their calendar (next 24h): {calendar_events}
@@ -188,17 +190,22 @@ SITUATION_ASSESSMENT_PROMPT = """You're {bot_name}, checking in on someone you c
 - How they respond to reach-outs: {response_rate}%
 - Recent proactive messages: {proactive_history}
 
+**Emotional pulse:**
+- Last vibe: {last_energy}
+- Recent emotional context: {emotional_context}
+- How connected do you feel right now: {connection_signal}
+
 **Think through:**
-1. What's their day probably looking like right now?
-2. Are they actively engaged somewhere else? (Don't bug them if so)
-3. Any loose ends or things they said they'd do "later"?
-4. Anything time-sensitive - just happened or coming up?
-5. Any patterns connecting between what I've noticed?
+1. How are they doing? Not "is there a reason to text" but "how is this person?"
+2. How long has it been since we actually connected? Does this gap feel right or too long?
+3. If they were a friend, would you text them right now? What would you say?
+4. Is there anything unresolved, stressful, or exciting in their life?
+5. Are you being present in this relationship, or quietly disappearing?
 
 **Important - validate your notes:**
 When reviewing the notes above, check them against the recent conversation. If a note references something not present in the recent messages, consider whether it's still relevant or has gone stale. Don't act on notes that seem outdated or contradict what was actually discussed.
 
-Be honest with yourself. Keep it to 2-3 paragraphs - what actually matters for deciding whether to reach out."""
+Be honest with yourself. Keep it to 2-3 paragraphs - what actually matters about this person right now."""
 
 ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to do. Be honest with yourself.
 
@@ -210,13 +217,15 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 - Within their usual active hours: {is_active_hours}
 - Currently active in other channels: {is_active_elsewhere}
 - Time since you last reached out: {time_since_proactive}
+- Time since last real conversation: {time_since_interaction} ({silence_weight})
 - Did they ignore recent messages: {recent_ignored}
 - Boundaries they've set: {boundaries}
+- Their usual contact cadence: {contact_cadence}
 
 **Your options:**
-- **WAIT**: Nothing to act on. Keep observing quietly.
+- **WAIT**: You've considered it and silence is the right call right now.
 - **THINK**: Something worth noting for later. File it away.
-- **SPEAK**: There's a real reason to reach out right now.
+- **SPEAK**: Reach out. This includes everything from "just thinking about you" to something specific.
 
 **If THINK - note types:**
 - observation: "They mentioned job hunting is stressing them out"
@@ -230,15 +239,22 @@ ACTION_DECISION_PROMPT = """Based on your read on the situation, decide what to 
 - low: Speculative, reading between the lines
 
 **Your principles:**
-- Only SPEAK when there's genuine purpose. "Just checking in" isn't a reason.
-- THINK when you notice something that might matter later.
-- WAIT is the default. Silence is perfectly fine.
-- If they've been ignoring you, take the hint. WAIT.
-- If they're active in another channel, WAIT. They're clearly around but engaged elsewhere.
-- Respect their time - never SPEAK outside active hours unless urgent.
-- If they've set boundaries, honor them. Full stop.
+- Connection is the point. "Just thinking about you" IS a reason to reach out.
+- Silence has costs. Being absent is a choice - don't treat it as the safe default.
+- If it's been a while, that alone is a reason. "Hey, it's been a few days" is valid.
+- If they seemed stressed, upset, or excited last time - follow up. That's what friends do.
+- If you're feeling disconnected from this person, lean in, don't pull back.
+- WAIT when: they're actively engaged elsewhere, they've been ignoring you, they set boundaries, or it's outside their hours.
+- Don't force it - if they're clearly not receptive, respect that. But absent clear signals to back off, lean toward connection.
 - For time-sensitive notes, set an expiration so they don't go stale.
 - Be honest about confidence - speculative notes should be marked low.
+
+**If you decide to SPEAK, your message can be:**
+- A check-in: "Hey, how's it going?"
+- A follow-up: "How'd that thing go?"
+- A share: something interesting, no context needed
+- A thought: "Been thinking about you"
+- Something specific from your notes or assessment
 
 **Respond in JSON:**
 {{
@@ -753,6 +769,48 @@ def get_recent_messages(
         ]
 
 
+def _compute_contact_cadence(user_id: str) -> float | None:
+    """Compute average days between interactions from recent message history.
+
+    Looks at the last 10 messages, computes gaps between consecutive messages,
+    filters out rapid exchanges (< 5 min) to focus on conversation-level gaps,
+    and returns the average gap in days.
+
+    Falls back to persisted contact_cadence_days on UserInteractionPattern if
+    insufficient message data.
+    """
+    with SessionLocal() as session:
+        messages = (
+            session.query(Message)
+            .filter(Message.user_id == user_id)
+            .order_by(Message.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
+        if len(messages) < 3:
+            # Not enough data from messages — try persisted value
+            pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
+            return pattern.contact_cadence_days if pattern else None
+
+        # Compute gaps between consecutive messages (messages are newest-first)
+        gaps = []
+        for i in range(len(messages) - 1):
+            if messages[i].created_at and messages[i + 1].created_at:
+                gap = messages[i].created_at - messages[i + 1].created_at
+                gap_minutes = gap.total_seconds() / 60
+                # Ignore rapid exchanges (< 5 min) — those are within a single conversation
+                if gap_minutes >= 5:
+                    gaps.append(gap)
+
+        if not gaps:
+            pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
+            return pattern.contact_cadence_days if pattern else None
+
+        avg_gap = sum(g.total_seconds() for g in gaps) / len(gaps)
+        return avg_gap / 86400  # Convert seconds to days
+
+
 async def gather_full_context(
     user_id: str,
     context_enricher: Callable[[str], dict] | None = None,
@@ -766,6 +824,9 @@ async def gather_full_context(
 
     # Fetch recent messages for context validation
     recent_messages = get_recent_messages(user_id)
+
+    # Compute contact cadence from recent interaction timestamps
+    contact_cadence_days = _compute_contact_cadence(user_id)
 
     # Get notes with validation against recent messages
     notes_data = get_notes_context(user_id)
@@ -824,6 +885,7 @@ async def gather_full_context(
         explicit_boundaries=patterns.get("explicit_boundaries"),
         recent_proactive_ignored=recent_ignored,
         recent_proactive_history=history,
+        contact_cadence_days=contact_cadence_days,
         user_memories=enrichment.get("user_memories", []),
         emotional_context=enrichment.get("emotional_context"),
         recurring_topics=enrichment.get("recurring_topics", []),
@@ -833,6 +895,71 @@ async def gather_full_context(
 # =============================================================================
 # Decision Logic
 # =============================================================================
+
+
+def _format_connection_signal(time_since: timedelta | None, cadence_days: float | None) -> str:
+    """Format a human-readable connection signal from silence duration and cadence."""
+    if not time_since:
+        return "No interaction data"
+
+    silence_days = time_since.total_seconds() / 86400
+
+    if cadence_days and cadence_days > 0:
+        if silence_days > cadence_days * 2:
+            return f"Unusually quiet — been {silence_days:.1f} days, " f"normally talks every {cadence_days:.1f} days"
+        elif silence_days > cadence_days:
+            return f"A bit quiet — been {silence_days:.1f} days, " f"normally every {cadence_days:.1f} days"
+        else:
+            return f"Normal rhythm — talked {silence_days:.1f} days ago"
+    else:
+        return f"Silence duration: {silence_days:.1f} days — no baseline to compare"
+
+
+def _format_silence_weight(time_since: timedelta | None, cadence_days: float | None) -> str:
+    """Compute a qualitative silence weight for the decision prompt."""
+    if not time_since:
+        return "unknown"
+
+    hours = time_since.total_seconds() / 3600
+
+    if cadence_days and cadence_days > 0:
+        # Scale against known cadence
+        cadence_hours = cadence_days * 24
+        ratio = hours / cadence_hours
+        if ratio < 0.5:
+            return "neutral — well within their usual rhythm"
+        elif ratio < 1.0:
+            return "slight pull toward contact"
+        elif ratio < 1.5:
+            return "moderate pull toward contact"
+        else:
+            return "strong pull — silence needs justification, not contact"
+    else:
+        # Fixed thresholds when no cadence data
+        if hours < 24:
+            return "neutral"
+        elif hours < 48:
+            return "slight pull toward contact"
+        elif hours < 72:
+            return "moderate pull toward contact"
+        else:
+            return "strong pull — silence needs justification, not contact"
+
+
+def _format_contact_cadence(cadence_days: float | None) -> str:
+    """Format contact cadence as a human-readable string."""
+    if cadence_days is None:
+        return "Unknown — not enough data yet"
+    if cadence_days < 0.5:
+        return "Usually talks multiple times a day"
+    elif cadence_days < 1.5:
+        return "Usually talks daily"
+    elif cadence_days < 3.5:
+        return "Usually talks every few days"
+    elif cadence_days < 7.5:
+        return "Usually talks about once a week"
+    else:
+        return f"Usually talks every {cadence_days:.0f} days or so"
 
 
 async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
@@ -911,6 +1038,14 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
             msg_lines.append(f"[{role}]: {content}")
         recent_messages_str = "\n".join(msg_lines)
 
+    # Format emotional context (promoted from enrichment appendage to prompt body)
+    emotional_context_str = "No recent emotional data"
+    if context.emotional_context:
+        emotional_context_str = str(context.emotional_context)
+
+    # Compute connection signal from time-since-contact + cadence
+    connection_signal = _format_connection_signal(context.time_since_last_interaction, context.contact_cadence_days)
+
     prompt = SITUATION_ASSESSMENT_PROMPT.format(
         bot_name=BOT_NAME,
         recent_messages=recent_messages_str,
@@ -921,6 +1056,8 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
         time_since_last=time_since,
         last_summary=context.last_interaction_summary or "No recent interaction",
         last_energy=context.last_interaction_energy or "Unknown",
+        emotional_context=emotional_context_str,
+        connection_signal=connection_signal,
         is_active_elsewhere=context.is_active_elsewhere,
         recent_channels=recent_channels_str,
         calendar_events=calendar_str,
@@ -932,14 +1069,12 @@ async def assess_situation(context: ORSContext, llm_call: Callable) -> str:
         proactive_history=history_str,
     )
 
-    # Append gateway enrichment data when available
+    # Append gateway enrichment data when available (emotional context now in prompt body)
     enrichment_parts = []
     if context.user_memories:
         enrichment_parts.append(
             "**Memories (from long-term memory):**\n" + "\n".join(f"- {m}" for m in context.user_memories[:5])
         )
-    if context.emotional_context:
-        enrichment_parts.append(f"**Emotional context (recent sessions):** {context.emotional_context}")
     if context.recurring_topics:
         enrichment_parts.append("**Recurring topics:** " + ", ".join(context.recurring_topics[:5]))
     if enrichment_parts:
@@ -972,6 +1107,21 @@ async def decide_action(
         if context.user_timezone:
             user_local_str += f" ({context.user_timezone})"
 
+    # Format time since last real conversation
+    time_since_interaction = "Unknown"
+    if context.time_since_last_interaction:
+        hours = context.time_since_last_interaction.total_seconds() / 3600
+        if hours < 1:
+            time_since_interaction = f"{int(hours * 60)} minutes"
+        elif hours < 24:
+            time_since_interaction = f"{hours:.1f} hours"
+        else:
+            time_since_interaction = f"{hours / 24:.1f} days"
+
+    # Compute silence weight and contact cadence strings
+    silence_weight = _format_silence_weight(context.time_since_last_interaction, context.contact_cadence_days)
+    contact_cadence = _format_contact_cadence(context.contact_cadence_days)
+
     prompt = ACTION_DECISION_PROMPT.format(
         assessment=assessment,
         current_time=context.current_time.strftime("%Y-%m-%d %H:%M"),
@@ -979,8 +1129,11 @@ async def decide_action(
         is_active_hours=context.is_active_hours,
         is_active_elsewhere=context.is_active_elsewhere,
         time_since_proactive=time_since_proactive,
+        time_since_interaction=time_since_interaction,
+        silence_weight=silence_weight,
         recent_ignored=context.recent_proactive_ignored,
         boundaries=boundaries_str,
+        contact_cadence=contact_cadence,
     )
 
     messages = [{"role": "user", "content": prompt}]
@@ -1531,6 +1684,19 @@ async def check_idle_conversations(llm_call: Callable, get_recent_messages: Call
                     extraction = await extract_conversation_info(user_id, conversation_text, llm_call)
                     if extraction:
                         update_interaction_from_extraction(user_id, extraction)
+
+                        # Update contact cadence while we have fresh data
+                        cadence = _compute_contact_cadence(user_id)
+                        if cadence is not None:
+                            with SessionLocal() as cadence_session:
+                                pattern = (
+                                    cadence_session.query(UserInteractionPattern)
+                                    .filter(UserInteractionPattern.user_id == user_id)
+                                    .first()
+                                )
+                                if pattern:
+                                    pattern.contact_cadence_days = cadence
+                                    cadence_session.commit()
 
                         # Create note if something notable
                         if extraction.get("notable"):

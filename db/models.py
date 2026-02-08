@@ -179,6 +179,7 @@ class UserInteractionPattern(Base):
     topic_receptiveness = Column(Text, nullable=True)  # JSON: Which topics land vs. get ignored
     explicit_boundaries = Column(Text, nullable=True)  # JSON: Things user said not to do
     open_threads = Column(Text, nullable=True)  # JSON: Unresolved topics from conversations
+    contact_cadence_days = Column(Float, nullable=True)  # Avg days between interactions (inferred)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
