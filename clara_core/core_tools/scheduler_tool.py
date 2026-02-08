@@ -34,6 +34,7 @@ You can manage scheduled tasks using the `manage_schedule` tool.
 **Payload (choose one):**
 - `message` + `channel_id` — send a message to a channel when the task fires
 - `command` — run a shell command (optionally with `working_dir` and `timeout`)
+- `assess_user_id` — run a full ORS assessment for that user (gather context, assess, decide to WAIT/THINK/SPEAK)
 
 **Other actions:**
 - `list` — view all your scheduled tasks with status, next/last run, and run count
@@ -82,6 +83,86 @@ async def _send_scheduled_message(
         logger.warning(
             f"Scheduler: failed to deliver message for " f"user={user_id} channel={channel_id}: {message[:60]}"
         )
+
+
+async def _run_scheduled_assessment(
+    user_id: str,
+    channel_id: str | None,
+    reason: str,
+    description: str,
+) -> None:
+    """Handler called when a scheduled assessment fires.
+
+    Runs the full ORS pipeline: gather context -> assess -> decide -> execute.
+    """
+    import asyncio
+
+    from proactive.engine import (
+        ORSState,
+        assess_situation,
+        create_note,
+        decide_action,
+        gather_full_context,
+        get_ors_model_name,
+        is_enabled,
+        record_assessment,
+    )
+
+    if not is_enabled():
+        logger.warning(f"Scheduled assessment skipped (ORS disabled): {description}")
+        return
+
+    from clara_core.llm import make_llm
+
+    async def llm_call(messages):
+        loop = asyncio.get_event_loop()
+        llm = make_llm()
+        return await loop.run_in_executor(None, llm, messages)
+
+    context = await gather_full_context(user_id)
+    assessment = await assess_situation(context, llm_call)
+    decision = await decide_action(context, assessment, llm_call)
+
+    model_name = get_ors_model_name()
+    note_id = None
+
+    if decision.state == ORSState.THINK and decision.note_content:
+        note_id = create_note(
+            user_id=user_id,
+            content=decision.note_content,
+            note_type=decision.note_type,
+            source_context={"from": "scheduled_assessment", "reason": reason},
+            surface_conditions=decision.note_surface_conditions,
+            expires_hours=decision.note_expires_hours,
+            source_model=model_name,
+            source_confidence=decision.note_confidence,
+            grounding_message_ids=decision.note_grounding_ids,
+        )
+        logger.info(f"Scheduled assessment THINK for {user_id}: {decision.note_content[:60]}")
+
+    elif decision.state == ORSState.SPEAK and decision.message:
+        delivery_channel = channel_id or context.last_interaction_channel
+        if delivery_channel:
+            from mypalclara.gateway.scheduler import get_scheduler
+
+            scheduler = get_scheduler()
+            success = await scheduler.send_message(
+                user_id=user_id,
+                channel_id=delivery_channel,
+                message=decision.message,
+                purpose=decision.message_purpose or decision.reasoning,
+            )
+            if success:
+                logger.info(f"Scheduled assessment SPEAK for {user_id}: {decision.message[:60]}")
+            else:
+                logger.warning(f"Scheduled assessment delivery failed for {user_id}")
+        else:
+            logger.warning(f"Scheduled assessment SPEAK but no channel for {user_id}")
+
+    else:
+        logger.info(f"Scheduled assessment WAIT for {user_id}: {decision.reasoning[:60]}")
+
+    record_assessment(user_id, context, assessment, decision, note_id)
 
 
 def _enforce_user_scope(task_name: str) -> str | None:
@@ -144,6 +225,8 @@ async def _handle_manage_schedule(args: dict[str, Any], ctx: ToolContext) -> str
         interval_minutes = args.get("interval_minutes")
         message = args.get("message")
         command = args.get("command")
+        assess_user_id = args.get("assess_user_id")
+        reason = args.get("reason", "")
         channel_id = args.get("channel_id") or ctx.channel_id
         working_dir = args.get("working_dir")
         timeout = args.get("timeout")
@@ -154,10 +237,12 @@ async def _handle_manage_schedule(args: dict[str, Any], ctx: ToolContext) -> str
         # --- Payload validation ---
         has_message = bool(message)
         has_command = bool(command)
-        if not has_message and not has_command:
-            return "Error: Provide either 'message' (to send) or 'command' (shell command to run)."
-        if has_message and has_command:
-            return "Error: Provide 'message' OR 'command', not both."
+        has_assess = bool(assess_user_id)
+        payload_count = sum([has_message, has_command, has_assess])
+        if payload_count == 0:
+            return "Error: Provide 'message', 'command', or 'assess_user_id'."
+        if payload_count > 1:
+            return "Error: Provide exactly one of 'message', 'command', or 'assess_user_id'."
         if has_message and not channel_id:
             return "Error: No channel_id available for message delivery. Specify channel_id explicitly."
         if not has_command and (working_dir is not None or timeout is not None):
@@ -195,6 +280,20 @@ async def _handle_manage_schedule(args: dict[str, Any], ctx: ToolContext) -> str
 
             task_kwargs: dict[str, Any] = {"handler": handler}
             payload_desc = f"Message: {message}\n- Channel: {channel_id}"
+        elif has_assess:
+            # ORS assessment handler closure
+            async def handler(
+                _uid: str = assess_user_id,
+                _cid: str | None = channel_id,
+                _reason: str = reason,
+                _desc: str = description,
+            ) -> None:
+                await _run_scheduled_assessment(_uid, _cid, _reason, _desc)
+
+            task_kwargs = {"handler": handler}
+            payload_desc = f"Assess user: {assess_user_id}"
+            if reason:
+                payload_desc += f"\n- Reason: {reason}"
         else:
             # Shell command — use ScheduledTask.command field directly
             task_kwargs = {"command": command}
@@ -440,6 +539,14 @@ TOOLS = [
                 "command": {
                     "type": "string",
                     "description": "Shell command to run when the task fires (mutually exclusive with message)",
+                },
+                "assess_user_id": {
+                    "type": "string",
+                    "description": "User ID to assess when the task fires — runs full ORS pipeline (gather context, assess situation, decide action)",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why this assessment is being scheduled (provides context to the ORS pipeline)",
                 },
                 "working_dir": {
                     "type": "string",
