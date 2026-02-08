@@ -47,27 +47,23 @@ async def _send_scheduled_message(
 ) -> None:
     """Handler called when a scheduled task fires.
 
-    Sends a ProactiveMessage via the gateway bridge.
+    Sends a message via the scheduler's gateway server connection.
     """
-    from proactive.gateway_bridge import _bridge
+    from mypalclara.gateway.scheduler import get_scheduler
 
-    if _bridge is None:
+    scheduler = get_scheduler()
+    success = await scheduler.send_message(
+        user_id=user_id,
+        channel_id=channel_id,
+        message=message,
+        purpose=f"Scheduled: {description}",
+    )
+    if success:
+        logger.info(f"Scheduled message delivered for {user_id}: {description[:50]}")
+    else:
         logger.warning(
-            f"Scheduler: bridge not available, cannot deliver message for "
-            f"user={user_id} channel={channel_id}: {message[:60]}"
+            f"Scheduler: failed to deliver message for " f"user={user_id} channel={channel_id}: {message[:60]}"
         )
-        return
-
-    try:
-        await _bridge.send_proactive_message(
-            user_id=user_id,
-            channel_id=channel_id,
-            message=message,
-            purpose=f"Scheduled: {description}",
-        )
-        logger.info(f"Scheduler: delivered message to {user_id}/{channel_id}: {message[:60]}")
-    except Exception as e:
-        logger.error(f"Scheduler: failed to deliver message: {e}")
 
 
 async def _handle_manage_schedule(args: dict[str, Any], ctx: ToolContext) -> str:
