@@ -32,12 +32,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 import yaml
 
 from config.logging import get_logger
 from mypalclara.gateway.events import Event, EventType, emit
+
+if TYPE_CHECKING:
+    from mypalclara.gateway.server import GatewayServer
 
 logger = get_logger("gateway.scheduler")
 
@@ -214,6 +217,48 @@ class Scheduler:
         self._config_dir = Path(config_dir) if config_dir else Path(".")
         self._scheduler_task: asyncio.Task[None] | None = None
         self._running = False
+        self._server: GatewayServer | None = None
+
+    def set_server(self, server: GatewayServer) -> None:
+        """Set the gateway server for message delivery."""
+        self._server = server
+
+    async def send_message(
+        self,
+        user_id: str,
+        channel_id: str,
+        message: str,
+        purpose: str = "",
+    ) -> bool:
+        """Send a message to a user via the gateway.
+
+        Builds a ProactiveMessage and broadcasts to the appropriate platform adapter.
+        Returns True if at least one adapter received the message.
+        """
+        if self._server is None:
+            logger.warning("Scheduler: no server set, cannot deliver message")
+            return False
+
+        # Extract platform from user_id prefix ("discord-123" → "discord")
+        platform = user_id.split("-")[0] if "-" in user_id else "unknown"
+        platform_user_id = user_id.split("-", 1)[1] if "-" in user_id else user_id
+
+        from mypalclara.gateway.protocol import ChannelInfo, ProactiveMessage, UserInfo
+
+        proto_msg = ProactiveMessage(
+            user=UserInfo(id=user_id, platform_id=platform_user_id),
+            channel=ChannelInfo(id=channel_id, type="dm"),
+            content=message,
+            priority="normal",
+        )
+
+        count = await self._server.broadcast_to_platform(platform, proto_msg)
+        if count > 0:
+            logger.info(f"Message sent via {platform} ({count} node(s)): {purpose}")
+            return True
+
+        logger.warning(f"No connected {platform} adapters for message delivery")
+        return False
 
     def add_task(self, task: ScheduledTask) -> None:
         """Add a scheduled task.
