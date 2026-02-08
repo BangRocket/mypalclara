@@ -110,6 +110,7 @@ def sanitize_relationship_for_cypher(relationship: str) -> str:
     char_map = {
         "...": "_ellipsis_",
         "…": "_ellipsis_",
+        "-": "_",
         "'": "_apostrophe_",
         '"': "_quote_",
         "\\": "_backslash_",
