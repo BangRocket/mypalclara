@@ -321,7 +321,9 @@ def message_to_anthropic(msg: "Message") -> dict[str, Any]:
             converted_content = []
             for part in msg.parts:
                 if part.type == ContentPartType.TEXT:
-                    converted_content.append({"type": "text", "text": part.text or ""})
+                    # Skip empty text parts to avoid Anthropic 400 errors
+                    if part.text and part.text.strip():
+                        converted_content.append({"type": "text", "text": part.text})
                 elif part.type == ContentPartType.IMAGE_BASE64:
                     converted_content.append(
                         {
@@ -343,8 +345,12 @@ def message_to_anthropic(msg: "Message") -> dict[str, Any]:
                             },
                         }
                     )
+            # If all parts filtered out, use placeholder
+            if not converted_content:
+                return {"role": "user", "content": "[No content]"}
             return {"role": "user", "content": converted_content}
-        return {"role": "user", "content": msg.content}
+        # Plain-text UserMessage — guard empty content
+        return {"role": "user", "content": msg.content if msg.content and msg.content.strip() else "[No content]"}
 
     if isinstance(msg, AssistantMsg):
         if msg.tool_calls:
@@ -395,6 +401,7 @@ def messages_to_anthropic(
         the joined system messages and api_messages is the list of
         non-system messages in Anthropic format.
     """
+    from clara_core.llm.messages import AssistantMessage as AssistantMsg
     from clara_core.llm.messages import SystemMessage as SystemMsg
 
     system_parts: list[str] = []
@@ -404,6 +411,9 @@ def messages_to_anthropic(
         if isinstance(msg, SystemMsg):
             system_parts.append(msg.content)
         else:
+            # Skip assistant messages with no tool_calls and empty content
+            if isinstance(msg, AssistantMsg) and not msg.tool_calls and not (msg.content and msg.content.strip()):
+                continue
             api_messages.append(message_to_anthropic(msg))
 
     return "\n\n".join(system_parts), api_messages

@@ -21,6 +21,7 @@ class DiscordSettings(BaseModel):
     max_image_size: int = 4194304
     max_images_per_request: int = 1
     max_text_file_size: int = 102400
+    max_document_size: int = 10485760  # 10MB limit for .docx/.pdf extraction
     oauth_client_id: str = ""
     oauth_client_secret: str = ""
     oauth_redirect_uri: str = "http://localhost:5173/auth/callback/discord"

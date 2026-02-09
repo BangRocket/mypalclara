@@ -25,9 +25,12 @@ MAX_IMAGE_DIMENSION = _discord_settings.max_image_dimension
 MAX_IMAGE_SIZE = _discord_settings.max_image_size
 MAX_IMAGES_PER_REQUEST = _discord_settings.max_images_per_request
 MAX_TEXT_FILE_SIZE = _discord_settings.max_text_file_size
+MAX_DOCUMENT_SIZE = _discord_settings.max_document_size
 
 # Supported file extensions
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
+
+DOCUMENT_EXTENSIONS = frozenset({".docx", ".pdf"})
 
 TEXT_EXTENSIONS = frozenset(
     {
@@ -109,6 +112,114 @@ def is_text_file(filename: str) -> bool:
     return get_file_extension(filename) in TEXT_EXTENSIONS
 
 
+def is_document_file(filename: str) -> bool:
+    """Check if a filename indicates a document file (.docx, .pdf).
+
+    Args:
+        filename: The filename to check
+
+    Returns:
+        True if the file appears to be a document file
+    """
+    return get_file_extension(filename) in DOCUMENT_EXTENSIONS
+
+
+def extract_docx_content(data: bytes) -> str:
+    """Extract text content from a .docx file.
+
+    Args:
+        data: Raw bytes of the .docx file
+
+    Returns:
+        Extracted text content
+    """
+    try:
+        from docx import Document
+    except ImportError:
+        logger.warning("python-docx not installed, cannot extract .docx content")
+        return ""
+
+    from io import BytesIO
+
+    doc = Document(BytesIO(data))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)
+
+
+def extract_pdf_content(data: bytes) -> str:
+    """Extract text content from a .pdf file.
+
+    Args:
+        data: Raw bytes of the .pdf file
+
+    Returns:
+        Extracted text content
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        logger.warning("pymupdf not installed, cannot extract .pdf content")
+        return ""
+
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    pages = []
+    for page in doc:
+        text = page.get_text()
+        if text.strip():
+            pages.append(text.strip())
+    doc.close()
+    return "\n\n".join(pages)
+
+
+async def process_document_attachment(
+    attachment: discord.Attachment,
+    max_size: int = MAX_DOCUMENT_SIZE,
+) -> dict[str, Any] | None:
+    """Process a document attachment (.docx, .pdf) by extracting text.
+
+    Args:
+        attachment: Discord attachment object
+        max_size: Maximum file size to process
+
+    Returns:
+        Attachment dict with extracted text, or None if extraction fails
+    """
+    if attachment.size > max_size:
+        logger.warning(f"Document too large ({attachment.size} bytes), skipping extraction")
+        return None
+
+    try:
+        data = await attachment.read()
+        ext = get_file_extension(attachment.filename)
+
+        if ext == ".docx":
+            content = extract_docx_content(data)
+        elif ext == ".pdf":
+            content = extract_pdf_content(data)
+        else:
+            return None
+
+        if not content:
+            logger.warning(f"No text extracted from {attachment.filename}")
+            return None
+
+        # Truncate to text file size limit
+        if len(content) > MAX_TEXT_FILE_SIZE:
+            content = content[:MAX_TEXT_FILE_SIZE] + "\n\n[Content truncated]"
+
+        return {
+            "type": "text",
+            "filename": attachment.filename,
+            "media_type": attachment.content_type or "application/octet-stream",
+            "content": content,
+            "size": attachment.size,
+        }
+
+    except Exception as e:
+        logger.warning(f"Failed to extract document {attachment.filename}: {e}")
+        return None
+
+
 async def extract_attachments(message: discord.Message) -> list[dict[str, Any]]:
     """Extract and process attachments from a Discord message.
 
@@ -140,6 +251,22 @@ async def extract_attachments(message: discord.Message) -> list[dict[str, Any]]:
                 txt_att = await process_text_attachment(attachment)
                 if txt_att:
                     attachments.append(txt_att)
+
+            elif ext in DOCUMENT_EXTENSIONS:
+                # Process document attachment (.docx, .pdf)
+                doc_att = await process_document_attachment(attachment)
+                if doc_att:
+                    attachments.append(doc_att)
+                else:
+                    # Extraction failed — fall back to metadata
+                    attachments.append(
+                        {
+                            "type": "file",
+                            "filename": attachment.filename,
+                            "media_type": attachment.content_type,
+                            "size": attachment.size,
+                        }
+                    )
 
             else:
                 # Generic file - metadata only

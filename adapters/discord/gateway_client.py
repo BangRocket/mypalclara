@@ -196,9 +196,10 @@ class DiscordGatewayClient(GatewayClient):
                 break
             seen_ids.add(current.id)
 
-            # Add to chain
+            # Add to chain (skip messages with empty content)
             role = "assistant" if current.author.bot else "user"
-            chain.insert(0, {"role": role, "content": current.content})
+            if current.content and current.content.strip():
+                chain.insert(0, {"role": role, "content": current.content})
 
             # Follow reply
             if current.reference and current.reference.message_id:

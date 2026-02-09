@@ -1230,7 +1230,10 @@ class MemoryManager:
             messages.append(SystemMessage(content="\n\n".join(context_parts)))
 
         # Add recent messages (only user messages get timestamps to avoid Clara mimicking the format)
+        # Skip messages with empty content (e.g. file-only messages from before extraction was added)
         for m in recent_msgs:
+            if not m.content or not m.content.strip():
+                continue
             if m.role == "user":
                 timestamp = _format_message_timestamp(getattr(m, "created_at", None))
                 if timestamp:

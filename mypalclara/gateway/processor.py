@@ -476,7 +476,18 @@ class MessageProcessor:
         user_content = request.content
         text_attachments = self._format_text_attachments(request.attachments)
         if text_attachments:
-            user_content = f"{request.content}\n\n{text_attachments}"
+            if user_content:
+                user_content = f"{user_content}\n\n{text_attachments}"
+            else:
+                user_content = text_attachments
+
+        # Guard against empty user_content (e.g. file-only messages with no text)
+        if not user_content or not user_content.strip():
+            if request.attachments:
+                filenames = ", ".join(att.filename for att in request.attachments if att.filename)
+                user_content = f"[User sent file(s): {filenames}]" if filenames else "[User sent an attachment]"
+            else:
+                user_content = "[Empty message]"
 
         if not is_dm and request.user.display_name:
             user_content = f"[{request.user.display_name}]: {user_content}"
@@ -557,12 +568,14 @@ class MessageProcessor:
             if intention_text:
                 messages.insert(2, SystemMessage(content=intention_text))
 
-        # Add reply chain if present
+        # Add reply chain if present (skip empty messages)
         if request.reply_chain:
             chain_messages: list[LLMMessage] = []
             for msg in request.reply_chain:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
+                if not content or not content.strip():
+                    continue
                 if role == "assistant":
                     chain_messages.append(AssistantMessage(content=content))
                 else:
@@ -609,6 +622,11 @@ class MessageProcessor:
                 text_parts.append(
                     f"--- Attached file: {att.filename} ---\n{att.content}\n--- End of {att.filename} ---"
                 )
+            elif att.type == "file":
+                # Non-extracted file — include metadata so LLM knows it exists
+                size_str = f"{att.size} bytes" if att.size else "unknown size"
+                media = att.media_type or "unknown type"
+                text_parts.append(f"[Attached file: {att.filename} ({media}, {size_str}) - content not extracted]")
 
         return "\n\n".join(text_parts)
 

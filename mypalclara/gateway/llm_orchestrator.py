@@ -585,11 +585,12 @@ class LLMOrchestrator:
                 user_msg = messages[i]
 
                 # Start from existing parts or create text part from content
-                parts = (
-                    list(user_msg.parts)
-                    if user_msg.parts
-                    else [ContentPart(type=ContentPartType.TEXT, text=user_msg.content)]
-                )
+                if user_msg.parts:
+                    parts = list(user_msg.parts)
+                elif user_msg.content:
+                    parts = [ContentPart(type=ContentPartType.TEXT, text=user_msg.content)]
+                else:
+                    parts = []
 
                 # Add images as provider-neutral ContentParts
                 for img in images:
