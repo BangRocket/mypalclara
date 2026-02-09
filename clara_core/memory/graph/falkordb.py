@@ -190,6 +190,16 @@ class MemoryGraph:
         entity_type_map = self._retrieve_nodes_from_data(query, filters)
         search_output = self._search_graph_db(node_list=list(entity_type_map.keys()), filters=filters)
 
+        # Fallback: entity-based search found nothing — use get_all() + BM25
+        if not search_output:
+            all_relations = self.get_all(filters, limit=limit)
+            if all_relations:
+                search_output = [
+                    {"source": r["source"], "relationship": r["relationship"], "destination": r["target"]}
+                    for r in all_relations
+                ]
+                logger.info(f"Entity search empty, falling back to get_all(): {len(search_output)} candidates")
+
         if not search_output:
             return []
 
