@@ -18,6 +18,7 @@ class WebSettings(BaseModel):
     cors_origins: str = "http://localhost:5173"
     static_dir: str = ""
     frontend_url: str = "http://localhost:5173"
+    cookie_domain: str = ""
     dev_mode: bool = False
     dev_user_name: str = "Dev User"
     reload: bool = False

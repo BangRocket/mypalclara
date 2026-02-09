@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, OAuthToken, PlatformLink, WebSession, utcnow
@@ -28,6 +29,21 @@ DISCORD_USER_URL = "https://discord.com/api/v10/users/@me"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USER_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+def _set_auth_cookie(response: Response, jwt_token: str, config) -> None:
+    """Set the httpOnly auth cookie on a response."""
+    kwargs = {
+        "key": "access_token",
+        "value": jwt_token,
+        "httponly": True,
+        "secure": config.frontend_url.startswith("https"),
+        "samesite": "lax",
+        "max_age": config.jwt_expire_minutes * 60,
+    }
+    if config.cookie_domain:
+        kwargs["domain"] = config.cookie_domain
+    response.set_cookie(**kwargs)
 
 
 @router.get("/config")
@@ -61,14 +77,7 @@ async def dev_login(response: Response, db: DBSession = Depends(get_db)):
     db.add(web_session)
     db.commit()
 
-    response.set_cookie(
-        key="access_token",
-        value=jwt_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=config.jwt_expire_minutes * 60,
-    )
+    _set_auth_cookie(response, jwt_token, config)
     return {
         "user": {
             "id": user.id,
@@ -113,7 +122,7 @@ async def login(provider: str, request: Request):
 
 
 @router.get("/callback/{provider}")
-async def callback(provider: str, code: str, response: Response, db: DBSession = Depends(get_db)):
+async def callback(provider: str, code: str, request: Request, response: Response, db: DBSession = Depends(get_db)):
     """Handle OAuth callback, create/find user, issue JWT."""
     config = get_web_config()
 
@@ -191,15 +200,17 @@ async def callback(provider: str, code: str, response: Response, db: DBSession =
     db.add(web_session)
     db.commit()
 
-    # Set httpOnly cookie
-    response.set_cookie(
-        key="access_token",
-        value=jwt_token,
-        httponly=True,
-        secure=False,  # Set True in production with HTTPS
-        samesite="lax",
-        max_age=config.jwt_expire_minutes * 60,
-    )
+    # Detect direct browser redirect from OAuth provider vs. frontend JS API call
+    is_browser_redirect = "application/json" not in request.headers.get("content-type", "")
+
+    if is_browser_redirect:
+        # Direct browser redirect from OAuth provider — set cookie and redirect to frontend
+        redirect = RedirectResponse(url=config.frontend_url, status_code=302)
+        _set_auth_cookie(redirect, jwt_token, config)
+        return redirect
+
+    # API call from frontend JS — return JSON
+    _set_auth_cookie(response, jwt_token, config)
 
     return {
         "user": {
@@ -215,7 +226,11 @@ async def callback(provider: str, code: str, response: Response, db: DBSession =
 @router.post("/logout")
 async def logout(response: Response):
     """Clear the auth cookie."""
-    response.delete_cookie("access_token")
+    config = get_web_config()
+    kwargs = {"key": "access_token"}
+    if config.cookie_domain:
+        kwargs["domain"] = config.cookie_domain
+    response.delete_cookie(**kwargs)
     return {"ok": True}
 
 

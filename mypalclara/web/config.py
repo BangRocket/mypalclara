@@ -38,6 +38,7 @@ class WebConfig:
     # Frontend
     static_dir: str = field(default_factory=lambda: get_settings().web.static_dir)
     frontend_url: str = field(default_factory=lambda: get_settings().web.frontend_url)
+    cookie_domain: str = field(default_factory=lambda: get_settings().web.cookie_domain)
 
     # Gateway
     gateway_url: str = field(default_factory=lambda: get_settings().gateway.url)
