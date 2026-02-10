@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { graph } from "@/api/client";
 import { GraphCanvas } from "@/components/graph/GraphCanvas";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export function GraphExplorerPage() {
   const [center, setCenter] = useState<string | undefined>(undefined);
@@ -37,16 +39,16 @@ export function GraphExplorerPage() {
         <h1 className="text-xl font-bold">Graph Explorer</h1>
 
         <form onSubmit={handleSearch} className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-          <input
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
+          <Input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search entities..."
-            className="w-full pl-9 pr-4 py-2 bg-surface-overlay border border-border rounded-lg text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition"
+            className="pl-9"
           />
           {searchInput && searchQuery.data?.results && (
-            <div className="absolute top-full mt-1 left-0 right-0 bg-surface-raised border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+            <div className="absolute top-full mt-1 left-0 right-0 bg-card border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
               {searchQuery.data.results.map((r) => (
                 <button
                   key={r.name}
@@ -54,10 +56,10 @@ export function GraphExplorerPage() {
                     setCenter(r.name);
                     setSearchInput("");
                   }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-surface-overlay transition flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition flex items-center gap-2"
                 >
-                  <span className="text-text-primary">{r.name}</span>
-                  {r.type && <span className="text-xs text-text-muted">({r.type})</span>}
+                  <span>{r.name}</span>
+                  {r.type && <span className="text-xs text-muted-foreground">({r.type})</span>}
                 </button>
               ))}
             </div>
@@ -65,12 +67,13 @@ export function GraphExplorerPage() {
         </form>
 
         {center && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setCenter(undefined)}
-            className="text-xs text-accent hover:underline"
           >
             Show all
-          </button>
+          </Button>
         )}
       </div>
 

@@ -23,6 +23,8 @@ export interface User {
   email: string | null;
   avatar_url: string | null;
   created_at: string | null;
+  status?: "pending" | "active" | "suspended";
+  is_admin?: boolean;
   platforms?: { platform: string; platform_user_id: string; display_name: string; linked_at: string | null }[];
 }
 
@@ -177,15 +179,25 @@ export interface ChatMessage {
 }
 
 export const sessions = {
-  list: (params?: { offset?: number; limit?: number }) => {
+  list: (params?: { offset?: number; limit?: number; archived?: boolean }) => {
     const sp = new URLSearchParams();
     if (params) {
-      for (const [k, v] of Object.entries(params)) sp.set(k, String(v));
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) sp.set(k, String(v));
+      }
     }
     return request<{ sessions: ChatSession[]; total: number }>(`${BASE}/sessions?${sp}`);
   },
   get: (id: string) =>
     request<ChatSession & { messages: ChatMessage[]; context_snapshot: string | null }>(`${BASE}/sessions/${id}`),
+  rename: (id: string, title: string) =>
+    request<{ ok: boolean }>(`${BASE}/sessions/${id}`, { method: "PUT", body: JSON.stringify({ title }) }),
+  archive: (id: string) =>
+    request<{ ok: boolean }>(`${BASE}/sessions/${id}/archive`, { method: "PATCH" }),
+  unarchive: (id: string) =>
+    request<{ ok: boolean }>(`${BASE}/sessions/${id}/unarchive`, { method: "PATCH" }),
+  delete: (id: string) =>
+    request<{ ok: boolean }>(`${BASE}/sessions/${id}`, { method: "DELETE" }),
 };
 
 // ── Users ─────────────────────────────────────────────────────────────────
@@ -225,4 +237,40 @@ export const intentions = {
   update: (id: string, body: Partial<Intention>) =>
     request<{ ok: boolean }>(`${BASE}/intentions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   delete: (id: string) => request<{ ok: boolean }>(`${BASE}/intentions/${id}`, { method: "DELETE" }),
+};
+
+// ── Admin ─────────────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  created_at: string | null;
+  status?: "pending" | "active" | "suspended";
+  is_admin: boolean;
+  platforms: { platform: string; display_name: string }[];
+}
+
+export const admin = {
+  users: (params?: { status?: string; offset?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) sp.set(k, String(v));
+      }
+    }
+    return request<{ users: AdminUser[]; total: number; offset: number; limit: number }>(
+      `${BASE}/admin/users?${sp}`,
+    );
+  },
+  approve: (userId: string) =>
+    request<{ ok: boolean; user_id: string; status: string }>(`${BASE}/admin/users/${userId}/approve`, {
+      method: "POST",
+    }),
+  suspend: (userId: string) =>
+    request<{ ok: boolean; user_id: string; status: string }>(`${BASE}/admin/users/${userId}/suspend`, {
+      method: "POST",
+    }),
+  pendingCount: () => request<{ count: number }>(`${BASE}/admin/users/pending/count`),
 };

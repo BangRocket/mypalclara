@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, Intention, PlatformLink, utcnow
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ async def list_intentions(
     fired: bool | None = None,
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List intentions for the current user."""
@@ -78,7 +78,7 @@ async def list_intentions(
 @router.post("")
 async def create_intention(
     body: IntentionCreate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Create a new intention."""
@@ -104,7 +104,7 @@ async def create_intention(
 async def update_intention(
     intention_id: str,
     body: IntentionUpdate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Update an intention."""
@@ -129,7 +129,7 @@ async def update_intention(
 @router.delete("/{intention_id}")
 async def delete_intention(
     intention_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Delete an intention."""

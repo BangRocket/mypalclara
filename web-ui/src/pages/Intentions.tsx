@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Check, X, Zap, Clock } from "lucide-react";
 import { intentions as intentionsApi, type Intention } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type FilterMode = "all" | "active" | "fired";
 
@@ -36,31 +43,21 @@ export function IntentionsPage() {
               Instructions Clara follows when conditions are met
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition"
-          >
+          <Button onClick={() => setShowCreate(true)} className="gap-1.5">
             <Plus size={16} /> New Intention
-          </button>
+          </Button>
         </div>
 
         {/* Filter tabs */}
-        <div className="flex gap-2">
-          {(["all", "active", "fired"] as FilterMode[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs transition capitalize",
-                f === filter
-                  ? "bg-accent/15 text-accent"
-                  : "bg-surface-overlay text-text-muted hover:text-text-primary",
-              )}
-            >
-              {f} {data && f === "all" ? `(${data.total})` : ""}
-            </button>
-          ))}
-        </div>
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterMode)} className="w-auto">
+          <TabsList>
+            {(["all", "active", "fired"] as FilterMode[]).map((f) => (
+              <TabsTrigger key={f} value={f} className="capitalize">
+                {f} {data && f === "all" ? `(${data.total})` : ""}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Content */}
@@ -109,32 +106,24 @@ function IntentionCard({
   const triggerEntries = Object.entries(triggers).filter(([, v]) => v !== null && v !== undefined);
 
   return (
-    <div
-      className={cn(
-        "bg-surface-raised border border-border rounded-xl p-4",
-        intention.fired && "opacity-60",
-      )}
-    >
+    <Card className={cn("p-4", intention.fired && "opacity-60")}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-text-primary">{intention.content}</p>
+          <p className="text-sm">{intention.content}</p>
 
           {/* Trigger conditions */}
           {triggerEntries.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {triggerEntries.map(([key, val]) => (
-                <span
-                  key={key}
-                  className="px-2 py-0.5 bg-surface-overlay rounded text-xs text-text-muted"
-                >
+                <Badge key={key} variant="secondary" className="text-xs">
                   {key}: {String(val)}
-                </span>
+                </Badge>
               ))}
             </div>
           )}
 
           {/* Meta row */}
-          <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
             {intention.fired ? (
               <span className="flex items-center gap-1 text-green-400">
                 <Check size={12} /> Fired
@@ -146,7 +135,7 @@ function IntentionCard({
               </span>
             )}
             {intention.fire_once && (
-              <span className="text-text-muted">once only</span>
+              <span>once only</span>
             )}
             <span>priority: {intention.priority}</span>
             {intention.expires_at && (
@@ -155,15 +144,17 @@ function IntentionCard({
           </div>
         </div>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onDelete}
-          className="p-1.5 text-text-muted hover:text-danger transition rounded"
           title="Delete intention"
+          className="hover:text-destructive"
         >
           <Trash2 size={14} />
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -207,99 +198,87 @@ function CreateIntentionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-surface-raised border border-border rounded-xl p-6 w-full max-w-md space-y-4"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">New Intention</h2>
-          <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary">
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Intention</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
 
-        {/* Content */}
-        <div>
-          <label className="text-xs text-text-muted block mb-1">Instruction for Clara</label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="When this triggers, Clara should..."
-            rows={3}
-            className="w-full resize-none bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
-          />
-        </div>
-
-        {/* Trigger */}
-        <div>
-          <label className="text-xs text-text-muted block mb-1">Trigger condition</label>
-          <div className="flex gap-2 mb-2">
-            {(["keyword", "channel", "dm"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTriggerType(t)}
-                className={cn(
-                  "px-2 py-1 rounded text-xs transition capitalize",
-                  t === triggerType
-                    ? "bg-accent/15 text-accent"
-                    : "bg-surface-overlay text-text-muted hover:text-text-primary",
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-          {triggerType !== "dm" && (
-            <input
-              value={triggerValue}
-              onChange={(e) => setTriggerValue(e.target.value)}
-              placeholder={triggerType === "keyword" ? "Keyword to match..." : "Channel name..."}
-              className="w-full bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
-            />
-          )}
-        </div>
-
-        {/* Options */}
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-text-secondary">
-            <input
-              type="checkbox"
-              checked={fireOnce}
-              onChange={(e) => setFireOnce(e.target.checked)}
-              className="accent-accent"
-            />
-            Fire once only
-          </label>
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
-            <label>Priority:</label>
-            <input
-              type="number"
-              value={priority}
-              onChange={(e) => setPriority(Number(e.target.value))}
-              className="w-16 bg-surface-overlay border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent"
+          {/* Content */}
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Instruction for Clara</label>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="When this triggers, Clara should..."
+              rows={3}
             />
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!content.trim() || createMutation.isPending}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-30 text-white rounded-lg text-sm transition"
-          >
-            {createMutation.isPending ? "Creating..." : "Create"}
-          </button>
-        </div>
-      </form>
-    </div>
+          {/* Trigger */}
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Trigger condition</label>
+            <div className="flex gap-2 mb-2">
+              {(["keyword", "channel", "dm"] as const).map((t) => (
+                <Badge
+                  key={t}
+                  variant={t === triggerType ? "default" : "outline"}
+                  className="cursor-pointer capitalize"
+                  onClick={() => setTriggerType(t)}
+                >
+                  {t}
+                </Badge>
+              ))}
+            </div>
+            {triggerType !== "dm" && (
+              <Input
+                value={triggerValue}
+                onChange={(e) => setTriggerValue(e.target.value)}
+                placeholder={triggerType === "keyword" ? "Keyword to match..." : "Channel name..."}
+              />
+            )}
+          </div>
+
+          {/* Options */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={fireOnce}
+                onChange={(e) => setFireOnce(e.target.checked)}
+                className="accent-primary"
+              />
+              Fire once only
+            </label>
+            <div className="flex items-center gap-2 text-sm">
+              <label>Priority:</label>
+              <Input
+                type="number"
+                value={priority}
+                onChange={(e) => setPriority(Number(e.target.value))}
+                className="w-16"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!content.trim() || createMutation.isPending}
+            >
+              {createMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

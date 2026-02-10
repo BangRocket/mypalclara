@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, PlatformLink, utcnow
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ class UserUpdate(BaseModel):
 
 @router.get("/me")
 async def get_me(
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get current user with linked accounts."""
@@ -48,7 +48,7 @@ async def get_me(
 @router.put("/me")
 async def update_me(
     body: UserUpdate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Update current user settings."""
@@ -63,7 +63,7 @@ async def update_me(
 
 @router.get("/me/links")
 async def get_links(
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List platform links."""

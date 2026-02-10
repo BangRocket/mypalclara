@@ -37,14 +37,14 @@ async def websocket_chat(ws: WebSocket):
         {"type": "response_end", "full_text": "...", "tool_count": N}
         {"type": "error", ...}
     """
-    # Authenticate from query param (or dev mode)
+    # Authenticate from query param, cookie, or dev mode
     config = get_web_config()
     db: DBSession = SessionLocal()
     try:
         if config.dev_mode:
             user = _get_or_create_dev_user(db)
         else:
-            token = ws.query_params.get("token")
+            token = ws.query_params.get("token") or ws.cookies.get("access_token")
             if not token:
                 await ws.close(code=4001, reason="Missing token")
                 return

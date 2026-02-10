@@ -34,7 +34,7 @@ export function OAuthCallback() {
           <p className="text-text-secondary">{error}</p>
           <button
             onClick={() => navigate("/login")}
-            className="mt-4 px-4 py-2 bg-accent hover:bg-accent-hover rounded-lg text-white transition"
+            className="mt-4 px-4 py-2 bg-primary hover:bg-primary/85 rounded-lg text-white transition"
           >
             Back to Login
           </button>

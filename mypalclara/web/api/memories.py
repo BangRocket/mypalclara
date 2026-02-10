@@ -18,7 +18,7 @@ from db.models import (
     MemorySupersession,
     PlatformLink,
 )
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.memories")
 router = APIRouter()
@@ -66,7 +66,7 @@ def _get_memory_client():
         return ClaraMemory()
     except Exception as e:
         logger.error(f"Failed to initialize ClaraMemory: {e}")
-        raise HTTPException(status_code=503, detail="Memory system unavailable")
+        raise HTTPException(status_code=503, detail=f"Memory system unavailable: {e}")
 
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ async def list_memories(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List memories with pagination and filters."""
@@ -158,7 +158,7 @@ async def list_memories(
 
 @router.get("/stats")
 async def memory_stats(
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get memory statistics."""
@@ -182,7 +182,7 @@ async def memory_stats(
 @router.get("/{memory_id}")
 async def get_memory(
     memory_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get a single memory with full metadata."""
@@ -224,7 +224,7 @@ async def get_memory(
 @router.post("")
 async def create_memory(
     body: MemoryCreate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Create a new memory."""
@@ -260,7 +260,7 @@ async def create_memory(
 async def update_memory(
     memory_id: str,
     body: MemoryUpdate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Update a memory's content and/or metadata."""
@@ -285,7 +285,7 @@ async def update_memory(
 @router.delete("/{memory_id}")
 async def delete_memory(
     memory_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Delete a memory."""
@@ -297,7 +297,7 @@ async def delete_memory(
 @router.get("/{memory_id}/history")
 async def memory_history(
     memory_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get change history for a memory."""
@@ -324,7 +324,7 @@ async def memory_history(
 @router.get("/{memory_id}/dynamics")
 async def memory_dynamics(
     memory_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get FSRS dynamics state for a memory."""
@@ -367,7 +367,7 @@ async def memory_dynamics(
 @router.post("/search")
 async def search_memories(
     body: MemorySearchRequest,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Semantic search across memories."""
@@ -440,7 +440,7 @@ class TagUpdate(BaseModel):
 async def update_tags(
     memory_id: str,
     body: TagUpdate,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Update tags for a memory."""
@@ -455,7 +455,7 @@ async def update_tags(
 
 @router.get("/tags/all")
 async def list_all_tags(
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List all unique tags used by this user's memories."""
@@ -481,7 +481,7 @@ async def list_all_tags(
 
 @router.get("/export")
 async def export_memories(
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Export all memories as a downloadable JSON file."""
@@ -555,7 +555,7 @@ class MemoryImportRequest(BaseModel):
 @router.post("/import")
 async def import_memories(
     body: MemoryImportRequest,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Import memories from a JSON payload."""

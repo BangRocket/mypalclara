@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { sessions as sessionsApi, type ChatSession, type ChatMessage } from "@/api/client";
 
 export interface ToolEvent {
   tool_name: string;
@@ -18,31 +19,74 @@ export interface StreamMessage {
   streaming: boolean;
 }
 
+export type ModelTier = "low" | "mid" | "high";
+
 interface ChatStore {
+  // Current thread
   messages: StreamMessage[];
+  currentThreadId: string | null; // null = new thread
+
+  // Thread list
+  threads: ChatSession[];
+  archivedThreads: ChatSession[];
+  threadsLoading: boolean;
+
+  // Connection
   connected: boolean;
+  connectionError: string | null;
   ws: WebSocket | null;
   activeRequestId: string | null;
+  selectedTier: ModelTier;
 
+  // Actions
   connect: (token: string) => void;
   disconnect: () => void;
   sendMessage: (content: string, tier?: string, attachments?: { name: string; type: string; base64: string }[]) => void;
   cancel: () => void;
+  setTier: (tier: ModelTier) => void;
+
+  // Thread actions
+  loadThreads: () => Promise<void>;
+  switchToThread: (threadId: string) => Promise<void>;
+  switchToNewThread: () => void;
+  renameThread: (threadId: string, title: string) => Promise<void>;
+  archiveThread: (threadId: string) => Promise<void>;
+  unarchiveThread: (threadId: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
 }
 
 let msgCounter = 0;
 
+/** Convert API messages to our StreamMessage format. */
+function apiToStreamMessages(messages: ChatMessage[]): StreamMessage[] {
+  return messages.map((m, i) => ({
+    id: `hist-${i}`,
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    tools: [],
+    streaming: false,
+  }));
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
+  currentThreadId: null,
+  threads: [],
+  archivedThreads: [],
+  threadsLoading: false,
   connected: false,
+  connectionError: null,
   ws: null,
   activeRequestId: null,
+  selectedTier: "mid",
 
   connect: (token: string) => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat?token=${token}`);
+    const host = window.location.host;
+    const params = token ? `?token=${token}` : "";
+    const ws = new WebSocket(`${protocol}//${host}/ws/chat${params}`);
 
-    ws.onopen = () => set({ connected: true });
+    ws.onopen = () => set({ connected: true, connectionError: null });
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
@@ -106,6 +150,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               activeRequestId: null,
             });
           }
+          // Refresh thread list after response completes (new session may have been created)
+          get().loadThreads();
           break;
         }
 
@@ -123,7 +169,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     };
 
-    ws.onclose = () => set({ connected: false, ws: null });
+    ws.onclose = (e) => {
+      const errorMap: Record<number, string> = {
+        4001: "Authentication failed",
+        4500: "Server error",
+        4503: "Chat gateway not available — is the gateway running?",
+      };
+      const connectionError = errorMap[e.code] || null;
+      set({ connected: false, ws: null, connectionError });
+    };
     ws.onerror = () => set({ connected: false });
 
     set({ ws });
@@ -135,7 +189,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendMessage: (content: string, tier?: string, attachments?: { name: string; type: string; base64: string }[]) => {
-    const { ws, messages } = get();
+    const { ws, messages, currentThreadId } = get();
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const userMsg: StreamMessage = {
@@ -148,6 +202,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messages: [...messages, userMsg] });
 
     const payload: Record<string, unknown> = { type: "message", content, tier };
+    if (currentThreadId) {
+      payload.session_id = currentThreadId;
+    }
     if (attachments?.length) {
       payload.attachments = attachments;
     }
@@ -159,5 +216,70 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (ws && activeRequestId) {
       ws.send(JSON.stringify({ type: "cancel", request_id: activeRequestId }));
     }
+  },
+
+  setTier: (tier: ModelTier) => set({ selectedTier: tier }),
+
+  // ── Thread management ─────────────────────────────────────────────
+
+  loadThreads: async () => {
+    set({ threadsLoading: true });
+    try {
+      const [regular, archived] = await Promise.all([
+        sessionsApi.list({ limit: 100 }),
+        sessionsApi.list({ limit: 100, archived: true }),
+      ]);
+      set({
+        threads: regular.sessions,
+        archivedThreads: archived.sessions,
+        threadsLoading: false,
+      });
+    } catch {
+      set({ threadsLoading: false });
+    }
+  },
+
+  switchToThread: async (threadId: string) => {
+    if (get().currentThreadId === threadId) return;
+    try {
+      const session = await sessionsApi.get(threadId);
+      set({
+        currentThreadId: threadId,
+        messages: apiToStreamMessages(session.messages),
+      });
+    } catch {
+      // Session not found or access denied — stay on current thread
+    }
+  },
+
+  switchToNewThread: () => {
+    set({ currentThreadId: null, messages: [] });
+  },
+
+  renameThread: async (threadId: string, title: string) => {
+    await sessionsApi.rename(threadId, title);
+    await get().loadThreads();
+  },
+
+  archiveThread: async (threadId: string) => {
+    await sessionsApi.archive(threadId);
+    // If we archived the active thread, switch to new
+    if (get().currentThreadId === threadId) {
+      set({ currentThreadId: null, messages: [] });
+    }
+    await get().loadThreads();
+  },
+
+  unarchiveThread: async (threadId: string) => {
+    await sessionsApi.unarchive(threadId);
+    await get().loadThreads();
+  },
+
+  deleteThread: async (threadId: string) => {
+    await sessionsApi.delete(threadId);
+    if (get().currentThreadId === threadId) {
+      set({ currentThreadId: null, messages: [] });
+    }
+    await get().loadThreads();
   },
 }));
