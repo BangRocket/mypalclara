@@ -73,6 +73,8 @@ class Message(Base):
 
     session = relationship("Session", back_populates="messages")
 
+    __table_args__ = (Index("ix_message_session_created", "session_id", "created_at"),)
+
 
 class ChannelSummary(Base):
     """Rolling summary of Discord channel conversations."""

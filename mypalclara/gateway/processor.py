@@ -190,11 +190,24 @@ class MessageProcessor:
                 db.expunge(session)
                 return session
 
-            # Create new session
+            # Find most recent prior session for continuity
+            prev_session = (
+                db.query(DBSession)
+                .filter(
+                    DBSession.user_id == user_id,
+                    DBSession.context_id == context_id,
+                    DBSession.project_id == project.id,
+                )
+                .order_by(DBSession.last_activity_at.desc())
+                .first()
+            )
+
+            # Create new session linked to previous
             session = DBSession(
                 user_id=user_id,
                 context_id=context_id,
                 project_id=project.id,
+                previous_session_id=prev_session.id if prev_session else None,
             )
             db.add(session)
             db.commit()
@@ -203,6 +216,34 @@ class MessageProcessor:
             logger.debug(f"Created DB session {session.id} for {user_id}/{context_id}")
             return session
 
+        finally:
+            db.close()
+
+    def _get_previous_session_summary(self, db_session: DBSession) -> str | None:
+        """Walk the previous_session_id chain to find a session summary.
+
+        Checks up to 3 prior sessions for a non-empty summary.
+
+        Args:
+            db_session: Current database session
+
+        Returns:
+            Summary string from a previous session, or None
+        """
+        db = SessionLocal()
+        try:
+            current = db_session
+            for _ in range(3):
+                prev_id = current.previous_session_id
+                if not prev_id:
+                    return None
+                prev = db.query(DBSession).filter(DBSession.id == prev_id).first()
+                if not prev:
+                    return None
+                if prev.session_summary:
+                    return prev.session_summary
+                current = prev
+            return None
         finally:
             db.close()
 
@@ -543,8 +584,13 @@ class MessageProcessor:
         except Exception as e:
             logger.debug(f"Could not check intentions: {e}")
 
-        # Get session summary if available
+        # Get session summary if available, falling back to previous session's
         session_summary = db_session.session_summary if db_session else None
+        if not session_summary and db_session:
+            session_summary = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._get_previous_session_summary(db_session),
+            )
 
         # Build base prompt with Clara's persona
         messages = self._memory_manager.build_prompt(
@@ -1017,6 +1063,8 @@ class MessageProcessor:
             "create_file_attachment": "📎",
             "search_chat_history": "🔎",
             "get_chat_history": "📜",
+            "search_session_history": "🔎",
+            "get_session_history": "📜",
             "check_email": "📬",
             "search_email": "🔎",
             "send_email": "📤",

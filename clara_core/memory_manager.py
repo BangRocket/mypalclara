@@ -1059,7 +1059,7 @@ class MemoryManager:
         self,
         user_id: str,
         limit: int = 3,
-        max_age_days: int = 7,
+        max_age_days: int = 30,
     ) -> list[dict]:
         """
         Fetch recent emotional context memories for session warmth.

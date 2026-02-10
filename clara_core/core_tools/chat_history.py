@@ -1,9 +1,8 @@
 """Chat history tools - Clara core tool.
 
 Provides tools for searching and retrieving chat history.
-Tools: search_chat_history, get_chat_history
-
-Platform-specific: Currently only works with Discord.
+Tools: search_chat_history, get_chat_history (Discord-specific)
+       search_session_history, get_session_history (DB-backed, all platforms)
 """
 
 from __future__ import annotations
@@ -14,26 +13,44 @@ from typing import Any
 from tools._base import ToolContext, ToolDef
 
 MODULE_NAME = "chat_history"
-MODULE_VERSION = "1.0.0"
+MODULE_VERSION = "2.0.0"
 
 SYSTEM_PROMPT = """
 ## Chat History Search
-You can search and retrieve past messages from the current channel.
+You can search and retrieve past messages from conversations.
 
-**Tools:**
-- `search_chat_history` - Search for messages matching a query
-- `get_chat_history` - Get recent messages (with optional time/user filters)
+**Database Tools (all platforms):**
+- `search_session_history` - Search your message database by keyword across sessions
+- `get_session_history` - Get recent messages from the current or all sessions
+
+**Discord-only Tools:**
+- `search_chat_history` - Search the Discord channel's message history
+- `get_chat_history` - Get recent Discord channel messages
 
 **When to Use:**
-- User asks about something discussed earlier
-- Looking up links, decisions, or info from past conversations
-- User references "that thing we talked about"
+- User asks about something discussed earlier → `search_session_history`
+- User says "what did we talk about last week?" → `search_session_history`
+- Looking up past conversations across sessions → `search_session_history`
+- Need recent context from current conversation → `get_session_history`
+- Need Discord-specific channel history (other users' messages) → Discord tools
 
-**Note:** Only the current channel's history is accessible.
+**Note:** Database tools search Clara's own message history. Discord tools search
+the full channel (including other users' messages not directed at Clara).
 """.strip()
 
 
-# --- Tool Handlers ---
+# Database session factory (set during initialization)
+_session_factory = None
+
+
+def _get_session():
+    """Get a database session."""
+    if _session_factory is None:
+        raise RuntimeError("Chat history DB not initialized - no database connection")
+    return _session_factory()
+
+
+# --- Discord Tool Handlers (existing) ---
 
 
 async def search_chat_history(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -132,9 +149,139 @@ async def get_chat_history(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Error retrieving chat history: {str(e)}"
 
 
+# --- Database Tool Handlers (new, all platforms) ---
+
+
+async def search_session_history(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Search Clara's message database by keyword across sessions."""
+    from db.models import Message, Session
+
+    query = args.get("query", "").strip()
+    if not query:
+        return "Error: No search query provided"
+
+    limit = min(args.get("limit", 20), 50)
+    days_back = min(args.get("days_back", 30), 365)
+    role_filter = args.get("role", "")
+
+    try:
+        session = _get_session()
+        try:
+            since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days_back)
+
+            # Get all session IDs for this user
+            user_sessions = session.query(Session.id).filter(Session.user_id == ctx.user_id).all()
+            session_ids = [s.id for s in user_sessions]
+
+            if not session_ids:
+                return "No conversation history found."
+
+            q = session.query(Message).filter(
+                Message.session_id.in_(session_ids),
+                Message.created_at >= since,
+                Message.content.ilike(f"%{query}%"),
+            )
+
+            if role_filter and role_filter in ("user", "assistant"):
+                q = q.filter(Message.role == role_filter)
+
+            messages = q.order_by(Message.created_at.desc()).limit(limit).all()
+
+            if not messages:
+                return f"No messages found matching '{query}' in the last {days_back} days."
+
+            result = f"Found {len(messages)} matching message(s):\n\n"
+            for msg in messages:
+                ts = msg.created_at.strftime("%Y-%m-%d %H:%M")
+                role_label = "You" if msg.role == "assistant" else "User"
+                content = msg.content[:200] + ("..." if len(msg.content) > 200 else "")
+                result += f"[{ts}] **{role_label}:** {content}\n\n"
+
+            return result.rstrip()
+
+        finally:
+            session.close()
+
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error searching session history: {e}"
+
+
+async def get_session_history(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Get recent messages from Clara's database."""
+    from db.models import Message, Session
+
+    count = min(args.get("count", 20), 100)
+    days_back = min(args.get("days_back", 7), 365)
+    role_filter = args.get("role", "")
+    all_sessions = args.get("all_sessions", False)
+
+    try:
+        session = _get_session()
+        try:
+            since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days_back)
+
+            if all_sessions:
+                # Get all session IDs for this user
+                user_sessions = session.query(Session.id).filter(Session.user_id == ctx.user_id).all()
+                session_ids = [s.id for s in user_sessions]
+            else:
+                # Get most recent active session
+                recent_session = (
+                    session.query(Session)
+                    .filter(
+                        Session.user_id == ctx.user_id,
+                        Session.archived != "true",
+                    )
+                    .order_by(Session.last_activity_at.desc())
+                    .first()
+                )
+                session_ids = [recent_session.id] if recent_session else []
+
+            if not session_ids:
+                return "No conversation history found."
+
+            q = session.query(Message).filter(
+                Message.session_id.in_(session_ids),
+                Message.created_at >= since,
+            )
+
+            if role_filter and role_filter in ("user", "assistant"):
+                q = q.filter(Message.role == role_filter)
+
+            messages = q.order_by(Message.created_at.desc()).limit(count).all()
+
+            if not messages:
+                scope = "any session" if all_sessions else "the current session"
+                return f"No messages found in {scope} within the last {days_back} days."
+
+            # Reverse to chronological order
+            messages.reverse()
+
+            scope_label = "all sessions" if all_sessions else "current session"
+            result = f"Recent messages ({scope_label}, {len(messages)} messages):\n\n"
+            for msg in messages:
+                ts = msg.created_at.strftime("%Y-%m-%d %H:%M")
+                role_label = "You" if msg.role == "assistant" else "User"
+                content = msg.content[:300] + ("..." if len(msg.content) > 300 else "")
+                result += f"[{ts}] **{role_label}:** {content}\n\n"
+
+            return result.rstrip()
+
+        finally:
+            session.close()
+
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error retrieving session history: {e}"
+
+
 # --- Tool Definitions ---
 
 TOOLS = [
+    # Discord-specific tools
     ToolDef(
         name="search_chat_history",
         description=(
@@ -194,6 +341,72 @@ TOOLS = [
         handler=get_chat_history,
         platforms=["discord"],  # Discord-specific
     ),
+    # Database-backed tools (all platforms)
+    ToolDef(
+        name="search_session_history",
+        description=(
+            "Search Clara's own message database by keyword across all sessions for this user. "
+            "Use this to recall past conversations, find what was discussed, "
+            "or look up specific topics from previous sessions. "
+            "Works on all platforms (not just Discord)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Text to search for in message content",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results to return (default: 20, max: 50)",
+                },
+                "days_back": {
+                    "type": "integer",
+                    "description": "How many days back to search (default: 30, max: 365)",
+                },
+                "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant"],
+                    "description": "Optional: filter by message role (user or assistant)",
+                },
+            },
+            "required": ["query"],
+        },
+        handler=search_session_history,
+    ),
+    ToolDef(
+        name="get_session_history",
+        description=(
+            "Get recent messages from Clara's database. By default returns messages "
+            "from the current session. Set all_sessions=true to include all sessions. "
+            "Works on all platforms (not just Discord)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "description": "Number of messages to retrieve (default: 20, max: 100)",
+                },
+                "days_back": {
+                    "type": "integer",
+                    "description": "How many days back to look (default: 7, max: 365)",
+                },
+                "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant"],
+                    "description": "Optional: filter by message role (user or assistant)",
+                },
+                "all_sessions": {
+                    "type": "boolean",
+                    "description": "If true, include messages from all sessions (default: false)",
+                },
+            },
+            "required": [],
+        },
+        handler=get_session_history,
+    ),
 ]
 
 
@@ -201,10 +414,18 @@ TOOLS = [
 
 
 async def initialize() -> None:
-    """Initialize chat history module."""
-    pass  # No special initialization needed
+    """Initialize chat history module with database connection."""
+    global _session_factory
+
+    try:
+        from db import SessionLocal
+
+        _session_factory = SessionLocal
+    except Exception:
+        pass  # Database not available, DB tools will return error when used
 
 
 async def cleanup() -> None:
     """Cleanup on module unload."""
-    pass
+    global _session_factory
+    _session_factory = None
