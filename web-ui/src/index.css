@@ -1,37 +1,81 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* ── shadcn/ui CSS variables (dark-only) ─────────────────────────────── */
+/* ── Light mode (default) — warm cream/beige palette ──────────────── */
 
 :root {
-  --background: oklch(0.13 0.01 270);
-  --foreground: oklch(0.91 0.02 270);
-  --card: oklch(0.16 0.01 270);
-  --card-foreground: oklch(0.91 0.02 270);
-  --popover: oklch(0.18 0.01 270);
-  --popover-foreground: oklch(0.91 0.02 270);
-  --primary: oklch(0.58 0.18 280);
+  --background: oklch(0.97 0.005 75);
+  --foreground: oklch(0.15 0.01 60);
+  --card: oklch(0.95 0.006 75);
+  --card-foreground: oklch(0.15 0.01 60);
+  --popover: oklch(0.98 0.004 75);
+  --popover-foreground: oklch(0.15 0.01 60);
+  --primary: oklch(0.55 0.12 35);
   --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.22 0.02 270);
-  --secondary-foreground: oklch(0.91 0.02 270);
-  --muted: oklch(0.22 0.02 270);
-  --muted-foreground: oklch(0.52 0.05 270);
-  --accent: oklch(0.22 0.02 270);
-  --accent-foreground: oklch(0.91 0.02 270);
+  --secondary: oklch(0.92 0.008 75);
+  --secondary-foreground: oklch(0.25 0.01 60);
+  --muted: oklch(0.93 0.006 75);
+  --muted-foreground: oklch(0.45 0.02 60);
+  --accent: oklch(0.93 0.008 75);
+  --accent-foreground: oklch(0.25 0.01 60);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.55 0.2 25);
+  --border: oklch(0.88 0.01 75);
+  --input: oklch(0.88 0.01 75);
+  --ring: oklch(0.55 0.12 35);
+  --radius: 0.5rem;
+
+  /* Sidebar — slightly darker cream */
+  --sidebar: oklch(0.94 0.007 75);
+  --sidebar-foreground: oklch(0.15 0.01 60);
+  --sidebar-primary: oklch(0.55 0.12 35);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.90 0.01 75);
+  --sidebar-accent-foreground: oklch(0.25 0.01 60);
+  --sidebar-border: oklch(0.86 0.01 75);
+  --sidebar-ring: oklch(0.55 0.12 35);
+
+  /* Chat bubbles */
+  --user-bubble: oklch(0.91 0.008 75);
+  --user-bubble-foreground: oklch(0.15 0.01 60);
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────── */
+
+.dark {
+  --background: oklch(0.16 0.01 60);
+  --foreground: oklch(0.92 0.01 75);
+  --card: oklch(0.19 0.01 60);
+  --card-foreground: oklch(0.92 0.01 75);
+  --popover: oklch(0.21 0.01 60);
+  --popover-foreground: oklch(0.92 0.01 75);
+  --primary: oklch(0.65 0.12 35);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.23 0.01 60);
+  --secondary-foreground: oklch(0.92 0.01 75);
+  --muted: oklch(0.23 0.01 60);
+  --muted-foreground: oklch(0.55 0.02 75);
+  --accent: oklch(0.23 0.01 60);
+  --accent-foreground: oklch(0.92 0.01 75);
   --destructive: oklch(0.58 0.2 25);
   --destructive-foreground: oklch(0.58 0.2 25);
-  --border: oklch(0.28 0.02 270);
-  --input: oklch(0.28 0.02 270);
-  --ring: oklch(0.58 0.18 280);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.16 0.01 270);
-  --sidebar-foreground: oklch(0.91 0.02 270);
-  --sidebar-primary: oklch(0.58 0.18 280);
+  --border: oklch(0.28 0.01 60);
+  --input: oklch(0.28 0.01 60);
+  --ring: oklch(0.65 0.12 35);
+
+  /* Sidebar — darker than bg */
+  --sidebar: oklch(0.13 0.01 60);
+  --sidebar-foreground: oklch(0.92 0.01 75);
+  --sidebar-primary: oklch(0.65 0.12 35);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.02 270);
-  --sidebar-accent-foreground: oklch(0.91 0.02 270);
-  --sidebar-border: oklch(0.28 0.02 270);
-  --sidebar-ring: oklch(0.58 0.18 280);
+  --sidebar-accent: oklch(0.20 0.01 60);
+  --sidebar-accent-foreground: oklch(0.92 0.01 75);
+  --sidebar-border: oklch(0.25 0.01 60);
+  --sidebar-ring: oklch(0.65 0.12 35);
+
+  /* Chat bubbles */
+  --user-bubble: oklch(0.24 0.01 60);
+  --user-bubble-foreground: oklch(0.92 0.01 75);
 }
 
 @theme inline {
@@ -68,17 +112,21 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* ── Existing app theme (kept for backward compat) ── */
-  --color-surface: #0f1117;
-  --color-surface-raised: #171923;
-  --color-surface-overlay: #1e2130;
-  --color-border-subtle: #232640;
-  --color-text-primary: #e8eaf6;
-  --color-text-secondary: #9fa3c2;
-  --color-text-muted: #6b70a0;
+  /* Chat bubble tokens */
+  --color-user-bubble: var(--user-bubble);
+  --color-user-bubble-foreground: var(--user-bubble-foreground);
+
+  /* ── Backward-compat aliases for old custom tokens ── */
+  --color-surface: var(--background);
+  --color-surface-raised: var(--card);
+  --color-surface-overlay: var(--muted);
+  --color-border-subtle: var(--border);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-text-muted: var(--muted-foreground);
   --color-success: #4caf50;
   --color-warning: #ff9800;
-  --color-danger: #ef5350;
+  --color-danger: var(--destructive);
   --color-key: #ffd54f;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

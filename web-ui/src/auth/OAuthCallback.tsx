@@ -29,13 +29,15 @@ export function OAuthCallback() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface">
-        <div className="bg-surface-raised border border-danger/30 rounded-xl p-8 max-w-md text-center">
-          <h2 className="text-lg font-semibold text-danger mb-2">Authentication Failed</h2>
-          <p className="text-text-secondary">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="max-w-md rounded-xl border border-destructive/30 bg-card p-8 text-center">
+          <h2 className="mb-2 text-lg font-semibold text-destructive">
+            Authentication Failed
+          </h2>
+          <p className="text-muted-foreground">{error}</p>
           <button
             onClick={() => navigate("/login")}
-            className="mt-4 px-4 py-2 bg-primary hover:bg-primary/85 rounded-lg text-white transition"
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-white transition hover:bg-primary/85"
           >
             Back to Login
           </button>
@@ -45,8 +47,8 @@ export function OAuthCallback() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-surface">
-      <div className="text-text-secondary">Authenticating...</div>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-muted-foreground">Authenticating...</div>
     </div>
   );
 }
