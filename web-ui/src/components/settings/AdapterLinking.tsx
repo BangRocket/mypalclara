@@ -21,7 +21,7 @@ export function AdapterLinking() {
   const handleUnlink = async (provider: string) => {
     if (!confirm(`Unlink your ${provider} account?`)) return;
     try {
-      await fetch(`/auth/link/${provider}`, { method: "DELETE", credentials: "include" });
+      await fetch(`${import.meta.env.VITE_API_URL || ""}/auth/link/${provider}`, { method: "DELETE", credentials: "include" });
       refetch();
     } catch (e) {
       alert("Failed to unlink. You must keep at least one account linked.");
@@ -71,7 +71,7 @@ export function AdapterLinking() {
               ) : (
                 <button
                   onClick={() => handleLink(p.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-accent hover:bg-accent/10 rounded-lg transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-primary hover:bg-primary/10 rounded-lg transition"
                 >
                   <Link2 size={14} />
                   Link

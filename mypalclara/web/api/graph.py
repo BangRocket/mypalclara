@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, PlatformLink
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.graph")
 router = APIRouter()
@@ -47,7 +47,7 @@ def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
 async def list_entities(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List graph entities with pagination."""
@@ -84,7 +84,7 @@ async def list_entities(
 @router.get("/entities/{name}")
 async def get_entity(
     name: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get an entity with its relationships."""
@@ -121,7 +121,7 @@ async def get_entity(
 async def search_graph(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=100),
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Search entities and relationships."""
@@ -147,7 +147,7 @@ async def get_subgraph(
     center: str | None = Query(None, description="Center node name"),
     depth: int = Query(2, ge=1, le=5),
     limit: int = Query(100, ge=1, le=500),
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get a subgraph for visualization (nodes + edges)."""

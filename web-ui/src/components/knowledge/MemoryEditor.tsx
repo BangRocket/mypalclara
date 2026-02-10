@@ -6,6 +6,9 @@ import { X, Save, Trash2, Key } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Memory } from "@/api/client";
 import { memories as memoriesApi } from "@/api/client";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface MemoryEditorProps {
   memory: Memory;
@@ -50,31 +53,22 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="relative ml-auto w-full max-w-2xl bg-surface-raised border-l border-border flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-semibold">Edit Memory</h2>
-          <div className="flex items-center gap-2">
-            <button
+    <Sheet open onOpenChange={onClose}>
+      <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
+        <SheetHeader className="px-4 py-4 border-b">
+          <div className="flex items-center justify-between">
+            <SheetTitle>Edit Memory</SheetTitle>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleDelete}
-              className="p-2 text-text-muted hover:text-danger transition rounded-lg hover:bg-surface-overlay"
               title="Delete"
+              className="hover:text-destructive"
             >
               <Trash2 size={16} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 text-text-muted hover:text-text-primary transition rounded-lg hover:bg-surface-overlay"
-            >
-              <X size={16} />
-            </button>
+            </Button>
           </div>
-        </div>
+        </SheetHeader>
 
         {/* Editor */}
         <div className="flex-1 overflow-y-auto">
@@ -84,36 +78,38 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
         {/* Properties panel */}
         <div className="border-t border-border p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <label className="text-xs text-text-muted w-20">Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-1.5 text-sm"
-            >
-              <option value="">Uncategorized</option>
-              <option value="personal">Personal</option>
-              <option value="professional">Professional</option>
-              <option value="preferences">Preferences</option>
-              <option value="goals">Goals</option>
-              <option value="emotional">Emotional</option>
-              <option value="temporal">Temporal</option>
-            </select>
+            <label className="text-xs text-muted-foreground w-20">Category</label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Uncategorized" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Uncategorized</SelectItem>
+                <SelectItem value="personal">Personal</SelectItem>
+                <SelectItem value="professional">Professional</SelectItem>
+                <SelectItem value="preferences">Preferences</SelectItem>
+                <SelectItem value="goals">Goals</SelectItem>
+                <SelectItem value="emotional">Emotional</SelectItem>
+                <SelectItem value="temporal">Temporal</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-xs text-text-muted w-20">Key Memory</label>
-            <button
+            <label className="text-xs text-muted-foreground w-20">Key Memory</label>
+            <Button
+              variant={isKey ? "secondary" : "outline"}
               onClick={() => setIsKey(!isKey)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition",
-                isKey ? "bg-key/15 text-key" : "bg-surface-overlay text-text-muted",
+                "gap-1.5",
+                isKey && "bg-key/15 text-key hover:bg-key/20"
               )}
             >
               <Key size={14} />
               {isKey ? "Key" : "Normal"}
-            </button>
+            </Button>
           </div>
           {memory.dynamics && (
-            <div className="flex items-center gap-4 text-xs text-text-muted">
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span>Stability: {memory.dynamics.stability?.toFixed(1) ?? "–"}</span>
               <span>Difficulty: {memory.dynamics.difficulty?.toFixed(1) ?? "–"}</span>
               <span>Accessed: {memory.dynamics.access_count}x</span>
@@ -123,16 +119,16 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
 
         {/* Save button */}
         <div className="p-4 border-t border-border">
-          <button
+          <Button
             onClick={handleSave}
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg text-white text-sm font-medium transition"
+            className="w-full gap-2"
           >
             <Save size={16} />
             {saving ? "Saving..." : "Save Changes"}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

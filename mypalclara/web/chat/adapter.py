@@ -35,13 +35,33 @@ class WebChatAdapter(GatewayClient):
         self._background_task: asyncio.Task | None = None
 
     async def start_background(self) -> None:
-        """Connect to gateway in the background."""
-        if await self.connect():
-            self._running = True
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-            self._background_task = asyncio.create_task(self._receive_loop())
-        else:
-            raise RuntimeError("Failed to connect to gateway")
+        """Connect to gateway in the background with retry.
+
+        The web server starts immediately; chat becomes available
+        once the gateway connection succeeds.
+        """
+        self._background_task = asyncio.create_task(self._connect_with_retry())
+
+    async def _connect_with_retry(self, max_delay: float = 30.0) -> None:
+        """Retry gateway connection with exponential backoff."""
+        delay = 1.0
+        while True:
+            try:
+                if await self.connect():
+                    self._running = True
+                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                    await self._receive_loop()
+                    # If receive_loop exits, the connection dropped — retry
+                    logger.warning("Gateway connection lost, reconnecting...")
+                else:
+                    logger.warning(f"Gateway connection failed, retrying in {delay:.0f}s")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Gateway connection error: {e}, retrying in {delay:.0f}s")
+
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max_delay)
 
     async def stop(self) -> None:
         """Stop the adapter."""

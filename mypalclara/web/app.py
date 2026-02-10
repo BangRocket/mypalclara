@@ -23,14 +23,11 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_db()
 
-    # Start the web chat adapter (connects to gateway)
+    # Start the web chat adapter (connects to gateway in background with retry)
     from mypalclara.web.chat.adapter import web_chat_adapter
 
-    try:
-        await web_chat_adapter.start_background()
-        logger.info("Web chat adapter connected to gateway")
-    except Exception as e:
-        logger.warning(f"Web chat adapter failed to connect (chat disabled): {e}")
+    await web_chat_adapter.start_background()
+    logger.info("Web chat adapter started (connecting to gateway in background)")
 
     yield
 

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
 from db.models import CanonicalUser, Message, PlatformLink
 from db.models import Session as ChatSession
-from mypalclara.web.auth.dependencies import get_current_user, get_db
+from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()
 
@@ -17,11 +17,20 @@ def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
     return [link.prefixed_user_id for link in links]
 
 
+def _get_user_session(session_id: str, user_ids: list[str], db: DBSession) -> ChatSession:
+    """Get a session owned by the user or raise 404."""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id.in_(user_ids)).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
 @router.get("")
 async def list_sessions(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    user: CanonicalUser = Depends(get_current_user),
+    archived: bool = Query(False),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """List chat sessions for the current user."""
@@ -29,8 +38,11 @@ async def list_sessions(
     if not user_ids:
         return {"sessions": [], "total": 0}
 
+    archived_val = "true" if archived else "false"
     query = (
-        db.query(ChatSession).filter(ChatSession.user_id.in_(user_ids)).order_by(ChatSession.last_activity_at.desc())
+        db.query(ChatSession)
+        .filter(ChatSession.user_id.in_(user_ids), ChatSession.archived == archived_val)
+        .order_by(ChatSession.last_activity_at.desc())
     )
     total = query.count()
     sessions = query.offset(offset).limit(limit).all()
@@ -58,14 +70,12 @@ async def list_sessions(
 @router.get("/{session_id}")
 async def get_session(
     session_id: str,
-    user: CanonicalUser = Depends(get_current_user),
+    user: CanonicalUser = Depends(get_approved_user),
     db: DBSession = Depends(get_db),
 ):
     """Get a session with its messages."""
     user_ids = _get_user_ids(user, db)
-    session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id.in_(user_ids)).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = _get_user_session(session_id, user_ids, db)
 
     messages = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.asc()).all()
 
@@ -88,3 +98,61 @@ async def get_session(
             for m in messages
         ],
     }
+
+
+@router.put("/{session_id}")
+async def update_session(
+    session_id: str,
+    title: str = Body(..., embed=True),
+    user: CanonicalUser = Depends(get_approved_user),
+    db: DBSession = Depends(get_db),
+):
+    """Rename a session."""
+    user_ids = _get_user_ids(user, db)
+    session = _get_user_session(session_id, user_ids, db)
+    session.title = title
+    db.commit()
+    return {"ok": True, "id": session_id, "title": title}
+
+
+@router.patch("/{session_id}/archive")
+async def archive_session(
+    session_id: str,
+    user: CanonicalUser = Depends(get_approved_user),
+    db: DBSession = Depends(get_db),
+):
+    """Archive a session."""
+    user_ids = _get_user_ids(user, db)
+    session = _get_user_session(session_id, user_ids, db)
+    session.archived = "true"
+    db.commit()
+    return {"ok": True, "id": session_id}
+
+
+@router.patch("/{session_id}/unarchive")
+async def unarchive_session(
+    session_id: str,
+    user: CanonicalUser = Depends(get_approved_user),
+    db: DBSession = Depends(get_db),
+):
+    """Unarchive a session."""
+    user_ids = _get_user_ids(user, db)
+    session = _get_user_session(session_id, user_ids, db)
+    session.archived = "false"
+    db.commit()
+    return {"ok": True, "id": session_id}
+
+
+@router.delete("/{session_id}")
+async def delete_session(
+    session_id: str,
+    user: CanonicalUser = Depends(get_approved_user),
+    db: DBSession = Depends(get_db),
+):
+    """Delete a session and its messages."""
+    user_ids = _get_user_ids(user, db)
+    session = _get_user_session(session_id, user_ids, db)
+    db.query(Message).filter(Message.session_id == session_id).delete()
+    db.delete(session)
+    db.commit()
+    return {"ok": True, "id": session_id}

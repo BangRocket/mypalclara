@@ -595,6 +595,8 @@ class CanonicalUser(Base):
     display_name = Column(String, nullable=False)
     primary_email = Column(String, nullable=True, unique=True)
     avatar_url = Column(String, nullable=True)
+    status = Column(String, default="active", server_default="active", nullable=False)  # pending, active, suspended
+    is_admin = Column(Boolean, default=False, server_default="0", nullable=False)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

@@ -33,6 +33,8 @@ def _get_or_create_dev_user(db: DBSession) -> CanonicalUser:
         user = CanonicalUser(
             id=DEV_USER_ID,
             display_name=config.dev_user_name,
+            status="active",
+            is_admin=True,
         )
         db.add(user)
 
@@ -77,6 +79,31 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
+    return user
+
+
+def get_approved_user(
+    user: CanonicalUser = Depends(get_current_user),
+) -> CanonicalUser:
+    """Require an approved (active) user. Raises 403 if pending/suspended."""
+    user_status = getattr(user, "status", "active")
+    if user_status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Account is {user_status}. Admin approval required.",
+        )
+    return user
+
+
+def get_admin_user(
+    user: CanonicalUser = Depends(get_approved_user),
+) -> CanonicalUser:
+    """Require an admin user."""
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
     return user
 
 

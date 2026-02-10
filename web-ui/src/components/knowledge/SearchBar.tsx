@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
@@ -16,13 +17,13 @@ export function SearchBar({ onSearch, placeholder = "Search memories..." }: Sear
 
   return (
     <form onSubmit={handleSubmit} className="relative">
-      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-      <input
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <Input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-9 pr-4 py-2 bg-surface-overlay border border-border rounded-lg text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition"
+        className="pl-9"
       />
     </form>
   );

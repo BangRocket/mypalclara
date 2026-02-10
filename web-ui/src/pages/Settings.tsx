@@ -1,5 +1,7 @@
 import { useAuth } from "@/auth/AuthProvider";
 import { AdapterLinking } from "@/components/settings/AdapterLinking";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -9,27 +11,32 @@ export function SettingsPage() {
       <h1 className="text-xl font-bold">Settings</h1>
 
       {/* Profile */}
-      <section className="bg-surface-raised border border-border rounded-xl p-5 space-y-4">
-        <h2 className="text-base font-semibold">Profile</h2>
-        <div className="flex items-center gap-4">
-          {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-16 h-16 rounded-full" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center text-xl font-bold text-accent">
-              {user?.display_name?.[0]?.toUpperCase() || "?"}
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Avatar className="w-16 h-16">
+              <AvatarImage src={user?.avatar_url || undefined} alt={user?.display_name} />
+              <AvatarFallback className="bg-primary/20 text-primary text-xl">
+                {user?.display_name?.[0]?.toUpperCase() || "?"}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-lg font-medium">{user?.display_name}</p>
+              <p className="text-sm text-muted-foreground">{user?.email || "No email set"}</p>
             </div>
-          )}
-          <div>
-            <p className="text-lg font-medium">{user?.display_name}</p>
-            <p className="text-sm text-text-muted">{user?.email || "No email set"}</p>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {/* Linked Accounts */}
-      <section className="bg-surface-raised border border-border rounded-xl p-5">
-        <AdapterLinking />
-      </section>
+      <Card>
+        <CardContent className="pt-6">
+          <AdapterLinking />
+        </CardContent>
+      </Card>
     </div>
   );
 }

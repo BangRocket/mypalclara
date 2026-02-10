@@ -8,6 +8,9 @@ import { GraphExplorerPage } from "@/pages/GraphExplorer";
 import { SettingsPage } from "@/pages/Settings";
 import { IntentionsPage } from "@/pages/Intentions";
 import { OAuthCallback } from "@/auth/OAuthCallback";
+import { PendingApproval } from "@/pages/PendingApproval";
+import { SuspendedPage } from "@/pages/Suspended";
+import { AdminUsersPage } from "@/pages/AdminUsers";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -19,6 +22,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  if (user.status === "pending") return <Navigate to="/pending" replace />;
+  if (user.status === "suspended") return <Navigate to="/suspended" replace />;
   return <>{children}</>;
 }
 
@@ -28,6 +33,8 @@ export function App() {
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback/:provider" element={<OAuthCallback />} />
+      <Route path="/pending" element={<PendingApproval />} />
+      <Route path="/suspended" element={<SuspendedPage />} />
 
       {/* Protected */}
       <Route
@@ -41,6 +48,7 @@ export function App() {
                 <Route path="/graph" element={<GraphExplorerPage />} />
                 <Route path="/intentions" element={<IntentionsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/admin/users" element={<AdminUsersPage />} />
               </Routes>
             </AppShell>
           </ProtectedRoute>

@@ -8,6 +8,9 @@ import { MemoryGrid } from "@/components/knowledge/MemoryGrid";
 import { MemoryList } from "@/components/knowledge/MemoryList";
 import { MemoryEditor } from "@/components/knowledge/MemoryEditor";
 import { useSavedSets } from "@/stores/savedSets";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 type ViewMode = "grid" | "list";
 
@@ -86,27 +89,25 @@ export function KnowledgeBasePage() {
           <div className="flex items-center gap-2">
             {/* Stats summary */}
             {statsQuery.data && (
-              <span className="text-xs text-text-muted mr-3">
+              <span className="text-xs text-muted-foreground mr-3">
                 {statsQuery.data.total} memories, {statsQuery.data.key_count} key
               </span>
             )}
 
             {/* Export / Import */}
-            <a
-              href={memoriesApi.exportAll()}
-              download
-              className="p-2 rounded-lg text-text-muted hover:text-text-primary transition"
-              title="Export memories"
-            >
-              <Download size={16} />
-            </a>
-            <button
+            <Button variant="ghost" size="icon" asChild title="Export memories">
+              <a href={memoriesApi.exportAll()} download>
+                <Download size={16} />
+              </a>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => importRef.current?.click()}
-              className="p-2 rounded-lg text-text-muted hover:text-text-primary transition"
               title="Import memories"
             >
               <Upload size={16} />
-            </button>
+            </Button>
             <input
               ref={importRef}
               type="file"
@@ -125,18 +126,20 @@ export function KnowledgeBasePage() {
             />
 
             {/* View toggle */}
-            <button
+            <Button
+              variant={view === "grid" ? "secondary" : "ghost"}
+              size="icon"
               onClick={() => setView("grid")}
-              className={cn("p-2 rounded-lg transition", view === "grid" ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text-primary")}
             >
               <Grid3x3 size={16} />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={view === "list" ? "secondary" : "ghost"}
+              size="icon"
               onClick={() => setView("list")}
-              className={cn("p-2 rounded-lg transition", view === "list" ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text-primary")}
             >
               <List size={16} />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -145,44 +148,41 @@ export function KnowledgeBasePage() {
             <SearchBar onSearch={handleSearch} />
           </div>
           {searchQuery && (
-            <button onClick={handleClearSearch} className="text-xs text-accent hover:underline">
+            <Button variant="ghost" size="sm" onClick={handleClearSearch}>
               Clear search
-            </button>
+            </Button>
           )}
         </div>
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <Badge
+            variant={!category && isKeyFilter === undefined ? "default" : "outline"}
+            className="cursor-pointer"
             onClick={() => { setCategory(""); setIsKeyFilter(undefined); }}
-            className={cn(
-              "px-3 py-1 rounded-full text-xs transition",
-              !category && isKeyFilter === undefined ? "bg-accent/15 text-accent" : "bg-surface-overlay text-text-muted hover:text-text-primary",
-            )}
           >
             All
-          </button>
+          </Badge>
           {Object.entries(categories).map(([cat, count]) => (
-            <button
+            <Badge
               key={cat}
+              variant={cat === category ? "default" : "outline"}
+              className="cursor-pointer"
               onClick={() => setCategory(cat === category ? "" : cat)}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs transition",
-                cat === category ? "bg-accent/15 text-accent" : "bg-surface-overlay text-text-muted hover:text-text-primary",
-              )}
             >
               {cat} ({count})
-            </button>
+            </Badge>
           ))}
-          <button
-            onClick={() => setIsKeyFilter(isKeyFilter === true ? undefined : true)}
+          <Badge
+            variant={isKeyFilter === true ? "default" : "outline"}
             className={cn(
-              "px-3 py-1 rounded-full text-xs transition",
-              isKeyFilter === true ? "bg-key/15 text-key" : "bg-surface-overlay text-text-muted hover:text-text-primary",
+              "cursor-pointer",
+              isKeyFilter === true && "bg-key/80 hover:bg-key/70 border-key text-white"
             )}
+            onClick={() => setIsKeyFilter(isKeyFilter === true ? undefined : true)}
           >
             Key Only
-          </button>
+          </Badge>
 
           {/* Save current filters */}
           <div className="ml-auto flex items-center gap-1">
@@ -197,20 +197,36 @@ export function KnowledgeBasePage() {
                 }}
                 className="flex items-center gap-1"
               >
-                <input
+                <Input
                   autoFocus
                   value={newSetName}
                   onChange={(e) => setNewSetName(e.target.value)}
                   placeholder="Set name..."
-                  className="px-2 py-1 rounded text-xs bg-surface-overlay border border-border text-text-primary focus:outline-none focus:border-accent w-28"
+                  className="h-7 text-xs w-28"
                 />
-                <button type="submit" className="px-2 py-1 rounded text-xs bg-accent/15 text-accent hover:bg-accent/25">Save</button>
-                <button type="button" onClick={() => setShowSaveSet(false)} className="text-text-muted hover:text-text-primary"><X size={14} /></button>
+                <Button type="submit" size="sm" variant="secondary" className="h-7 px-2">
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setShowSaveSet(false)}
+                  className="h-7 w-7"
+                >
+                  <X size={14} />
+                </Button>
               </form>
             ) : (
-              <button onClick={() => setShowSaveSet(true)} className="p-1 text-text-muted hover:text-accent transition" title="Save current filters">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSaveSet(true)}
+                title="Save current filters"
+                className="h-8 w-8"
+              >
                 <BookmarkPlus size={16} />
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -218,21 +234,28 @@ export function KnowledgeBasePage() {
         {/* Saved Sets */}
         {savedSets.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-text-muted flex items-center gap-1"><Bookmark size={12} /> Sets:</span>
+            <span className="text-xs text-muted-foreground flex items-center gap-1"><Bookmark size={12} /> Sets:</span>
             {savedSets.map((s) => (
-              <div key={s.id} className="flex items-center gap-1 bg-surface-overlay rounded-full px-2 py-0.5">
+              <Badge key={s.id} variant="secondary" className="gap-1 pr-1">
                 <button
                   onClick={() => {
                     setCategory(s.filters.category || "");
                     setIsKeyFilter(s.filters.is_key);
                     setSearchQuery(s.filters.searchQuery || "");
                   }}
-                  className="text-xs text-text-secondary hover:text-accent transition"
+                  className="hover:text-primary transition"
                 >
                   {s.name}
                 </button>
-                <button onClick={() => removeSet(s.id)} className="text-text-muted hover:text-danger"><X size={10} /></button>
-              </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeSet(s.id)}
+                  className="h-4 w-4 p-0 hover:bg-transparent hover:text-destructive"
+                >
+                  <X size={10} />
+                </Button>
+              </Badge>
             ))}
           </div>
         )}

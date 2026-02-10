@@ -43,7 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDevMode(cfg.dev_mode);
       if (cfg.dev_mode) {
         // In dev mode, auto-login
-        auth.devLogin().then(({ user: u }) => {
+        auth.devLogin().then(({ user: u, token }) => {
+          if (token) sessionStorage.setItem("clara_token", token);
           setUser(u);
           setLoading(false);
         }).catch(() => {
@@ -64,7 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const devLogin = async () => {
-    const { user: u } = await auth.devLogin();
+    const { user: u, token } = await auth.devLogin();
+    if (token) sessionStorage.setItem("clara_token", token);
     setUser(u);
   };
 

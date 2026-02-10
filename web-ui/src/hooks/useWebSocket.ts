@@ -15,12 +15,9 @@ export function useWebSocket() {
   useEffect(() => {
     if (!user) return;
 
-    // We need the JWT token — read from cookie isn't accessible from JS (httpOnly).
-    // Instead, store it in sessionStorage during OAuth callback.
+    // Prefer sessionStorage token; fall back to cookie-based auth (no query param)
     const token = sessionStorage.getItem("clara_token");
-    if (token) {
-      connect(token);
-    }
+    connect(token || "");
 
     return () => {
       disconnect();

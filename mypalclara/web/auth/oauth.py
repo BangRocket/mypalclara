@@ -149,6 +149,7 @@ async def callback(provider: str, code: str, request: Request, response: Respons
             display_name=user_info.get("display_name") or user_info["name"],
             primary_email=user_info.get("email"),
             avatar_url=user_info.get("avatar_url"),
+            status="pending",
         )
         db.add(canonical_user)
         db.flush()
@@ -244,6 +245,8 @@ async def me(user: CanonicalUser = Depends(get_current_user), db: DBSession = De
         "email": user.primary_email,
         "avatar_url": user.avatar_url,
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "status": getattr(user, "status", "active"),
+        "is_admin": getattr(user, "is_admin", False),
         "platforms": [
             {
                 "platform": l.platform,
