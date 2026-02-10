@@ -8,7 +8,7 @@ import type { Memory } from "@/api/client";
 import { memories as memoriesApi } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface MemoryEditorProps {
   memory: Memory;
@@ -58,6 +58,7 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
         <SheetHeader className="px-4 py-4 border-b">
           <div className="flex items-center justify-between">
             <SheetTitle>Edit Memory</SheetTitle>
+            <SheetDescription className="sr-only">Edit memory content, category, and properties</SheetDescription>
             <Button
               variant="ghost"
               size="icon"
