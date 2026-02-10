@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { auth, type AuthConfig, type User } from "@/api/client";
+import { auth, setToken, type AuthConfig, type User } from "@/api/client";
 
 interface AuthState {
   user: User | null;
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cfg.dev_mode) {
         // In dev mode, auto-login
         auth.devLogin().then(({ user: u, token }) => {
-          if (token) sessionStorage.setItem("clara_token", token);
+          if (token) setToken(token);
           setUser(u);
           setLoading(false);
         }).catch(() => {
@@ -66,12 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const devLogin = async () => {
     const { user: u, token } = await auth.devLogin();
-    if (token) sessionStorage.setItem("clara_token", token);
+    if (token) setToken(token);
     setUser(u);
   };
 
   const logout = async () => {
     await auth.logout();
+    setToken(null);
     setUser(null);
   };
 

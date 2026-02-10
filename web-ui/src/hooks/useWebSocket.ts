@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { getToken } from "@/api/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -15,9 +16,7 @@ export function useWebSocket() {
   useEffect(() => {
     if (!user) return;
 
-    // Prefer sessionStorage token; fall back to cookie-based auth (no query param)
-    const token = sessionStorage.getItem("clara_token");
-    connect(token || "");
+    connect(getToken() || "");
 
     return () => {
       disconnect();

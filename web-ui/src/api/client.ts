@@ -3,12 +3,38 @@
 const API_ORIGIN = import.meta.env.VITE_API_URL || "";
 const BASE = `${API_ORIGIN}/api/v1`;
 
+// ── Token management ─────────────────────────────────────────────────────
+const TOKEN_KEY = "clara_token";
+let _token: string | null = sessionStorage.getItem(TOKEN_KEY);
+
+export function setToken(token: string | null) {
+  _token = token;
+  if (token) {
+    sessionStorage.setItem(TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export function getToken(): string | null {
+  return _token;
+}
+
+// ── Request helper ───────────────────────────────────────────────────────
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = path.startsWith("/") ? `${API_ORIGIN}${path}` : path;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (_token) {
+    headers["Authorization"] = `Bearer ${_token}`;
+  }
   const res = await fetch(url, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));

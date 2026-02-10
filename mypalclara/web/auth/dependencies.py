@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import Cookie, Depends, HTTPException, Query, status
+from fastapi import Cookie, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session as DBSession
 
 from db.connection import SessionLocal
@@ -53,13 +53,22 @@ def _get_or_create_dev_user(db: DBSession) -> CanonicalUser:
     return user
 
 
+def _extract_bearer(authorization: str | None) -> str | None:
+    """Extract token from 'Bearer <token>' header value."""
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:]
+    return None
+
+
 def get_current_user(
     access_token: str | None = Cookie(None),
     token: str | None = Query(None, description="Token for WebSocket auth"),
+    authorization: str | None = Header(None),
     db: DBSession = Depends(get_db),
 ) -> CanonicalUser:
-    """Extract the current authenticated user from JWT cookie or query param.
+    """Extract the current authenticated user from JWT.
 
+    Checks (in order): Authorization header, cookie, query param.
     In dev mode, returns a dev user without requiring authentication.
     Raises HTTPException 401 if not authenticated.
     """
@@ -67,7 +76,7 @@ def get_current_user(
     if config.dev_mode:
         return _get_or_create_dev_user(db)
 
-    jwt_token = access_token or token
+    jwt_token = _extract_bearer(authorization) or access_token or token
     if not jwt_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -109,6 +118,7 @@ def get_admin_user(
 
 def get_optional_user(
     access_token: str | None = Cookie(None),
+    authorization: str | None = Header(None),
     db: DBSession = Depends(get_db),
 ) -> CanonicalUser | None:
     """Extract the current user if authenticated, else None."""
@@ -116,9 +126,10 @@ def get_optional_user(
     if config.dev_mode:
         return _get_or_create_dev_user(db)
 
-    if not access_token:
+    jwt_token = _extract_bearer(authorization) or access_token
+    if not jwt_token:
         return None
-    payload = decode_access_token(access_token)
+    payload = decode_access_token(jwt_token)
     if not payload or "sub" not in payload:
         return None
     return db.query(CanonicalUser).filter(CanonicalUser.id == payload["sub"]).first()

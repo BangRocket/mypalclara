@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { auth } from "@/api/client";
+import { auth, setToken } from "@/api/client";
 import { useAuth } from "@/auth/AuthProvider";
 
 export function OAuthCallback() {
@@ -19,7 +19,8 @@ export function OAuthCallback() {
 
     auth
       .callback(provider, code)
-      .then(async () => {
+      .then(async ({ token }) => {
+        if (token) setToken(token);
         await refresh();
         navigate("/", { replace: true });
       })
