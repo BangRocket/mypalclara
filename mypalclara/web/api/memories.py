@@ -59,14 +59,13 @@ def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
 
 
 def _get_memory_client():
-    """Get the ClaraMemory instance."""
-    try:
-        from clara_core.memory.core.memory import ClaraMemory
+    """Get the ClaraMemory singleton (Rook)."""
+    from clara_core.memory import ROOK
 
-        return ClaraMemory()
-    except Exception as e:
-        logger.error(f"Failed to initialize ClaraMemory: {e}")
-        raise HTTPException(status_code=503, detail=f"Memory system unavailable: {e}")
+    if ROOK is None:
+        logger.error("Rook memory system not initialized")
+        raise HTTPException(status_code=503, detail="Memory system unavailable")
+    return ROOK
 
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────

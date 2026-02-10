@@ -6,8 +6,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from mypalclara.web.config import get_web_config
@@ -76,6 +77,19 @@ def create_app() -> FastAPI:
     if config.static_dir:
         static_path = Path(config.static_dir)
         if static_path.is_dir():
-            app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
+            # Serve static assets (JS, CSS, images, etc.)
+            app.mount("/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
+
+            # SPA fallback: serve index.html for all non-API routes
+            index_html = static_path / "index.html"
+
+            @app.get("/{path:path}")
+            async def spa_fallback(request: Request, path: str):
+                # Serve actual static files if they exist
+                file_path = static_path / path
+                if path and file_path.is_file():
+                    return FileResponse(file_path)
+                # Otherwise serve index.html for client-side routing
+                return FileResponse(index_html)
 
     return app
