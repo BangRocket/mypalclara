@@ -18,7 +18,7 @@ interface MemoryEditorProps {
 }
 
 export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEditorProps) {
-  const [category, setCategory] = useState(memory.dynamics?.category || "");
+  const [category, setCategory] = useState(memory.dynamics?.category || "uncategorized");
   const [isKey, setIsKey] = useState(memory.dynamics?.is_key || false);
   const [saving, setSaving] = useState(false);
 
@@ -37,7 +37,7 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
       const content = editor.getText();
       await memoriesApi.update(memory.id, {
         content,
-        category: category || undefined,
+        category: category === "uncategorized" ? undefined : category,
         is_key: isKey,
       });
       onSaved();
@@ -84,7 +84,7 @@ export function MemoryEditor({ memory, onClose, onSaved, onDeleted }: MemoryEdit
                 <SelectValue placeholder="Uncategorized" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Uncategorized</SelectItem>
+                <SelectItem value="uncategorized">Uncategorized</SelectItem>
                 <SelectItem value="personal">Personal</SelectItem>
                 <SelectItem value="professional">Professional</SelectItem>
                 <SelectItem value="preferences">Preferences</SelectItem>
