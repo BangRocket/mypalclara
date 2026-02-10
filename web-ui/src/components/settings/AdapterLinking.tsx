@@ -21,7 +21,7 @@ export function AdapterLinking() {
   const handleUnlink = async (provider: string) => {
     if (!confirm(`Unlink your ${provider} account?`)) return;
     try {
-      await fetch(`/auth/link/${provider}`, { method: "DELETE", credentials: "include" });
+      await fetch(`${import.meta.env.VITE_API_URL || ""}/auth/link/${provider}`, { method: "DELETE", credentials: "include" });
       refetch();
     } catch (e) {
       alert("Failed to unlink. You must keep at least one account linked.");

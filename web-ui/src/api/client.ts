@@ -1,9 +1,11 @@
 /** Typed API client for the Clara web backend. */
 
-const BASE = "/api/v1";
+const API_ORIGIN = import.meta.env.VITE_API_URL || "";
+const BASE = `${API_ORIGIN}/api/v1`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const url = path.startsWith("/") ? `${API_ORIGIN}${path}` : path;
+  const res = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
