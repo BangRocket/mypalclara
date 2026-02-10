@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -7,40 +7,89 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  type NodeTypes,
+  BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+} from "d3-force";
 import type { GraphNode, GraphEdge } from "@/api/client";
+import { EntityNode, TYPE_COLORS, type EntityNodeData } from "./EntityNode";
 
-const TYPE_COLORS: Record<string, string> = {
-  person: "#7c6ef0",
-  place: "#4caf50",
-  organization: "#ff9800",
-  concept: "#2196f3",
-  event: "#ef5350",
-  default: "#6b70a0",
-};
+// ── d3-force layout ──────────────────────────────────────────────────────
 
-function toReactFlowNodes(graphNodes: GraphNode[]): Node[] {
-  return graphNodes.map((n, i) => ({
-    id: n.id,
-    data: {
-      label: n.name,
-      type: n.type,
-    },
-    position: {
-      x: 200 + Math.cos((i / graphNodes.length) * 2 * Math.PI) * 300,
-      y: 200 + Math.sin((i / graphNodes.length) * 2 * Math.PI) * 300,
-    },
-    style: {
-      background: TYPE_COLORS[n.type || "default"] || TYPE_COLORS.default,
-      color: "#fff",
-      borderRadius: "12px",
-      padding: "8px 14px",
-      fontSize: "12px",
-      fontWeight: "600",
-      border: "none",
-    },
-  }));
+interface SimNode extends SimulationNodeDatum {
+  id: string;
+}
+
+function computeLayout(
+  graphNodes: GraphNode[],
+  graphEdges: GraphEdge[],
+): { positions: Map<string, { x: number; y: number }>; connectionCounts: Map<string, number> } {
+  if (graphNodes.length === 0) {
+    return { positions: new Map(), connectionCounts: new Map() };
+  }
+
+  const connectionCounts = new Map<string, number>();
+  for (const n of graphNodes) connectionCounts.set(n.id, 0);
+  for (const e of graphEdges) {
+    connectionCounts.set(e.source, (connectionCounts.get(e.source) || 0) + 1);
+    connectionCounts.set(e.target, (connectionCounts.get(e.target) || 0) + 1);
+  }
+
+  const simNodes: SimNode[] = graphNodes.map((n) => ({ id: n.id }));
+  const nodeIndex = new Map(simNodes.map((n, i) => [n.id, i]));
+
+  const simLinks: SimulationLinkDatum<SimNode>[] = graphEdges
+    .filter((e) => nodeIndex.has(e.source) && nodeIndex.has(e.target))
+    .map((e) => ({ source: nodeIndex.get(e.source)!, target: nodeIndex.get(e.target)! }));
+
+  const simulation = forceSimulation(simNodes)
+    .force("link", forceLink(simLinks).distance(120).strength(0.4))
+    .force("charge", forceManyBody().strength(-300))
+    .force("center", forceCenter(0, 0))
+    .force("collide", forceCollide(50))
+    .stop();
+
+  // Run simulation to convergence
+  const iterations = Math.ceil(Math.log(simulation.alphaMin()) / Math.log(1 - simulation.alphaDecay()));
+  for (let i = 0; i < iterations; i++) simulation.tick();
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const sn of simNodes) {
+    positions.set(sn.id, { x: sn.x ?? 0, y: sn.y ?? 0 });
+  }
+
+  return { positions, connectionCounts };
+}
+
+// ── Convert to React Flow ────────────────────────────────────────────────
+
+function toReactFlowNodes(
+  graphNodes: GraphNode[],
+  positions: Map<string, { x: number; y: number }>,
+  connectionCounts: Map<string, number>,
+): Node<EntityNodeData>[] {
+  return graphNodes.map((n) => {
+    const pos = positions.get(n.id) || { x: 0, y: 0 };
+    return {
+      id: n.id,
+      type: "entity",
+      data: {
+        label: n.name,
+        entityType: n.type || "default",
+        connectionCount: connectionCounts.get(n.id) || 0,
+      },
+      position: pos,
+    };
+  });
 }
 
 function toReactFlowEdges(graphEdges: GraphEdge[]): Edge[] {
@@ -49,29 +98,72 @@ function toReactFlowEdges(graphEdges: GraphEdge[]): Edge[] {
     source: e.source,
     target: e.target,
     label: e.label,
-    type: "default",
-    style: { stroke: "#4a4e70", strokeWidth: 1.5 },
-    labelStyle: { fontSize: 10, fill: "#9fa3c2" },
+    type: "smoothstep",
+    animated: false,
+    style: { strokeWidth: 1.5 },
+    className: "!stroke-border",
+    labelStyle: { fontSize: 10 },
+    labelBgPadding: [6, 3] as [number, number],
+    labelBgBorderRadius: 4,
+    labelBgStyle: { opacity: 0.85 },
+    labelClassName: "!fill-muted-foreground",
   }));
 }
+
+// ── Node types ───────────────────────────────────────────────────────────
+
+const nodeTypes: NodeTypes = {
+  entity: EntityNode,
+};
+
+// ── Component ────────────────────────────────────────────────────────────
 
 interface GraphCanvasProps {
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
   onNodeClick?: (name: string) => void;
+  onNodeDoubleClick?: (name: string) => void;
+  selectedNode?: string | null;
 }
 
-export function GraphCanvas({ graphNodes, graphEdges, onNodeClick }: GraphCanvasProps) {
-  const initialNodes = useMemo(() => toReactFlowNodes(graphNodes), [graphNodes]);
+export function GraphCanvas({
+  graphNodes,
+  graphEdges,
+  onNodeClick,
+  onNodeDoubleClick,
+  selectedNode,
+}: GraphCanvasProps) {
+  const prevDataRef = useRef<{ nodes: GraphNode[]; edges: GraphEdge[] }>({ nodes: [], edges: [] });
+
+  const layout = useMemo(() => computeLayout(graphNodes, graphEdges), [graphNodes, graphEdges]);
+
+  const initialNodes = useMemo(
+    () => toReactFlowNodes(graphNodes, layout.positions, layout.connectionCounts),
+    [graphNodes, layout],
+  );
   const initialEdges = useMemo(() => toReactFlowEdges(graphEdges), [graphEdges]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
-    setNodes(toReactFlowNodes(graphNodes));
+    // Only recalculate when data actually changes
+    if (prevDataRef.current.nodes === graphNodes && prevDataRef.current.edges === graphEdges) return;
+    prevDataRef.current = { nodes: graphNodes, edges: graphEdges };
+
+    setNodes(toReactFlowNodes(graphNodes, layout.positions, layout.connectionCounts));
     setEdges(toReactFlowEdges(graphEdges));
-  }, [graphNodes, graphEdges, setNodes, setEdges]);
+  }, [graphNodes, graphEdges, layout, setNodes, setEdges]);
+
+  // Update selection state
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        selected: n.data.label === selectedNode,
+      })),
+    );
+  }, [selectedNode, setNodes]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -80,22 +172,34 @@ export function GraphCanvas({ graphNodes, graphEdges, onNodeClick }: GraphCanvas
     [onNodeClick],
   );
 
+  const handleNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      onNodeDoubleClick?.(node.data.label as string);
+    },
+    [onNodeDoubleClick],
+  );
+
   return (
-    <div className="w-full h-full bg-surface">
+    <div className="w-full h-full bg-background">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
+        nodeTypes={nodeTypes}
         fitView
         proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{
+          type: "smoothstep",
+        }}
       >
-        <Background color="#232640" gap={24} />
-        <Controls
-          style={{ background: "#171923", borderColor: "#2d3148", borderRadius: "8px" }}
-        />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} className="!bg-background" />
+        <Controls className="!bg-card !border-border !rounded-lg !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted" />
       </ReactFlow>
     </div>
   );
 }
+
+export { TYPE_COLORS };
