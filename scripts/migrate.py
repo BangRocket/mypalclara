@@ -18,31 +18,27 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from clara_core.config import get_settings
 from sqlalchemy import create_engine, pool, text
 
 
 def get_alembic_config() -> Config:
-    """Get Alembic config, respecting DATABASE_URL."""
+    """Get Alembic config, respecting database URL from settings."""
     project_root = Path(__file__).parent.parent
     alembic_cfg = Config(project_root / "alembic.ini")
 
-    # Override with DATABASE_URL if set
-    database_url = os.getenv("DATABASE_URL")
+    # Override with database URL from unified config
+    database_url = get_settings().database.url
     if database_url:
         # Fix postgres:// vs postgresql:// prefix
         if database_url.startswith("postgres://"):
