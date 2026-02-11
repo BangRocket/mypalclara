@@ -35,6 +35,8 @@ class Project(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     owner_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=True)
 
     sessions = relationship("Session", back_populates="project")
 
