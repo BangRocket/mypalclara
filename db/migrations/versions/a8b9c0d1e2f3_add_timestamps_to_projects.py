@@ -21,6 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column("projects", sa.Column("created_at", sa.DateTime(), nullable=True))
     op.add_column("projects", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    # Backfill existing rows so .NET EF Core (non-nullable DateTime) doesn't choke
+    op.execute("UPDATE projects SET created_at = now(), updated_at = now() WHERE created_at IS NULL")
 
 
 def downgrade() -> None:
