@@ -169,8 +169,11 @@ async def search_session_history(args: dict[str, Any], ctx: ToolContext) -> str:
         try:
             since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days_back)
 
-            # Get all session IDs for this user
-            user_sessions = session.query(Session.id).filter(Session.user_id == ctx.user_id).all()
+            # Use all linked user_ids for cross-platform session search
+            user_ids = ctx.all_user_ids or [ctx.user_id]
+
+            # Get all session IDs for this user (across all linked identities)
+            user_sessions = session.query(Session.id).filter(Session.user_id.in_(user_ids)).all()
             session_ids = [s.id for s in user_sessions]
 
             if not session_ids:
@@ -222,16 +225,19 @@ async def get_session_history(args: dict[str, Any], ctx: ToolContext) -> str:
         try:
             since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days_back)
 
+            # Use all linked user_ids for cross-platform session search
+            user_ids = ctx.all_user_ids or [ctx.user_id]
+
             if all_sessions:
-                # Get all session IDs for this user
-                user_sessions = session.query(Session.id).filter(Session.user_id == ctx.user_id).all()
+                # Get all session IDs for this user (across all linked identities)
+                user_sessions = session.query(Session.id).filter(Session.user_id.in_(user_ids)).all()
                 session_ids = [s.id for s in user_sessions]
             else:
-                # Get most recent active session
+                # Get most recent active session (across all linked identities)
                 recent_session = (
                     session.query(Session)
                     .filter(
-                        Session.user_id == ctx.user_id,
+                        Session.user_id.in_(user_ids),
                         Session.archived != "true",
                     )
                     .order_by(Session.last_activity_at.desc())

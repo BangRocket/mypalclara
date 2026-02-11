@@ -462,23 +462,26 @@ class MemoryManager:
         except Exception:
             return None
 
-    def _invalidate_memory_cache(self, user_id: str) -> None:
-        """Invalidate memory cache for a user after memories change.
+    def _invalidate_memory_cache(self, user_ids: str | list[str]) -> None:
+        """Invalidate memory cache for a user (or all linked user_ids) after memories change.
 
         Invalidates search results cache but NOT embeddings (those rarely change).
 
         Args:
-            user_id: User whose cache to invalidate
+            user_ids: Single user_id or list of all linked user_ids to invalidate
         """
         cache = self._get_cache()
         if cache and cache.available:
-            count = cache.invalidate_search_cache(user_id)
-            if count:
-                memory_logger.debug(f"Invalidated {count} cached searches for {user_id}")
+            if isinstance(user_ids, str):
+                user_ids = [user_ids]
+            for uid in user_ids:
+                count = cache.invalidate_search_cache(uid)
+                if count:
+                    memory_logger.debug(f"Invalidated {count} cached searches for {uid}")
 
     def fetch_mem0_context(
         self,
-        user_id: str,
+        user_ids: str | list[str],
         project_id: str,
         user_message: str,
         participants: list[dict] | None = None,
@@ -499,7 +502,7 @@ class MemoryManager:
         4. Combine with key memories first, then relevant (deduplicated)
 
         Args:
-            user_id: The user making the request
+            user_ids: Single user_id or list of all linked user_ids (cross-platform)
             project_id: Project context
             user_message: The message to search for relevant memories
             participants: List of {"id": str, "name": str} for conversation members
@@ -514,6 +517,11 @@ class MemoryManager:
         if ROOK is None:
             return [], [], []
 
+        # Normalize to list
+        if isinstance(user_ids, str):
+            user_ids = [user_ids]
+        primary_user_id = user_ids[0]
+
         # Truncate search query if too long; strip whitespace
         search_query = user_message.strip() if user_message else ""
         if len(search_query) > MAX_SEARCH_QUERY_CHARS:
@@ -524,72 +532,119 @@ class MemoryManager:
         cache = self._get_cache()
 
         # Define fetch functions for parallel execution
+        # When multiple user_ids exist, we fetch for each and merge results.
         def fetch_key_memories():
-            """Fetch key memories (with caching)."""
-            # Try cache first
-            if cache and cache.available:
-                cached = cache.get_key_memories(user_id, self.agent_id)
-                if cached is not None:
-                    logger.debug("Key memories cache hit")
-                    return {"results": cached, "_cached": True}
+            """Fetch key memories across all user_ids (with caching)."""
+            all_results = []
+            seen_ids: set[str] = set()
+            for uid in user_ids:
+                if cache and cache.available:
+                    cached = cache.get_key_memories(uid, self.agent_id)
+                    if cached is not None:
+                        logger.debug(f"Key memories cache hit for {uid}")
+                        for r in cached:
+                            rid = r.get("id", "")
+                            if rid not in seen_ids:
+                                seen_ids.add(rid)
+                                all_results.append(r)
+                        continue
 
-            result = ROOK.get_all(
-                user_id=user_id,
-                agent_id=self.agent_id,
-                filters={"is_key": "true"},
-                limit=MAX_KEY_MEMORIES,
-            )
+                result = ROOK.get_all(
+                    user_id=uid,
+                    agent_id=self.agent_id,
+                    filters={"is_key": "true"},
+                    limit=MAX_KEY_MEMORIES,
+                )
 
-            # Cache the results
-            if cache and cache.available and result.get("results"):
-                cache.set_key_memories(user_id, self.agent_id, result["results"])
+                results = result.get("results", [])
+                if cache and cache.available and results:
+                    cache.set_key_memories(uid, self.agent_id, results)
 
-            return result
+                for r in results:
+                    rid = r.get("id", "")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        all_results.append(r)
+
+            return {"results": all_results[:MAX_KEY_MEMORIES]}
 
         def fetch_user_memories():
-            """Fetch user memories via semantic search (with caching)."""
-            # Try cache first
-            if cache and cache.available:
-                cached = cache.get_search_results(user_id, search_query, "user")
-                if cached is not None:
-                    logger.debug("User search cache hit")
-                    return {"results": cached, "_cached": True}
+            """Fetch user memories via semantic search across all user_ids (with caching)."""
+            all_results = []
+            all_relations = []
+            seen_ids: set[str] = set()
+            for uid in user_ids:
+                if cache and cache.available:
+                    cached = cache.get_search_results(uid, search_query, "user")
+                    if cached is not None:
+                        logger.debug(f"User search cache hit for {uid}")
+                        for r in cached:
+                            rid = r.get("id", "")
+                            if rid not in seen_ids:
+                                seen_ids.add(rid)
+                                all_results.append(r)
+                        continue
 
-            result = ROOK.search(
-                search_query,
-                user_id=user_id,
-                agent_id=self.agent_id,
-            )
+                result = ROOK.search(
+                    search_query,
+                    user_id=uid,
+                    agent_id=self.agent_id,
+                )
 
-            # Cache the results
-            if cache and cache.available and result.get("results"):
-                cache.set_search_results(user_id, search_query, result["results"], "user")
+                results = result.get("results", [])
+                if cache and cache.available and results:
+                    cache.set_search_results(uid, search_query, results, "user")
 
-            return result
+                for r in results:
+                    rid = r.get("id", "")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        all_results.append(r)
+
+                if result.get("relations"):
+                    all_relations.extend(result["relations"])
+
+            return {"results": all_results, "relations": all_relations}
 
         def fetch_project_memories():
-            """Fetch project memories via semantic search (with caching)."""
+            """Fetch project memories via semantic search across all user_ids (with caching)."""
             filters = {"project_id": project_id}
+            all_results = []
+            all_relations = []
+            seen_ids: set[str] = set()
+            for uid in user_ids:
+                if cache and cache.available:
+                    cached = cache.get_search_results(uid, search_query, "project", filters)
+                    if cached is not None:
+                        logger.debug(f"Project search cache hit for {uid}")
+                        for r in cached:
+                            rid = r.get("id", "")
+                            if rid not in seen_ids:
+                                seen_ids.add(rid)
+                                all_results.append(r)
+                        continue
 
-            # Try cache first
-            if cache and cache.available:
-                cached = cache.get_search_results(user_id, search_query, "project", filters)
-                if cached is not None:
-                    logger.debug("Project search cache hit")
-                    return {"results": cached, "_cached": True}
+                result = ROOK.search(
+                    search_query,
+                    user_id=uid,
+                    agent_id=self.agent_id,
+                    filters=filters,
+                )
 
-            result = ROOK.search(
-                search_query,
-                user_id=user_id,
-                agent_id=self.agent_id,
-                filters=filters,
-            )
+                results = result.get("results", [])
+                if cache and cache.available and results:
+                    cache.set_search_results(uid, search_query, results, "project", filters)
 
-            # Cache the results
-            if cache and cache.available and result.get("results"):
-                cache.set_search_results(user_id, search_query, result["results"], "project", filters)
+                for r in results:
+                    rid = r.get("id", "")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        all_results.append(r)
 
-            return result
+                if result.get("relations"):
+                    all_relations.extend(result["relations"])
+
+            return {"results": all_results, "relations": all_relations}
 
         # Execute parallel fetches
         # Skip semantic search when query is empty (e.g., ORS context enrichment)
@@ -640,10 +695,10 @@ class MemoryManager:
         all_proj_results = proj_res.get("results", [])
 
         # Re-rank results using batched FSRS retrievability weighting
-        user_results = self._rank_results_with_fsrs_batch(all_user_results, user_id)
-        proj_results = self._rank_results_with_fsrs_batch(all_proj_results, user_id)
+        user_results = self._rank_results_with_fsrs_batch(all_user_results, user_ids)
+        proj_results = self._rank_results_with_fsrs_batch(all_proj_results, user_ids)
 
-        # Track memory IDs for later promotion
+        # Track memory IDs for later promotion (keyed by primary user_id)
         retrieved_ids: list[str] = []
         for r in user_results:
             if r.get("id"):
@@ -651,7 +706,7 @@ class MemoryManager:
         for r in proj_results:
             if r.get("id") and r["id"] not in retrieved_ids:
                 retrieved_ids.append(r["id"])
-        self._last_retrieved_memory_ids[user_id] = retrieved_ids
+        self._last_retrieved_memory_ids[primary_user_id] = retrieved_ids
 
         # Build user memories: key first, then relevant (deduplicated)
         user_mems = list(key_mems)
@@ -677,13 +732,13 @@ class MemoryManager:
                 for p in participants:
                     p_id = p.get("id")
                     p_name = p.get("name", p_id)
-                    if not p_id or p_id == user_id:
+                    if not p_id or p_id == primary_user_id:
                         continue
 
                     def fetch_participant(name=p_name, query=search_query):
                         return ROOK.search(
                             f"{name} {query[:500]}",
-                            user_id=user_id,
+                            user_id=primary_user_id,
                             agent_id=self.agent_id,
                         )
 
@@ -693,7 +748,7 @@ class MemoryManager:
                     p_name = participant_futures[future]
                     try:
                         p_search = future.result()
-                        p_results = self._rank_results_with_fsrs_batch(p_search.get("results", []), user_id)
+                        p_results = self._rank_results_with_fsrs_batch(p_search.get("results", []), user_ids)
                         for r in p_results:
                             mem = r["memory"]
                             if mem not in seen_raw_texts:
@@ -706,7 +761,7 @@ class MemoryManager:
                         logger.warning(f"Error searching participant {p_name}: {e}")
 
         # Update tracked IDs after participant search
-        self._last_retrieved_memory_ids[user_id] = retrieved_ids
+        self._last_retrieved_memory_ids[primary_user_id] = retrieved_ids
 
         # Extract contact-related memories with source info
         for r in user_results:
@@ -735,7 +790,7 @@ class MemoryManager:
                 f"{len(graph_relations)} graph relations"
             )
             self._send_memory_embed(
-                user_id=user_id,
+                user_id=primary_user_id,
                 key_count=len(key_mems),
                 user_count=len(user_mems) - len(key_mems),
                 proj_count=len(proj_mems),
@@ -1057,7 +1112,7 @@ class MemoryManager:
 
     def fetch_emotional_context(
         self,
-        user_id: str,
+        user_ids: str | list[str],
         limit: int = 3,
         max_age_days: int = 30,
     ) -> list[dict]:
@@ -1068,7 +1123,7 @@ class MemoryManager:
         calibrate tone at session start.
 
         Args:
-            user_id: The user to fetch emotional context for
+            user_ids: Single user_id or list of all linked user_ids (cross-platform)
             limit: Maximum number of emotional context memories to return
             max_age_days: Only return context from the last N days
 
@@ -1088,18 +1143,30 @@ class MemoryManager:
         if ROOK is None:
             return []
 
+        # Normalize to list
+        if isinstance(user_ids, str):
+            user_ids = [user_ids]
+
         try:
-            # Search for emotional_context memories
-            results = ROOK.get_all(
-                user_id=user_id,
-                agent_id=self.agent_id,
-                limit=limit * 2,  # Fetch extra to filter by age
-            )
+            # Search for emotional_context memories across all user_ids
+            all_results: list[dict] = []
+            seen_ids: set[str] = set()
+            for uid in user_ids:
+                results = ROOK.get_all(
+                    user_id=uid,
+                    agent_id=self.agent_id,
+                    limit=limit * 2,  # Fetch extra to filter by age
+                )
+                for r in results.get("results", []):
+                    rid = r.get("id", "")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        all_results.append(r)
 
             emotional_contexts = []
             cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
-            for r in results.get("results", []):
+            for r in all_results:
                 metadata = r.get("metadata", {})
 
                 # Only include emotional_context type memories
@@ -1346,7 +1413,7 @@ class MemoryManager:
 
     def fetch_topic_recurrence(
         self,
-        user_id: str,
+        user_ids: str | list[str],
         lookback_days: int = 14,
         min_mentions: int = 2,
     ) -> list[dict]:
@@ -1357,7 +1424,7 @@ class MemoryManager:
         the MemoryManager's agent_id.
 
         Args:
-            user_id: The user to fetch topic recurrence for
+            user_ids: Single user_id or list of all linked user_ids (cross-platform)
             lookback_days: How many days to look back
             min_mentions: Minimum mentions to consider a topic recurring
 
@@ -1375,12 +1442,27 @@ class MemoryManager:
         """
         from clara_core.topic_recurrence import fetch_topic_recurrence
 
-        return fetch_topic_recurrence(
-            user_id=user_id,
-            lookback_days=lookback_days,
-            min_mentions=min_mentions,
-            agent_id=self.agent_id,
-        )
+        # Normalize to list
+        if isinstance(user_ids, str):
+            user_ids = [user_ids]
+
+        # Fetch across all user_ids, merge by topic name
+        all_topics: list[dict] = []
+        seen_topics: set[str] = set()
+        for uid in user_ids:
+            topics = fetch_topic_recurrence(
+                user_id=uid,
+                lookback_days=lookback_days,
+                min_mentions=min_mentions,
+                agent_id=self.agent_id,
+            )
+            for t in topics:
+                topic_name = t.get("topic", "")
+                if topic_name not in seen_topics:
+                    seen_topics.add(topic_name)
+                    all_topics.append(t)
+
+        return all_topics
 
     def _format_topic_recurrence(self, recurring_topics: list[dict]) -> str:
         """
@@ -1541,7 +1623,7 @@ class MemoryManager:
     def promote_memory(
         self,
         memory_id: str,
-        user_id: str,
+        user_id: str | list[str],
         grade: int = 3,  # Grade.GOOD
         signal_type: str = "used_in_response",
     ) -> None:
@@ -1552,7 +1634,7 @@ class MemoryManager:
 
         Args:
             memory_id: The mem0 memory ID
-            user_id: User who owns the memory
+            user_id: User who owns the memory, or list of linked user_ids
             grade: FSRS grade (1=Again, 2=Hard, 3=Good, 4=Easy)
             signal_type: What triggered this promotion
         """
@@ -1567,14 +1649,23 @@ class MemoryManager:
         from db import SessionLocal
         from db.models import MemoryAccessLog, MemoryDynamics
 
+        # Normalize: look up dynamics across all linked user_ids,
+        # but create new records under the primary (first) user_id.
+        if isinstance(user_id, list):
+            user_ids = user_id
+            primary_user_id = user_ids[0]
+        else:
+            user_ids = [user_id]
+            primary_user_id = user_id
+
         db = SessionLocal()
         try:
-            # Get or create dynamics
+            # Get dynamics — search across all linked user_ids
             dynamics = (
                 db.query(MemoryDynamics)
-                .filter_by(
-                    memory_id=memory_id,
-                    user_id=user_id,
+                .filter(
+                    MemoryDynamics.memory_id == memory_id,
+                    MemoryDynamics.user_id.in_(user_ids),
                 )
                 .first()
             )
@@ -1582,7 +1673,7 @@ class MemoryManager:
             if not dynamics:
                 dynamics = MemoryDynamics(
                     memory_id=memory_id,
-                    user_id=user_id,
+                    user_id=primary_user_id,
                 )
                 db.add(dynamics)
                 db.commit()
@@ -1624,7 +1715,7 @@ class MemoryManager:
             # Log the access
             access_log = MemoryAccessLog(
                 memory_id=memory_id,
-                user_id=user_id,
+                user_id=dynamics.user_id,
                 grade=grade,
                 signal_type=signal_type,
                 retrievability_at_access=current_r,
@@ -1739,18 +1830,25 @@ class MemoryManager:
         finally:
             db.close()
 
-    def get_last_retrieved_memory_ids(self, user_id: str) -> list[str]:
+    def get_last_retrieved_memory_ids(self, user_ids: str | list[str]) -> list[str]:
         """Get memory IDs from the last retrieval for a user.
 
         Use this to promote memories that were used in a response.
 
         Args:
-            user_id: User ID to get memory IDs for
+            user_ids: Single user_id or list of linked user_ids
 
         Returns:
             List of memory IDs from the last fetch_mem0_context call
         """
-        return self._last_retrieved_memory_ids.get(user_id, [])
+        if isinstance(user_ids, str):
+            return self._last_retrieved_memory_ids.get(user_ids, [])
+        # Check all user_ids, return first non-empty match
+        for uid in user_ids:
+            ids = self._last_retrieved_memory_ids.get(uid)
+            if ids:
+                return ids
+        return []
 
     def _rank_results_with_fsrs(
         self,
@@ -1797,7 +1895,7 @@ class MemoryManager:
     def _rank_results_with_fsrs_batch(
         self,
         results: list[dict],
-        user_id: str,
+        user_ids: str | list[str],
     ) -> list[dict]:
         """Re-rank search results using batched FSRS lookups.
 
@@ -1806,7 +1904,7 @@ class MemoryManager:
 
         Args:
             results: List of search results from mem0
-            user_id: User ID for FSRS lookup
+            user_ids: Single user_id or list of linked user_ids for FSRS lookup
 
         Returns:
             Results re-ranked by composite score
@@ -1820,6 +1918,10 @@ class MemoryManager:
         from db import SessionLocal
         from db.models import MemoryDynamics
 
+        # Normalize to list
+        if isinstance(user_ids, str):
+            user_ids = [user_ids]
+
         # Collect all memory IDs that have them
         memory_ids = [r.get("id") for r in results if r.get("id")]
 
@@ -1827,14 +1929,14 @@ class MemoryManager:
             # No memory IDs, just return results sorted by semantic score
             return sorted(results, key=lambda x: x.get("score", 0.5), reverse=True)
 
-        # Single batch query for all memory dynamics
+        # Single batch query for all memory dynamics across all linked user_ids
         db = SessionLocal()
         try:
             dynamics_records = (
                 db.query(MemoryDynamics)
                 .filter(
                     MemoryDynamics.memory_id.in_(memory_ids),
-                    MemoryDynamics.user_id == user_id,
+                    MemoryDynamics.user_id.in_(user_ids),
                 )
                 .all()
             )
@@ -2203,14 +2305,14 @@ class MemoryManager:
 
     def check_intentions(
         self,
-        user_id: str,
+        user_ids: str | list[str],
         message: str,
         context: dict | None = None,
     ) -> list[dict]:
         """Check if any intentions should fire for the given context.
 
         Args:
-            user_id: User to check intentions for
+            user_ids: Single user_id or list of linked user_ids (cross-platform)
             message: Current user message
             context: Additional context
 
@@ -2220,7 +2322,7 @@ class MemoryManager:
         from clara_core.intentions import CheckStrategy, check_intentions
 
         return check_intentions(
-            user_id=user_id,
+            user_ids=user_ids,
             message=message,
             context=context,
             strategy=CheckStrategy.TIERED,

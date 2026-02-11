@@ -109,6 +109,7 @@ class LLMOrchestrator:
         websocket: WebSocketServerProtocol | None = None,
         images: list[AttachmentInfo] | None = None,
         auto_continue_count: int = 0,
+        all_user_ids: list[str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Generate response with tool calling support.
 
@@ -127,6 +128,7 @@ class LLMOrchestrator:
             websocket: WebSocket for sending updates
             images: Optional list of image attachments for vision
             auto_continue_count: Current auto-continue iteration (internal use)
+            all_user_ids: All linked user_ids for cross-platform identity
 
         Yields:
             Event dicts with type and data
@@ -229,6 +231,7 @@ class LLMOrchestrator:
                         websocket=websocket,
                         images=None,  # Don't re-add images
                         auto_continue_count=auto_continue_count + 1,
+                        all_user_ids=all_user_ids,
                     ):
                         if event["type"] == "chunk":
                             yield event
@@ -276,6 +279,7 @@ class LLMOrchestrator:
                     arguments=tc.arguments,
                     user_id=user_id,
                     files_to_send=files_to_send,
+                    all_user_ids=all_user_ids,
                 )
 
                 # Truncate if needed

@@ -54,7 +54,7 @@ class CheckStrategy(str, Enum):
 
 
 def check_intentions(
-    user_id: str,
+    user_ids: str | list[str],
     message: str,
     context: dict[str, Any] | None = None,
     strategy: CheckStrategy = CheckStrategy.TIERED,
@@ -64,7 +64,7 @@ def check_intentions(
     """Check if any intentions should fire for the given context.
 
     Args:
-        user_id: The user to check intentions for
+        user_ids: Single user_id or list of linked user_ids (cross-platform)
         message: Current user message
         context: Additional context (channel_name, time_of_day, is_dm, etc.)
         strategy: Checking strategy to use
@@ -81,16 +81,20 @@ def check_intentions(
     from db import SessionLocal
     from db.models import Intention
 
+    # Normalize to list
+    if isinstance(user_ids, str):
+        user_ids = [user_ids]
+
     close_db = False
     if db is None:
         db = SessionLocal()
         close_db = True
 
     try:
-        # Load active (unfired, unexpired) intentions for user
+        # Load active (unfired, unexpired) intentions across all linked user_ids
         now = datetime.now(UTC).replace(tzinfo=None)
         query = db.query(Intention).filter(
-            Intention.user_id == user_id,
+            Intention.user_id.in_(user_ids),
             Intention.agent_id == agent_id,
             Intention.fired == False,  # noqa: E712
         )
@@ -158,7 +162,7 @@ def check_intentions(
         fired_intentions.sort(key=lambda x: x["priority"], reverse=True)
 
         if fired_intentions:
-            logger.info(f"Fired {len(fired_intentions)} intentions for user {user_id}")
+            logger.info(f"Fired {len(fired_intentions)} intentions for user {user_ids[0]}")
 
         return fired_intentions
 

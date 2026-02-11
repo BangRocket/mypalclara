@@ -455,6 +455,7 @@ class ToolExecutor:
         channel_id: str | None = None,
         files_to_send: list[str] | None = None,
         platform_context: dict[str, Any] | None = None,
+        all_user_ids: list[str] | None = None,
     ) -> str:
         """Execute a tool and return the result.
 
@@ -465,6 +466,7 @@ class ToolExecutor:
             channel_id: Optional channel ID
             files_to_send: Optional list to append file paths for attachment
             platform_context: Optional platform-specific context
+            all_user_ids: All linked user_ids for cross-platform identity
 
         Returns:
             Tool output as string
@@ -483,6 +485,7 @@ class ToolExecutor:
                 channel_id=channel_id,
                 files_to_send=files_to_send if files_to_send is not None else [],
                 platform_context=platform_context or {},
+                all_user_ids=all_user_ids or [user_id],
             )
             duration = time.time() - start_time
             logger.debug(f"{tool_name} completed in {duration:.2f}s")
@@ -499,6 +502,7 @@ class ToolExecutor:
         channel_id: str | None,
         files_to_send: list[str],
         platform_context: dict[str, Any],
+        all_user_ids: list[str] | None = None,
     ) -> str:
         """Route tool call to appropriate handler.
 
@@ -509,6 +513,7 @@ class ToolExecutor:
             channel_id: Channel ID
             files_to_send: List for file attachments
             platform_context: Platform context
+            all_user_ids: All linked user_ids for cross-platform identity
 
         Returns:
             Tool output
@@ -616,6 +621,7 @@ class ToolExecutor:
 
             ctx = ToolContext(
                 user_id=user_id,
+                all_user_ids=all_user_ids or [user_id],
                 channel_id=channel_id,
                 platform="gateway",
                 extra={

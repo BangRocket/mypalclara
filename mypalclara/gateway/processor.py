@@ -374,6 +374,7 @@ class MessageProcessor:
                 tier=tier,
                 websocket=websocket,
                 images=images if images else None,
+                all_user_ids=context.get("all_user_ids"),
             ):
                 event_type = event.get("type")
 
@@ -453,40 +454,6 @@ class MessageProcessor:
             logger.exception(f"Error processing {request.id}: {e}")
             raise
 
-    def _resolve_canonical_user_ids(self, prefixed_user_id: str) -> list[str]:
-        """Resolve a prefixed user_id to all linked user_ids via CanonicalUser.
-
-        If the user has linked multiple platforms (e.g., discord-123 and teams-456),
-        this returns ALL prefixed IDs so memory queries span platforms.
-
-        Args:
-            prefixed_user_id: The prefixed user ID (e.g., 'discord-123')
-
-        Returns:
-            List of all prefixed user_ids for this canonical user,
-            or [prefixed_user_id] if no canonical user found.
-        """
-        try:
-            from db.models import PlatformLink
-
-            db = SessionLocal()
-            try:
-                link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == prefixed_user_id).first()
-                if not link:
-                    return [prefixed_user_id]
-
-                all_links = (
-                    db.query(PlatformLink.prefixed_user_id)
-                    .filter(PlatformLink.canonical_user_id == link.canonical_user_id)
-                    .all()
-                )
-                return [row[0] for row in all_links]
-            finally:
-                db.close()
-        except Exception as e:
-            logger.debug(f"Canonical user resolution failed for {prefixed_user_id}: {e}")
-            return [prefixed_user_id]
-
     async def _build_context(self, request: MessageRequest) -> dict[str, Any]:
         """Build context for the LLM including memories and prompt.
 
@@ -496,12 +463,27 @@ class MessageProcessor:
         Returns:
             Context dict with messages, user_id, project_id, etc.
         """
+        from db.user_identity import ensure_platform_link, resolve_all_user_ids
+
         loop = asyncio.get_event_loop()
         user_id = request.user.id
         channel_id = request.channel.id
         is_dm = request.channel.type == "dm"
 
-        # Get or create database session for persistence
+        # ── Step 1: Resolve canonical user + auto-create PlatformLink ──
+        # Must happen FIRST so all subsequent READ queries span platforms.
+        all_user_ids = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: resolve_all_user_ids(user_id),
+        )
+        # Auto-create CanonicalUser + PlatformLink if none exists yet
+        if len(all_user_ids) == 1 and all_user_ids[0] == user_id:
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: ensure_platform_link(user_id, request.user.display_name),
+            )
+
+        # ── Step 2: Session (WRITE — uses single user_id) ──
         db_session = await loop.run_in_executor(
             BLOCKING_EXECUTOR,
             lambda: self._get_or_create_db_session(user_id, channel_id, is_dm),
@@ -536,11 +518,13 @@ class MessageProcessor:
         # Extract participants from reply chain
         participants = self._extract_participants(request)
 
-        # Fetch memories from mem0
+        # ── Step 3: READ operations — pass all_user_ids ──
+
+        # Fetch memories from mem0 (across all linked identities)
         user_mems, proj_mems, graph_relations = await loop.run_in_executor(
             BLOCKING_EXECUTOR,
             lambda: self._memory_manager.fetch_mem0_context(
-                user_id,
+                all_user_ids,
                 None,  # No project for now
                 user_content,
                 participants=participants,
@@ -548,27 +532,27 @@ class MessageProcessor:
             ),
         )
 
-        # Fetch emotional context (last 3 sessions)
+        # Fetch emotional context (last 3 sessions, across all linked identities)
         emotional_context = None
         try:
             emotional_context = await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.fetch_emotional_context(user_id, limit=3),
+                lambda: self._memory_manager.fetch_emotional_context(all_user_ids, limit=3),
             )
         except Exception as e:
             logger.debug(f"Could not fetch emotional context: {e}")
 
-        # Fetch recurring topics (2+ mentions in 14 days)
+        # Fetch recurring topics (2+ mentions in 14 days, across all linked identities)
         recurring_topics = None
         try:
             recurring_topics = await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.fetch_recurring_topics(user_id, min_mentions=2, lookback_days=14),
+                lambda: self._memory_manager.fetch_topic_recurrence(all_user_ids, min_mentions=2, lookback_days=14),
             )
         except Exception as e:
             logger.debug(f"Could not fetch recurring topics: {e}")
 
-        # Check intentions for this message
+        # Check intentions for this message (across all linked identities)
         fired_intentions = []
         try:
             intention_context = {
@@ -577,7 +561,7 @@ class MessageProcessor:
             }
             fired_intentions = await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.check_intentions(user_id, user_content, intention_context),
+                lambda: self._memory_manager.check_intentions(all_user_ids, user_content, intention_context),
             )
             if fired_intentions:
                 logger.info(f"Fired {len(fired_intentions)} intentions for {user_id}")
@@ -629,12 +613,6 @@ class MessageProcessor:
 
             # Insert before the current message
             messages = messages[:-1] + chain_messages + [messages[-1]]
-
-        # Resolve canonical user for cross-platform queries
-        all_user_ids = await loop.run_in_executor(
-            BLOCKING_EXECUTOR,
-            lambda: self._resolve_canonical_user_ids(user_id),
-        )
 
         return {
             "messages": messages,
@@ -968,15 +946,15 @@ class MessageProcessor:
         get stronger (higher retrieval_strength), unused ones naturally
         decay over time.
         """
-        user_id = context.get("user_id")
-        if not user_id or not self._memory_manager:
+        all_user_ids = context.get("all_user_ids") or [context.get("user_id")]
+        if not all_user_ids or not self._memory_manager:
             return
 
         try:
             loop = asyncio.get_event_loop()
             memory_ids = await loop.run_in_executor(
                 BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.get_last_retrieved_memory_ids(user_id),
+                lambda: self._memory_manager.get_last_retrieved_memory_ids(all_user_ids),
             )
             if not memory_ids:
                 return
@@ -986,13 +964,13 @@ class MessageProcessor:
                     BLOCKING_EXECUTOR,
                     lambda mid=memory_id: self._memory_manager.promote_memory(
                         memory_id=mid,
-                        user_id=user_id,
+                        user_id=all_user_ids,
                         grade=3,  # Grade.GOOD
                         signal_type="used_in_response",
                     ),
                 )
 
-            logger.debug(f"Promoted {len(memory_ids)} memories for user {user_id}")
+            logger.debug(f"Promoted {len(memory_ids)} memories for user {all_user_ids[0]}")
         except Exception as e:
             logger.warning(f"Failed to promote memories: {e}")
 

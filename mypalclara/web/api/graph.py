@@ -7,7 +7,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, PlatformLink
+from db.models import CanonicalUser
+from db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.graph")
@@ -39,8 +40,7 @@ def _get_graph_store():
 
 def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
     """Get all prefixed user IDs for a canonical user."""
-    links = db.query(PlatformLink).filter(PlatformLink.canonical_user_id == user.id).all()
-    return [link.prefixed_user_id for link in links]
+    return resolve_all_user_ids_for_canonical(user.id, db)
 
 
 @router.get("/entities")

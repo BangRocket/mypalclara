@@ -16,8 +16,8 @@ from db.models import (
     MemoryDynamics,
     MemoryHistory,
     MemorySupersession,
-    PlatformLink,
 )
+from db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.memories")
@@ -54,8 +54,7 @@ class MemorySearchRequest(BaseModel):
 
 def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
     """Get all prefixed user IDs for a canonical user (cross-platform)."""
-    links = db.query(PlatformLink).filter(PlatformLink.canonical_user_id == user.id).all()
-    return [link.prefixed_user_id for link in links]
+    return resolve_all_user_ids_for_canonical(user.id, db)
 
 
 def _get_memory_client():
@@ -521,15 +520,17 @@ async def export_memories(
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        export_data.append({
-            "id": mid,
-            "content": m.get("memory", ""),
-            "metadata": m.get("metadata", {}),
-            "category": dyn.category if dyn else None,
-            "is_key": dyn.is_key if dyn else False,
-            "tags": tags,
-            "created_at": m.get("created_at"),
-        })
+        export_data.append(
+            {
+                "id": mid,
+                "content": m.get("memory", ""),
+                "metadata": m.get("metadata", {}),
+                "category": dyn.category if dyn else None,
+                "is_key": dyn.is_key if dyn else False,
+                "tags": tags,
+                "created_at": m.get("created_at"),
+            }
+        )
 
     payload = json.dumps({"memories": export_data, "exported_at": str(import_datetime_utc())}, indent=2)
     return StreamingResponse(

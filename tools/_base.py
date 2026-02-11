@@ -20,12 +20,14 @@ class ToolContext:
 
     Attributes:
         user_id: Unique identifier for the user making the request
+        all_user_ids: All linked user_ids for cross-platform identity resolution
         channel_id: Optional channel/conversation identifier
         platform: Platform the request originated from ("discord", "api", "mcp")
         extra: Platform-specific data (e.g., Discord channel object)
     """
 
     user_id: str = "default"
+    all_user_ids: list[str] = field(default_factory=list)
     channel_id: str | None = None
     platform: str = "api"
     extra: dict[str, Any] = field(default_factory=dict)

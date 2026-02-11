@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, Intention, PlatformLink, utcnow
+from db.models import CanonicalUser, Intention, utcnow
+from db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()
@@ -32,8 +33,7 @@ class IntentionUpdate(BaseModel):
 
 
 def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
-    links = db.query(PlatformLink).filter(PlatformLink.canonical_user_id == user.id).all()
-    return [link.prefixed_user_id for link in links]
+    return resolve_all_user_ids_for_canonical(user.id, db)
 
 
 @router.get("")
