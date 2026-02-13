@@ -12,7 +12,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Literal, Optional
 
-from clara_core.memory.embeddings.base import EmbeddingBase
+from vendor.mem0.embeddings.base import EmbeddingBase
 
 if TYPE_CHECKING:
     from clara_core.memory.cache.redis_cache import RedisCache
@@ -98,11 +98,7 @@ class CachedEmbedding(EmbeddingBase):
         return embedding
 
     def get_stats(self) -> dict:
-        """Get cache statistics.
-
-        Returns:
-            Dict with hits, misses, and hit rate
-        """
+        """Get cache statistics."""
         total = self._hits + self._misses
         hit_rate = self._hits / total if total > 0 else 0.0
         return {
@@ -112,21 +108,3 @@ class CachedEmbedding(EmbeddingBase):
             "enabled": self._enabled,
             "cache_available": self.cache.available if self.cache else False,
         }
-
-
-def wrap_with_cache(
-    embedder: EmbeddingBase,
-    cache: Optional["RedisCache"] = None,
-) -> CachedEmbedding:
-    """Wrap an embedder with caching.
-
-    Convenience function to wrap any embedder with cache support.
-
-    Args:
-        embedder: The embedder to wrap
-        cache: Optional cache instance
-
-    Returns:
-        CachedEmbedding wrapper
-    """
-    return CachedEmbedding(embedder, cache)

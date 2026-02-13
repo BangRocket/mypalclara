@@ -78,17 +78,18 @@ def time_operation(func, *args, **kwargs) -> tuple[float, any]:
 
 def benchmark_embedding(iterations: int, text: str = "Hello, how are you today?") -> BenchmarkResult:
     """Benchmark embedding generation."""
-    from clara_core.memory.embeddings.factory import EmbedderFactory
+    from vendor.mem0.utils.factory import EmbedderFactory
 
     result = BenchmarkResult(operation="embedding")
 
     # Create embedder (with or without cache based on env)
     embedder = EmbedderFactory.create(
         "openai",
-        config={
+        {
             "model": "text-embedding-3-small",
             "api_key": os.getenv("OPENAI_API_KEY"),
         },
+        None,
     )
 
     for i in range(iterations):
@@ -102,16 +103,17 @@ def benchmark_embedding(iterations: int, text: str = "Hello, how are you today?"
 
 def benchmark_embedding_cache_hit(iterations: int) -> BenchmarkResult:
     """Benchmark embedding with guaranteed cache hits."""
-    from clara_core.memory.embeddings.factory import EmbedderFactory
+    from vendor.mem0.utils.factory import EmbedderFactory
 
     result = BenchmarkResult(operation="embedding_cache_hit")
 
     embedder = EmbedderFactory.create(
         "openai",
-        config={
+        {
             "model": "text-embedding-3-small",
             "api_key": os.getenv("OPENAI_API_KEY"),
         },
+        None,
     )
 
     # Same text every time to guarantee cache hits after first

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 from typing import Any
 
@@ -79,11 +80,8 @@ def _build_rook_llm() -> tuple[Any, Any]:
 
     provider_config = PROVIDER_DEFAULTS[ROOK_PROVIDER]
 
-    api_key = ROOK_API_KEY or provider_config["api_key_getter"]()
-    default_base_url = provider_config["base_url"]
-    if callable(default_base_url):
-        default_base_url = default_base_url()
-    base_url = ROOK_BASE_URL or default_base_url
+    api_key = ROOK_API_KEY or os.getenv(provider_config["api_key_env"], "")
+    base_url = ROOK_BASE_URL or provider_config["base_url"]
 
     config = LLMConfig(
         provider=ROOK_PROVIDER,
