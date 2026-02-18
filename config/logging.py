@@ -35,7 +35,7 @@ COLORS = {
 # Module-specific colors for tags
 TAG_COLORS = {
     "api": "\033[94m",  # Blue
-    "mem0": "\033[95m",  # Magenta
+    "rook": "\033[95m",  # Magenta
     "thread": "\033[96m",  # Cyan
     "discord": "\033[93m",  # Yellow
     "db": "\033[92m",  # Green
@@ -205,7 +205,7 @@ class DiscordLogHandler(logging.Handler):
 
     # Tag colors for embeds (Discord decimal color values)
     TAG_EMBED_COLORS = {
-        "mem0": 0xAA55FF,  # Purple
+        "rook": 0xAA55FF,  # Purple
         "thread": 0x00FFFF,  # Cyan
         "discord": 0xFFFF00,  # Yellow
         "db": 0x00FF00,  # Green
@@ -359,7 +359,7 @@ class DiscordLogHandler(logging.Handler):
             color: Embed color (decimal int). If None, uses tag color or default.
             fields: List of {"name": str, "value": str, "inline": bool} dicts
             footer: Footer text
-            tag: Tag name for auto-color (e.g., "mem0", "emotional")
+            tag: Tag name for auto-color (e.g., "rook", "emotional")
         """
         if not self._bot or not self._channel_id:
             return
