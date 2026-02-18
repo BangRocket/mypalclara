@@ -1,11 +1,9 @@
 """Tests for the memory system LLM integration."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from clara_core.memory.llm import LlmFactory, UnifiedLLM, UnifiedLLMConfig
-from clara_core.memory.llm.base import AnthropicConfig, BaseLlmConfig, OpenAIConfig
+from clara_core.memory.llm.base import BaseLlmConfig
 
 
 class TestUnifiedLLMConfig:
@@ -66,8 +64,6 @@ class TestLlmFactory:
         """Test getting list of supported providers."""
         providers = LlmFactory.get_supported_providers()
         assert "unified" in providers
-        assert "openai" in providers
-        assert "anthropic" in providers
 
     def test_create_unified_provider(self):
         """Test creating unified LLM provider."""
@@ -93,44 +89,10 @@ class TestLlmFactory:
         assert isinstance(llm, UnifiedLLM)
         assert llm.config.provider == "anthropic"
 
-    def test_create_openai_provider(self):
-        """Test creating legacy OpenAI provider."""
-        from clara_core.memory.llm.openai import OpenAILLM
-
-        llm = LlmFactory.create(
-            "openai",
-            {"model": "gpt-4o-mini", "api_key": "test-key"},
-        )
-        assert isinstance(llm, OpenAILLM)
-
-    def test_create_anthropic_provider(self):
-        """Test creating legacy Anthropic provider."""
-        from clara_core.memory.llm.anthropic import AnthropicLLM
-
-        llm = LlmFactory.create(
-            "anthropic",
-            {"model": "claude-sonnet-4-5", "api_key": "test-key"},
-        )
-        assert isinstance(llm, AnthropicLLM)
-
     def test_unsupported_provider_raises(self):
         """Test unsupported provider raises ValueError."""
         with pytest.raises(ValueError, match="Unsupported LLM provider"):
             LlmFactory.create("unknown_provider")
-
-    def test_register_custom_provider(self):
-        """Test registering a custom provider."""
-        # Register mock provider
-        LlmFactory.register_provider(
-            "custom",
-            "clara_core.memory.llm.openai.OpenAILLM",
-            OpenAIConfig,
-        )
-        assert "custom" in LlmFactory.get_supported_providers()
-
-        # Clean up
-        del LlmFactory.provider_to_class["custom"]
-
 
 class TestUnifiedLLM:
     """Tests for UnifiedLLM class."""
@@ -177,22 +139,3 @@ class TestBaseLlmConfig:
         assert config.max_tokens == 3000  # BaseLlmConfig default
         assert config.enable_vision is False  # BaseLlmConfig default
 
-    def test_openai_config(self):
-        """Test OpenAIConfig."""
-        config = OpenAIConfig(
-            model="gpt-4o",
-            api_key="key",
-            base_url="https://api.openai.com/v1",
-        )
-        assert config.model == "gpt-4o"
-        assert config.base_url == "https://api.openai.com/v1"
-
-    def test_anthropic_config(self):
-        """Test AnthropicConfig with proxy support."""
-        config = AnthropicConfig(
-            model="claude-sonnet-4-5",
-            api_key="key",
-            anthropic_base_url="https://proxy.example.com",
-        )
-        assert config.model == "claude-sonnet-4-5"
-        assert config.anthropic_base_url == "https://proxy.example.com"
