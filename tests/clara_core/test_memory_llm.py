@@ -99,4 +99,3 @@ class TestBaseLlmConfig:
         assert config.temperature == 0.0
         assert config.max_tokens == 3000  # BaseLlmConfig default
         assert config.enable_vision is False  # BaseLlmConfig default
-
