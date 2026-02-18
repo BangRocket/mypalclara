@@ -1,8 +1,6 @@
 """Tests for the memory system LLM integration."""
 
-import pytest
-
-from clara_core.memory.llm import LlmFactory, UnifiedLLM, UnifiedLLMConfig
+from clara_core.memory.llm import UnifiedLLM, UnifiedLLMConfig
 from clara_core.memory.llm.base import BaseLlmConfig
 
 
@@ -56,43 +54,6 @@ class TestUnifiedLLMConfig:
         assert config.temperature == 0.0
         assert config.max_tokens == 8000
 
-
-class TestLlmFactory:
-    """Tests for LlmFactory."""
-
-    def test_supported_providers(self):
-        """Test getting list of supported providers."""
-        providers = LlmFactory.get_supported_providers()
-        assert "unified" in providers
-
-    def test_create_unified_provider(self):
-        """Test creating unified LLM provider."""
-        llm = LlmFactory.create(
-            "unified",
-            {
-                "provider": "openrouter",
-                "model": "openai/gpt-4o-mini",
-                "api_key": "test-key",
-            },
-        )
-        assert isinstance(llm, UnifiedLLM)
-        assert llm.config.provider == "openrouter"
-        assert llm.config.model == "openai/gpt-4o-mini"
-
-    def test_create_with_config_object(self):
-        """Test creating with config object."""
-        config = UnifiedLLMConfig(
-            provider="anthropic",
-            model="claude-sonnet-4-5",
-        )
-        llm = LlmFactory.create("unified", config)
-        assert isinstance(llm, UnifiedLLM)
-        assert llm.config.provider == "anthropic"
-
-    def test_unsupported_provider_raises(self):
-        """Test unsupported provider raises ValueError."""
-        with pytest.raises(ValueError, match="Unsupported LLM provider"):
-            LlmFactory.create("unknown_provider")
 
 class TestUnifiedLLM:
     """Tests for UnifiedLLM class."""
