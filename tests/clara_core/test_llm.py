@@ -1009,10 +1009,12 @@ class TestUnifiedLLM:
             llm._provider = mock_provider
 
             # Call with dict messages (what memory system sends)
-            result = llm.generate_response([
-                {"role": "system", "content": "You are a helper."},
-                {"role": "user", "content": "Extract facts."},
-            ])
+            result = llm.generate_response(
+                [
+                    {"role": "system", "content": "You are a helper."},
+                    {"role": "user", "content": "Extract facts."},
+                ]
+            )
 
             assert result == "test response"
 
