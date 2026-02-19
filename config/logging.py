@@ -32,18 +32,19 @@ COLORS = {
     "RESET": "\033[0m",
 }
 
-# Module-specific colors for tags
+# Module-specific colors for tags — matched by prefix (first match wins)
 TAG_COLORS = {
-    "api": "\033[94m",  # Blue
+    "gateway": "\033[94m",  # Blue
+    "adapter": "\033[93m",  # Yellow
+    "clara": "\033[95m",  # Magenta
     "rook": "\033[95m",  # Magenta
-    "thread": "\033[96m",  # Cyan
-    "discord": "\033[93m",  # Yellow
     "db": "\033[92m",  # Green
     "llm": "\033[91m",  # Red
     "email": "\033[97m",  # White
     "tools": "\033[36m",  # Cyan
     "sandbox": "\033[35m",  # Magenta
-    "organic": "\033[33m",  # Yellow
+    "websockets": "\033[90m",  # Dark gray
+    "clara_core.memory": "\033[95m",  # Magenta (memory subsystem)
 }
 
 
@@ -55,12 +56,20 @@ def utcnow():
 class ColoredConsoleFormatter(logging.Formatter):
     """Formatter that adds colors and matches existing tag-based style."""
 
+    @staticmethod
+    def _get_tag_color(name: str) -> str:
+        """Get color for a logger name using prefix matching."""
+        for prefix, color in TAG_COLORS.items():
+            if name == prefix or name.startswith(prefix + ".") or name.startswith(prefix + "_"):
+                return color
+        return "\033[37m"  # Default: white
+
     def format(self, record: logging.LogRecord) -> str:
         level_color = COLORS.get(record.levelname, "")
         reset = COLORS["RESET"]
 
         tag = record.name
-        tag_color = TAG_COLORS.get(tag, "\033[37m")
+        tag_color = self._get_tag_color(tag)
 
         timestamp = datetime.now().strftime("%H:%M:%S")
         level_str = f"{level_color}{record.levelname:8}{reset}"
