@@ -250,6 +250,12 @@ class DiscordGatewayClient(GatewayClient):
         try:
             full_text = message.full_text
 
+            # Nothing to send (e.g., message was classified as not directed at Clara)
+            file_data = getattr(message, "file_data", []) or []
+            if not full_text and not file_data and not message.files:
+                logger.debug(f"Empty response for {request_id}, nothing to send")
+                return
+
             # Parse markers from text
             parsed = self._parse_markers(full_text)
             full_text = parsed["text"]

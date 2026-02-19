@@ -327,6 +327,11 @@ class TeamsGatewayClient(GatewayClient):
             full_text = message.full_text
             tool_count = message.tool_count
 
+            # Nothing to send (e.g., message was classified as not directed at Clara)
+            if not full_text and tool_count == 0:
+                logger.debug(f"Empty response for {request_id}, nothing to send")
+                return
+
             # Build response activity
             if len(full_text) > TEAMS_MSG_LIMIT or tool_count > 0:
                 # Use Adaptive Card for long responses or when tools were used
