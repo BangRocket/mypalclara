@@ -208,10 +208,7 @@ class TestTokenTrimming:
         pb = _make_prompt_builder()
 
         long_content = "word " * 30
-        channel_msgs = [
-            _make_db_message("user", f"[User{i}]: {long_content}")
-            for i in range(5)
-        ]
+        channel_msgs = [_make_db_message("user", f"[User{i}]: {long_content}") for i in range(5)]
         history_msgs = [
             _make_db_message("user", "direct msg"),
             _make_db_message("assistant", "direct reply"),

@@ -26,6 +26,8 @@ from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 if TYPE_CHECKING:
     import discord
 
+    from adapters.discord.voice.manager import VoiceManager
+
 logger = get_logger("adapters.discord.gateway")
 
 
@@ -97,6 +99,7 @@ class DiscordGatewayClient(GatewayClient):
             gateway_url=gateway_url,
         )
         self.bot = bot
+        self.voice_manager: VoiceManager | None = None
         self._pending: dict[str, PendingResponse] = {}
         self._edit_cooldown = 0.5  # Seconds between edits
         self._typing_interval = 8.0  # Discord typing lasts ~10 seconds
@@ -244,7 +247,22 @@ class DiscordGatewayClient(GatewayClient):
         """Handle response completion - send the full message."""
         request_id = message.request_id
         pending = self._pending.pop(request_id, None)
+
+        # Check for voice-originated request (may not have a PendingResponse)
         if not pending:
+            if self.voice_manager:
+                for gid, session in self.voice_manager.sessions.items():
+                    if request_id in session.voice_request_ids:
+                        session.voice_request_ids.discard(request_id)
+                        # Send text reply to the voice session's text channel
+                        try:
+                            chunks = split_message(message.full_text) if message.full_text else [""]
+                            for chunk in chunks:
+                                await session.text_channel.send(chunk)
+                        except Exception as e:
+                            logger.warning(f"Failed to send voice text reply: {e}")
+                        await self.voice_manager.handle_response(gid, message.full_text)
+                        return
             logger.debug(f"No pending request for response end {request_id}")
             return
         self._stop_typing_loop(pending)

@@ -1,0 +1,177 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ── Light mode (default) — warm cream/beige palette ──────────────── */
+
+:root {
+  --background: oklch(0.97 0.005 75);
+  --foreground: oklch(0.15 0.01 60);
+  --card: oklch(0.95 0.006 75);
+  --card-foreground: oklch(0.15 0.01 60);
+  --popover: oklch(0.98 0.004 75);
+  --popover-foreground: oklch(0.15 0.01 60);
+  --primary: oklch(0.55 0.12 35);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.92 0.008 75);
+  --secondary-foreground: oklch(0.25 0.01 60);
+  --muted: oklch(0.93 0.006 75);
+  --muted-foreground: oklch(0.45 0.02 60);
+  --accent: oklch(0.93 0.008 75);
+  --accent-foreground: oklch(0.25 0.01 60);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.55 0.2 25);
+  --border: oklch(0.88 0.01 75);
+  --input: oklch(0.88 0.01 75);
+  --ring: oklch(0.55 0.12 35);
+  --radius: 0.5rem;
+
+  /* Sidebar — slightly darker cream */
+  --sidebar: oklch(0.94 0.007 75);
+  --sidebar-foreground: oklch(0.15 0.01 60);
+  --sidebar-primary: oklch(0.55 0.12 35);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.90 0.01 75);
+  --sidebar-accent-foreground: oklch(0.25 0.01 60);
+  --sidebar-border: oklch(0.86 0.01 75);
+  --sidebar-ring: oklch(0.55 0.12 35);
+
+  /* Chat bubbles */
+  --user-bubble: oklch(0.91 0.008 75);
+  --user-bubble-foreground: oklch(0.15 0.01 60);
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────── */
+
+.dark {
+  --background: oklch(0.16 0.01 60);
+  --foreground: oklch(0.92 0.01 75);
+  --card: oklch(0.19 0.01 60);
+  --card-foreground: oklch(0.92 0.01 75);
+  --popover: oklch(0.21 0.01 60);
+  --popover-foreground: oklch(0.92 0.01 75);
+  --primary: oklch(0.65 0.12 35);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.23 0.01 60);
+  --secondary-foreground: oklch(0.92 0.01 75);
+  --muted: oklch(0.23 0.01 60);
+  --muted-foreground: oklch(0.55 0.02 75);
+  --accent: oklch(0.23 0.01 60);
+  --accent-foreground: oklch(0.92 0.01 75);
+  --destructive: oklch(0.58 0.2 25);
+  --destructive-foreground: oklch(0.58 0.2 25);
+  --border: oklch(0.28 0.01 60);
+  --input: oklch(0.28 0.01 60);
+  --ring: oklch(0.65 0.12 35);
+
+  /* Sidebar — darker than bg */
+  --sidebar: oklch(0.13 0.01 60);
+  --sidebar-foreground: oklch(0.92 0.01 75);
+  --sidebar-primary: oklch(0.65 0.12 35);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.20 0.01 60);
+  --sidebar-accent-foreground: oklch(0.92 0.01 75);
+  --sidebar-border: oklch(0.25 0.01 60);
+  --sidebar-ring: oklch(0.65 0.12 35);
+
+  /* Chat bubbles */
+  --user-bubble: oklch(0.24 0.01 60);
+  --user-bubble-foreground: oklch(0.92 0.01 75);
+}
+
+@theme inline {
+  /* ── shadcn/ui theme bindings ── */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Chat bubble tokens */
+  --color-user-bubble: var(--user-bubble);
+  --color-user-bubble-foreground: var(--user-bubble-foreground);
+
+  /* ── Backward-compat aliases for old custom tokens ── */
+  --color-surface: var(--background);
+  --color-surface-raised: var(--card);
+  --color-surface-overlay: var(--muted);
+  --color-border-subtle: var(--border);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-text-muted: var(--muted-foreground);
+  --color-success: #4caf50;
+  --color-warning: #ff9800;
+  --color-danger: var(--destructive);
+  --color-key: #ffd54f;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
+
+/* Tiptap editor styles */
+.tiptap {
+  @apply outline-none min-h-[200px] p-4;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  @apply text-muted-foreground float-left h-0 pointer-events-none;
+  content: attr(data-placeholder);
+}
+.tiptap h1 { @apply text-2xl font-bold mt-4 mb-2; }
+.tiptap h2 { @apply text-xl font-bold mt-3 mb-2; }
+.tiptap h3 { @apply text-lg font-semibold mt-2 mb-1; }
+.tiptap ul { @apply list-disc pl-6 my-2; }
+.tiptap ol { @apply list-decimal pl-6 my-2; }
+.tiptap code { @apply bg-surface-overlay px-1.5 py-0.5 rounded font-mono text-sm; }
+.tiptap pre { @apply bg-surface-overlay rounded-lg p-4 my-2 overflow-x-auto; }
+.tiptap pre code { @apply bg-transparent p-0; }
+.tiptap blockquote { @apply border-l-4 border-primary pl-4 italic my-2; }
