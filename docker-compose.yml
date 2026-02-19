@@ -18,30 +18,10 @@ services:
       retries: 5
     restart: unless-stopped
 
-  postgres-vectors:
-    image: pgvector/pgvector:pg16
-    container_name: mypalclara-postgres-vectors
-    environment:
-      POSTGRES_USER: clara
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clara}
-      POSTGRES_DB: clara_vectors
-    volumes:
-      - postgres-vectors-data:/var/lib/postgresql/data
-    ports:
-      - "5443:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U clara -d clara_vectors"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # Qdrant vector database (for memory vectors - replaces pgvector)
+  # Qdrant vector database (memory vectors)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: mypalclara-qdrant
-    profiles:
-      - qdrant
     ports:
       - "6333:6333"   # REST API
       - "6334:6334"   # gRPC
@@ -60,8 +40,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: mypalclara-redis
-    profiles:
-      - redis
     ports:
       - "6379:6379"
     volumes:
@@ -131,19 +109,16 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # PostgreSQL
       - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
-      - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
-      # Qdrant (optional - takes priority over pgvector when set)
-      - QDRANT_URL=${QDRANT_URL:-}
+      # Qdrant (vector store)
+      - QDRANT_URL=http://qdrant:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Redis cache (optional - for memory performance)
       - REDIS_URL=${REDIS_URL:-}
       - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
       - GRAPH_CACHE_ENABLED=${GRAPH_CACHE_ENABLED:-true}
-      # Vector store migration mode
-      - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
-      # Mem0 Provider
-      - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
-      - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
+      # Rook memory provider
+      - ROOK_PROVIDER=${ROOK_PROVIDER:-openrouter}
+      - ROOK_MODEL=${ROOK_MODEL:-openai/gpt-4o-mini}
       # Graph memory - FalkorDB connection hardcoded for Docker
       - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
       - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
@@ -170,7 +145,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-vectors:
+      qdrant:
         condition: service_healthy
     restart: unless-stopped
 
@@ -233,19 +208,16 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # PostgreSQL (hardcoded for Docker - ignores .env localhost values)
       - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
-      - MEM0_DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres-vectors:5432/clara_vectors
-      # Qdrant (optional - takes priority over pgvector when set)
-      - QDRANT_URL=${QDRANT_URL:-}
+      # Qdrant (vector store)
+      - QDRANT_URL=http://qdrant:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Redis cache (optional - for memory performance)
       - REDIS_URL=${REDIS_URL:-}
       - MEMORY_EMBEDDING_CACHE=${MEMORY_EMBEDDING_CACHE:-true}
       - GRAPH_CACHE_ENABLED=${GRAPH_CACHE_ENABLED:-true}
-      # Vector store migration mode
-      - VECTOR_STORE_MODE=${VECTOR_STORE_MODE:-primary_only}
-      # Mem0 Provider
-      - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
-      - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
+      # Rook memory provider
+      - ROOK_PROVIDER=${ROOK_PROVIDER:-openrouter}
+      - ROOK_MODEL=${ROOK_MODEL:-openai/gpt-4o-mini}
       # Web search
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       # User config
@@ -301,7 +273,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-vectors:
+      qdrant:
         condition: service_healthy
     restart: unless-stopped
 
@@ -357,7 +329,6 @@ volumes:
   mypalclara-data:
   mypalclara-files:
   postgres-data:
-  postgres-vectors-data:
   qdrant-data:
   redis-data:
   falkordb-data:
