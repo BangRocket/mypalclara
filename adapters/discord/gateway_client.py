@@ -195,7 +195,11 @@ class DiscordGatewayClient(GatewayClient):
 
             # Add to chain
             role = "assistant" if current.author.bot else "user"
-            chain.insert(0, {"role": role, "content": current.content})
+            msg = {"role": role, "content": current.content}
+            if role == "user":
+                msg["user_id"] = f"discord-{current.author.id}"
+                msg["user_name"] = current.author.display_name or current.author.name
+            chain.insert(0, msg)
 
             # Follow reply
             if current.reference and current.reference.message_id:

@@ -226,19 +226,22 @@ class GraphClient:
 
             from_user = msg.get("from", {}).get("user", {})
             author = from_user.get("displayName", "Unknown")
+            user_id = from_user.get("id")
 
             # Determine role based on whether it's from the bot
             # Bot messages have from.application instead of from.user
             is_bot = msg.get("from", {}).get("application") is not None
 
-            messages.append(
-                {
-                    "role": "assistant" if is_bot else "user",
-                    "content": content,
-                    "author": author,
-                    "timestamp": msg.get("createdDateTime"),
-                }
-            )
+            entry = {
+                "role": "assistant" if is_bot else "user",
+                "content": content,
+                "author": author,
+                "timestamp": msg.get("createdDateTime"),
+            }
+            if not is_bot and user_id:
+                entry["user_id"] = f"teams-{user_id}"
+                entry["user_name"] = author
+            messages.append(entry)
 
         return messages
 
@@ -286,16 +289,19 @@ class GraphClient:
 
             from_user = msg.get("from", {}).get("user", {})
             author = from_user.get("displayName", "Unknown")
+            user_id = from_user.get("id")
             is_bot = msg.get("from", {}).get("application") is not None
 
-            messages.append(
-                {
-                    "role": "assistant" if is_bot else "user",
-                    "content": content,
-                    "author": author,
-                    "timestamp": msg.get("createdDateTime"),
-                }
-            )
+            entry = {
+                "role": "assistant" if is_bot else "user",
+                "content": content,
+                "author": author,
+                "timestamp": msg.get("createdDateTime"),
+            }
+            if not is_bot and user_id:
+                entry["user_id"] = f"teams-{user_id}"
+                entry["user_name"] = author
+            messages.append(entry)
 
         return messages
 
