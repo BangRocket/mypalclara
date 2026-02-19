@@ -205,13 +205,13 @@ class TestMemoryGraphSearch:
         memory_graph.search("what does Josh like", {"user_id": "user-1"})
         mock_llm.generate_response.assert_not_called()
 
-    def test_search_uses_vector_query_nodes(self, memory_graph, mock_falkordb, mock_embedding):
-        """Search should use db.idx.vector.queryNodes for KNN search."""
+    def test_search_uses_vector_cosine_distance(self, memory_graph, mock_falkordb, mock_embedding):
+        """Search should use vec.cosineDistance for vector similarity search."""
         mock_falkordb.query.return_value = FakeQueryResult()
         memory_graph.search("what does Josh like", {"user_id": "user-1"})
 
         cypher_calls = " ".join(str(c) for c in mock_falkordb.query.call_args_list)
-        assert "db.idx.vector.queryNodes" in cypher_calls
+        assert "vec.cosineDistance" in cypher_calls
 
     def test_search_returns_correct_structure(self, memory_graph, mock_falkordb, mock_embedding):
         """Search should return list of {source, relationship, destination} dicts."""
