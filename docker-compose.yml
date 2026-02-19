@@ -71,6 +71,40 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Backup service (scheduled database + config backups)
+  backup:
+    build:
+      context: .
+      dockerfile: backup_service/Dockerfile
+    container_name: mypalclara-backup
+    environment:
+      # PostgreSQL (main database)
+      - DATABASE_URL=postgresql://clara:${POSTGRES_PASSWORD:-clara}@postgres:5432/clara_main
+      # S3 storage (Wasabi, AWS, MinIO)
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-https://s3.wasabisys.com}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      # Backup behavior
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_CRON_SCHEDULE=${BACKUP_CRON_SCHEDULE:-0 3 * * *}
+      # Config file backup
+      - BOT_PERSONALITY_FILE=${BOT_PERSONALITY_FILE:-config/personality.txt}
+      - BACKUP_CONFIG_PATHS=${BACKUP_CONFIG_PATHS:-}
+    volumes:
+      - mypalclara-backups:/backups
+      - ./${BOT_PERSONALITY_FILE:-config/personality.txt}:/app/${BOT_PERSONALITY_FILE:-config/personality.txt}:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   # Clara Gateway (WebSocket server for adapters)
   gateway:
     image: ${REGISTRY:-}mypalclara-gateway:latest
@@ -328,6 +362,7 @@ services:
 volumes:
   mypalclara-data:
   mypalclara-files:
+  mypalclara-backups:
   postgres-data:
   qdrant-data:
   redis-data:
