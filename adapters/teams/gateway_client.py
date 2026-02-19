@@ -256,6 +256,8 @@ class TeamsGatewayClient(GatewayClient):
                     "role": msg["role"],
                     "content": msg["content"],
                 }
+                if msg.get("timestamp"):
+                    entry["timestamp"] = msg["timestamp"]
                 if msg.get("user_id"):
                     entry["user_id"] = msg["user_id"]
                     entry["user_name"] = msg.get("user_name")

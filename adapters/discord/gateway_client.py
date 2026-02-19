@@ -196,6 +196,8 @@ class DiscordGatewayClient(GatewayClient):
             # Add to chain
             role = "assistant" if current.author.bot else "user"
             msg = {"role": role, "content": current.content}
+            if current.created_at:
+                msg["timestamp"] = current.created_at.isoformat()
             if role == "user":
                 msg["user_id"] = f"discord-{current.author.id}"
                 msg["user_name"] = current.author.display_name or current.author.name
