@@ -168,6 +168,7 @@ class GatewayDiscordBot(discord_commands.Bot):
             await self.gateway_client.send_discord_message(
                 message=message,
                 tier_override=tier_override,
+                is_mention=is_mention,
             )
         except Exception as e:
             logger.exception(f"Failed to send to gateway: {e}")

@@ -105,12 +105,14 @@ class DiscordGatewayClient(GatewayClient):
         self,
         message: discord.Message,
         tier_override: str | None = None,
+        is_mention: bool = False,
     ) -> str | None:
         """Send a Discord message to the gateway for processing.
 
         Args:
             message: The Discord message to process
             tier_override: Optional model tier override
+            is_mention: Whether the bot was @mentioned
 
         Returns:
             Request ID if sent, None if failed
@@ -155,6 +157,7 @@ class DiscordGatewayClient(GatewayClient):
                     "platform": "discord",
                     "message_id": str(message.id),
                     "is_dm": is_dm,
+                    "is_mention": is_mention,
                 },
             )
 
