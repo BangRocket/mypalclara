@@ -74,24 +74,20 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Neo4j graph database (for graph memory)
-  neo4j:
-    image: neo4j:5-community
-    container_name: mypalclara-neo4j
-    environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-clara}
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_apoc_export_file_enabled: "true"
-      NEO4J_apoc_import_file_enabled: "true"
-      NEO4J_apoc_import_file_use__neo4j__config: "true"
-    volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
+  # FalkorDB graph database (for graph memory)
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: mypalclara-falkordb
     ports:
-      - "7474:7474"  # HTTP (browser interface)
-      - "7687:7687"  # Bolt protocol
+      - "6380:6379"
+    volumes:
+      - falkordb-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      ${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -148,12 +144,13 @@ services:
       # Mem0 Provider
       - MEM0_PROVIDER=${MEM0_PROVIDER:-openrouter}
       - MEM0_MODEL=${MEM0_MODEL:-openai/gpt-4o-mini}
-      # Graph memory - Neo4j URL hardcoded for Docker
+      # Graph memory - FalkorDB connection hardcoded for Docker
       - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
-      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-neo4j}
-      - NEO4J_URL=bolt://neo4j:7687
-      - NEO4J_USERNAME=neo4j
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-clara}
+      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Web search
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       # Sandbox
@@ -262,12 +259,13 @@ services:
       - CLARA_EMAIL_PASSWORD=${CLARA_EMAIL_PASSWORD:-}
       - CLARA_EMAIL_NOTIFY_USER=${CLARA_EMAIL_NOTIFY_USER:-}
       - CLARA_EMAIL_NOTIFY=${CLARA_EMAIL_NOTIFY:-false}
-      # Graph memory (optional) - Neo4j URL hardcoded for Docker
+      # Graph memory (optional) - FalkorDB connection hardcoded for Docker
       - ENABLE_GRAPH_MEMORY=${ENABLE_GRAPH_MEMORY:-false}
-      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-neo4j}
-      - NEO4J_URL=bolt://neo4j:7687
-      - NEO4J_USERNAME=neo4j
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-clara}
+      - GRAPH_STORE_PROVIDER=${GRAPH_STORE_PROVIDER:-falkordb}
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_GRAPH_NAME=${FALKORDB_GRAPH_NAME:-clara_memory}
       # Fast LLM (for quick operations)
       - FAST_LLM_PROVIDER=${FAST_LLM_PROVIDER:-}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-}
@@ -362,8 +360,7 @@ volumes:
   postgres-vectors-data:
   qdrant-data:
   redis-data:
-  neo4j-data:
-  neo4j-logs:
+  falkordb-data:
 
 networks:
   default:
