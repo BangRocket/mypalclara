@@ -25,62 +25,120 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _table_exists(conn, table_name: str) -> bool:
+    result = conn.execute(
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = :t"),
+        {"t": table_name},
+    )
+    return result.fetchone() is not None
+
+
+def _column_exists(conn, table_name: str, column_name: str) -> bool:
+    result = conn.execute(
+        sa.text("SELECT 1 FROM information_schema.columns " "WHERE table_name = :t AND column_name = :c"),
+        {"t": table_name, "c": column_name},
+    )
+    return result.fetchone() is not None
+
+
+def _index_exists(conn, index_name: str) -> bool:
+    result = conn.execute(
+        sa.text("SELECT 1 FROM pg_indexes WHERE indexname = :i"),
+        {"i": index_name},
+    )
+    return result.fetchone() is not None
+
+
+def _constraint_exists(conn, constraint_name: str) -> bool:
+    result = conn.execute(
+        sa.text("SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = :c"),
+        {"c": constraint_name},
+    )
+    return result.fetchone() is not None
+
+
 def upgrade() -> None:
     """Upgrade schema."""
+    conn = op.get_bind()
+
     # --- Drop orphan tables (no model references these) ---
-    op.drop_index(op.f("ix_deployment_events_workflow_run_id"), table_name="deployment_events")
-    op.drop_table("deployment_events")
-    op.drop_index(op.f("ix_dashboard_sessions_session_token"), table_name="dashboard_sessions")
-    op.drop_table("dashboard_sessions")
+    if _table_exists(conn, "deployment_events"):
+        if _index_exists(conn, "ix_deployment_events_workflow_run_id"):
+            op.drop_index(op.f("ix_deployment_events_workflow_run_id"), table_name="deployment_events")
+        op.drop_table("deployment_events")
+    if _table_exists(conn, "dashboard_sessions"):
+        if _index_exists(conn, "ix_dashboard_sessions_session_token"):
+            op.drop_index(op.f("ix_dashboard_sessions_session_token"), table_name="dashboard_sessions")
+        op.drop_table("dashboard_sessions")
 
     # --- canonical_users: add missing columns ---
-    op.add_column("canonical_users", sa.Column("status", sa.String(), server_default="active", nullable=False))
-    op.add_column("canonical_users", sa.Column("is_admin", sa.Boolean(), server_default="0", nullable=False))
+    if not _column_exists(conn, "canonical_users", "status"):
+        op.add_column("canonical_users", sa.Column("status", sa.String(), server_default="active", nullable=False))
+    if not _column_exists(conn, "canonical_users", "is_admin"):
+        op.add_column("canonical_users", sa.Column("is_admin", sa.Boolean(), server_default="0", nullable=False))
 
     # --- mcp_servers: migrate to config-file-reference schema ---
     # Step 1: Add new columns (server_type as nullable first for backfill)
-    op.add_column("mcp_servers", sa.Column("user_id", sa.String(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("server_type", sa.String(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("config_path", sa.String(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("oauth_required", sa.Boolean(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("oauth_token_id", sa.String(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("total_tool_calls", sa.Integer(), nullable=True))
-    op.add_column("mcp_servers", sa.Column("last_used_at", sa.DateTime(), nullable=True))
+    for col_name, col_type in [
+        ("user_id", sa.String()),
+        ("server_type", sa.String()),
+        ("config_path", sa.String()),
+        ("oauth_required", sa.Boolean()),
+        ("oauth_token_id", sa.String()),
+        ("total_tool_calls", sa.Integer()),
+        ("last_used_at", sa.DateTime()),
+    ]:
+        if not _column_exists(conn, "mcp_servers", col_name):
+            op.add_column("mcp_servers", sa.Column(col_name, col_type, nullable=True))
 
     # Step 2: Backfill server_type from existing data
-    # All existing servers use transport=stdio → they are "local" servers
-    op.execute("UPDATE mcp_servers SET server_type = 'local' WHERE server_type IS NULL")
-
-    # Step 3: Now make server_type NOT NULL
-    op.alter_column("mcp_servers", "server_type", nullable=False)
+    if _column_exists(conn, "mcp_servers", "server_type"):
+        op.execute("UPDATE mcp_servers SET server_type = 'local' WHERE server_type IS NULL")
+        # Step 3: Now make server_type NOT NULL
+        op.alter_column("mcp_servers", "server_type", nullable=False)
 
     # Step 4: Alter nullable constraints to match model
-    op.alter_column("mcp_servers", "source_type", existing_type=sa.VARCHAR(), nullable=True)
+    if _column_exists(conn, "mcp_servers", "source_type"):
+        op.alter_column("mcp_servers", "source_type", existing_type=sa.VARCHAR(), nullable=True)
     op.alter_column("mcp_servers", "created_at", existing_type=postgresql.TIMESTAMP(), nullable=True)
     op.alter_column("mcp_servers", "updated_at", existing_type=postgresql.TIMESTAMP(), nullable=True)
 
     # Step 5: Update indexes
-    op.drop_index(op.f("ix_mcp_servers_name"), table_name="mcp_servers")
-    op.create_index("ix_mcp_server_enabled", "mcp_servers", ["enabled"], unique=False)
-    op.create_index("ix_mcp_server_user_name", "mcp_servers", ["user_id", "name"], unique=False)
-    op.create_index(op.f("ix_mcp_servers_user_id"), "mcp_servers", ["user_id"], unique=False)
-    op.create_foreign_key("fk_mcp_servers_oauth_token", "mcp_servers", "mcp_oauth_tokens", ["oauth_token_id"], ["id"])
+    if _index_exists(conn, "ix_mcp_servers_name"):
+        op.drop_index(op.f("ix_mcp_servers_name"), table_name="mcp_servers")
+    if not _index_exists(conn, "ix_mcp_server_enabled"):
+        op.create_index("ix_mcp_server_enabled", "mcp_servers", ["enabled"], unique=False)
+    if not _index_exists(conn, "ix_mcp_server_user_name"):
+        op.create_index("ix_mcp_server_user_name", "mcp_servers", ["user_id", "name"], unique=False)
+    if not _index_exists(conn, "ix_mcp_servers_user_id"):
+        op.create_index(op.f("ix_mcp_servers_user_id"), "mcp_servers", ["user_id"], unique=False)
+    if not _constraint_exists(conn, "fk_mcp_servers_oauth_token"):
+        op.create_foreign_key(
+            "fk_mcp_servers_oauth_token", "mcp_servers", "mcp_oauth_tokens", ["oauth_token_id"], ["id"]
+        )
 
     # Step 6: Drop old inline-config columns (data stored in config files now)
-    op.drop_column("mcp_servers", "args")
-    op.drop_column("mcp_servers", "tools_json")
-    op.drop_column("mcp_servers", "endpoint_url")
-    op.drop_column("mcp_servers", "command")
-    op.drop_column("mcp_servers", "cwd")
-    op.drop_column("mcp_servers", "docker_config")
-    op.drop_column("mcp_servers", "transport")
-    op.drop_column("mcp_servers", "display_name")
-    op.drop_column("mcp_servers", "env")
+    for col in [
+        "args",
+        "tools_json",
+        "endpoint_url",
+        "command",
+        "cwd",
+        "docker_config",
+        "transport",
+        "display_name",
+        "env",
+    ]:
+        if _column_exists(conn, "mcp_servers", col):
+            op.drop_column("mcp_servers", col)
 
     # --- Remove duplicate indexes (DB has both idx_* and ix_* variants) ---
-    op.drop_index("idx_proactive_assessments_created_at", table_name="proactive_assessments")
-    op.drop_index("idx_proactive_assessments_user_id", table_name="proactive_assessments")
-    op.drop_index("idx_proactive_notes_user_id", table_name="proactive_notes")
+    if _index_exists(conn, "idx_proactive_assessments_created_at"):
+        op.drop_index("idx_proactive_assessments_created_at", table_name="proactive_assessments")
+    if _index_exists(conn, "idx_proactive_assessments_user_id"):
+        op.drop_index("idx_proactive_assessments_user_id", table_name="proactive_assessments")
+    if _index_exists(conn, "idx_proactive_notes_user_id"):
+        op.drop_index("idx_proactive_notes_user_id", table_name="proactive_notes")
 
 
 def downgrade() -> None:

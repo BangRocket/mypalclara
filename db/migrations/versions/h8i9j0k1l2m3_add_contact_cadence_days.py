@@ -19,7 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("user_interaction_patterns", sa.Column("contact_cadence_days", sa.Float(), nullable=True))
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'user_interaction_patterns' AND column_name = 'contact_cadence_days'"
+        )
+    )
+    if not result.fetchone():
+        op.add_column("user_interaction_patterns", sa.Column("contact_cadence_days", sa.Float(), nullable=True))
 
 
 def downgrade() -> None:

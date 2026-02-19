@@ -19,9 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("projects", sa.Column("created_at", sa.DateTime(), nullable=True))
-    op.add_column("projects", sa.Column("updated_at", sa.DateTime(), nullable=True))
-    # Backfill existing rows so .NET EF Core (non-nullable DateTime) doesn't choke
+    conn = op.get_bind()
+    for col in ("created_at", "updated_at"):
+        result = conn.execute(
+            sa.text("SELECT 1 FROM information_schema.columns " "WHERE table_name = 'projects' AND column_name = :c"),
+            {"c": col},
+        )
+        if not result.fetchone():
+            op.add_column("projects", sa.Column(col, sa.DateTime(), nullable=True))
+    # Backfill existing rows
     op.execute("UPDATE projects SET created_at = now(), updated_at = now() WHERE created_at IS NULL")
 
 

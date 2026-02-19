@@ -8,6 +8,7 @@ Create Date: 2026-02-09 12:00:00.000000
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -18,7 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_index("ix_message_session_created", "messages", ["session_id", "created_at"])
+    conn = op.get_bind()
+    result = conn.execute(sa.text("SELECT 1 FROM pg_indexes WHERE indexname = 'ix_message_session_created'"))
+    if not result.fetchone():
+        op.create_index("ix_message_session_created", "messages", ["session_id", "created_at"])
 
 
 def downgrade() -> None:
