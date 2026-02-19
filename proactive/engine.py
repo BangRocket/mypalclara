@@ -32,6 +32,7 @@ from db.models import (
     ProactiveAssessment,
     ProactiveMessage,
     ProactiveNote,
+    Session,
     UserInteractionPattern,
 )
 
@@ -158,6 +159,9 @@ class ORSContext:
 
     # History
     recent_proactive_history: list[dict] = field(default_factory=list)
+
+    # Contact cadence (inferred from message history)
+    contact_cadence_days: float | None = None  # Avg days between interactions
 
 
 # =============================================================================
@@ -761,6 +765,9 @@ async def gather_full_context(user_id: str) -> ORSContext:
     # Fetch recent messages for context validation
     recent_messages = get_recent_messages(user_id)
 
+    # Compute contact cadence from recent interaction timestamps
+    contact_cadence_days = _compute_contact_cadence(user_id)
+
     # Get notes with validation against recent messages
     notes_data = get_notes_context(user_id)
 
@@ -810,6 +817,7 @@ async def gather_full_context(user_id: str) -> ORSContext:
         explicit_boundaries=patterns.get("explicit_boundaries"),
         recent_proactive_ignored=recent_ignored,
         recent_proactive_history=history,
+        contact_cadence_days=contact_cadence_days,
     )
 
 
@@ -1502,6 +1510,19 @@ async def check_idle_conversations(llm_call: Callable, get_recent_messages: Call
                     if extraction:
                         update_interaction_from_extraction(user_id, extraction)
 
+                        # Update contact cadence while we have fresh data
+                        cadence = _compute_contact_cadence(user_id)
+                        if cadence is not None:
+                            with SessionLocal() as cadence_session:
+                                pattern = (
+                                    cadence_session.query(UserInteractionPattern)
+                                    .filter(UserInteractionPattern.user_id == user_id)
+                                    .first()
+                                )
+                                if pattern:
+                                    pattern.contact_cadence_days = cadence
+                                    cadence_session.commit()
+
                         # Create note if something notable
                         if extraction.get("notable"):
                             create_note(
@@ -1558,6 +1579,91 @@ def record_assessment(
 # =============================================================================
 
 
+def _compute_contact_cadence(user_id: str) -> float | None:
+    """Compute average days between interactions from recent message history.
+
+    Looks at the last 10 messages, computes gaps between consecutive messages,
+    filters out rapid exchanges (< 5 min) to focus on conversation-level gaps,
+    and returns the average gap in days.
+
+    Falls back to persisted contact_cadence_days on UserInteractionPattern if
+    insufficient message data.
+    """
+    with SessionLocal() as session:
+        messages = (
+            session.query(Message)
+            .filter(Message.user_id == user_id)
+            .order_by(Message.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
+        if len(messages) < 3:
+            # Not enough data from messages — try persisted value
+            pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
+            return pattern.contact_cadence_days if pattern else None
+
+        # Compute gaps between consecutive messages (messages are newest-first)
+        gaps = []
+        for i in range(len(messages) - 1):
+            if messages[i].created_at and messages[i + 1].created_at:
+                gap = messages[i].created_at - messages[i + 1].created_at
+                gap_minutes = gap.total_seconds() / 60
+                # Ignore rapid exchanges (< 5 min) — those are within a single conversation
+                if gap_minutes >= 5:
+                    gaps.append(gap)
+
+        if not gaps:
+            pattern = session.query(UserInteractionPattern).filter(UserInteractionPattern.user_id == user_id).first()
+            return pattern.contact_cadence_days if pattern else None
+
+        avg_gap = sum(g.total_seconds() for g in gaps) / len(gaps)
+        return avg_gap / 86400  # Convert seconds to days
+
+
+def _persist_proactive_to_history(user_id: str, channel_id: str, message: str):
+    """Persist a proactive message into conversation history so Clara can see it.
+
+    Finds the active session for this user+channel and creates a Message record
+    with role="assistant". This bridges the gap between ORS (which sends messages)
+    and the conversation context (which Clara reads on next interaction).
+    """
+    # Determine context_id using same logic as gateway processor
+    is_dm = channel_id.startswith("discord-dm-") or "-dm-" in channel_id
+    context_id = f"dm-{user_id}" if is_dm else f"channel-{channel_id}"
+
+    try:
+        with SessionLocal() as db:
+            # Find the most recent active session for this user + context
+            conv_session = (
+                db.query(Session)
+                .filter(
+                    Session.user_id == user_id,
+                    Session.context_id == context_id,
+                    Session.archived != "true",
+                )
+                .order_by(Session.last_activity_at.desc())
+                .first()
+            )
+
+            if not conv_session:
+                logger.debug(f"No active session for {user_id}/{context_id} — skipping history persistence")
+                return
+
+            msg = Message(
+                session_id=conv_session.id,
+                user_id=user_id,
+                role="assistant",
+                content=message,
+            )
+            db.add(msg)
+            db.commit()
+            logger.debug(f"Persisted proactive message to session {conv_session.id} for {user_id}")
+    except Exception as e:
+        # Non-fatal — the message was already sent, this is just for context
+        logger.warning(f"Failed to persist proactive message to history: {e}")
+
+
 async def send_proactive_message(
     client: Client,
     user_id: str,
@@ -1598,6 +1704,9 @@ async def send_proactive_message(
             )
             session.add(record)
             session.commit()
+
+        # Persist to conversation history so Clara sees it next interaction
+        _persist_proactive_to_history(user_id, channel_id, message)
 
         logger.info(f"Sent proactive message to {user_id}: {message[:50]}...")
         return True
