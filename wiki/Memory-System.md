@@ -22,8 +22,7 @@ For semantic similarity search:
 ### Graph Store (Optional)
 
 For entity relationship tracking:
-- **Neo4j** - External graph database
-- **Kuzu** - Embedded graph database
+- **FalkorDB** - Redis-compatible graph database with native vector indexing
 
 ### Configuration
 
@@ -40,10 +39,11 @@ MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 # Graph store (optional)
 ENABLE_GRAPH_MEMORY=true
-GRAPH_STORE_PROVIDER=neo4j  # or kuzu
-NEO4J_URL=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
+GRAPH_STORE_PROVIDER=falkordb
+FALKORDB_HOST=localhost
+FALKORDB_PORT=6379
+FALKORDB_PASSWORD=your-password  # Optional
+FALKORDB_GRAPH_NAME=clara
 ```
 
 ## Memory Types

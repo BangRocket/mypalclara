@@ -94,6 +94,17 @@ MEM0_API_KEY=override-key  # Optional override
 MEM0_BASE_URL=override-url  # Optional override
 ```
 
+### Graph Memory
+
+```bash
+ENABLE_GRAPH_MEMORY=true
+GRAPH_STORE_PROVIDER=falkordb
+FALKORDB_HOST=localhost
+FALKORDB_PORT=6379
+FALKORDB_PASSWORD=your-password  # Optional
+FALKORDB_GRAPH_NAME=clara
+```
+
 ### Vector Store
 
 ```bash
@@ -108,16 +119,11 @@ MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 ```bash
 ENABLE_GRAPH_MEMORY=true
-
-# Neo4j
-GRAPH_STORE_PROVIDER=neo4j
-NEO4J_URL=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
-
-# Kuzu (embedded)
-GRAPH_STORE_PROVIDER=kuzu
-# Uses ./kuzu_data directory
+GRAPH_STORE_PROVIDER=falkordb
+FALKORDB_HOST=localhost
+FALKORDB_PORT=6379
+FALKORDB_PASSWORD=your-password  # Optional
+FALKORDB_GRAPH_NAME=clara
 ```
 
 ## Database
