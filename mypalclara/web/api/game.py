@@ -45,7 +45,7 @@ class GameMoveResponse(BaseModel):
     mood: str
 
 
-def _verify_api_key(x_game_api_key: str | None = Header(None)) -> None:
+def _verify_api_key(x_game_api_key: str | None) -> None:
     """Verify the game API key from the request header."""
     expected = os.getenv("GAME_API_KEY")
     if not expected or x_game_api_key != expected:
