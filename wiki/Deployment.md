@@ -127,10 +127,10 @@ Or auto-migrate on startup (default behavior).
 
 ### Backup Service
 
-The `backup_service/` provides automated S3-compatible backups:
+The `mypalclara/services/backup/` provides automated S3-compatible backups:
 
 ```bash
-cd backup_service
+cd mypalclara/services/backup
 
 # Configure
 export S3_BUCKET=clara-backups

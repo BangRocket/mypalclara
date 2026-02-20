@@ -18,7 +18,7 @@ Teams Channel/DM
        │
        ▼
 ┌─────────────────┐
-│  Teams Adapter  │  (adapters/teams/)
+│  Teams Adapter  │  (mypalclara/adapters/teams/)
 │    Bot.py       │
 └────────┬────────┘
          │ WebSocket
@@ -166,7 +166,7 @@ These require tenant admin consent and grant very broad access.
 ### Standalone
 
 ```bash
-poetry run python -m adapters.teams
+poetry run python -m mypalclara.adapters.teams
 ```
 
 ### With Gateway
@@ -176,13 +176,13 @@ poetry run python -m adapters.teams
 poetry run python -m mypalclara.gateway
 
 # Terminal 2: Start Teams adapter
-poetry run python -m adapters.teams
+poetry run python -m mypalclara.adapters.teams
 ```
 
 ### Via Gateway Daemon
 
 ```bash
-# Enable Teams in gateway/adapters.yaml, then:
+# Enable Teams in mypalclara/gateway/adapters.yaml, then:
 poetry run python -m mypalclara.gateway start
 ```
 
@@ -196,7 +196,7 @@ ngrok http 3978
 # https://xxxx.ngrok.io/api/messages
 
 # Run Teams adapter
-poetry run python -m adapters.teams --port 3978
+poetry run python -m mypalclara.adapters.teams --port 3978
 ```
 
 ## Teams App Manifest
@@ -275,7 +275,7 @@ New team members receive a welcome message from Clara (configurable).
 services:
   teams-adapter:
     build: .
-    command: poetry run python -m adapters.teams
+    command: poetry run python -m mypalclara.adapters.teams
     ports:
       - "3978:3978"
     environment:
@@ -310,7 +310,7 @@ services:
 ## File Structure
 
 ```
-adapters/teams/
+mypalclara/adapters/teams/
 ├── __init__.py
 ├── bot.py              # Bot Framework activity handler
 ├── gateway_client.py   # Gateway WebSocket client

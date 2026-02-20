@@ -133,13 +133,13 @@ To manage context window:
 
 ```bash
 # With confirmation prompt
-poetry run python clear_dbs.py
+poetry run python scripts/clear_dbs.py
 
 # Skip confirmation
-poetry run python clear_dbs.py --yes
+poetry run python scripts/clear_dbs.py --yes
 
 # Clear specific user only
-poetry run python clear_dbs.py --user discord-123456
+poetry run python scripts/clear_dbs.py --user discord-123456
 ```
 
 ## API Usage
@@ -147,7 +147,7 @@ poetry run python clear_dbs.py --user discord-123456
 ### MemoryManager
 
 ```python
-from clara_core.memory import MemoryManager
+from mypalclara.core.memory import MemoryManager
 
 # Initialize
 manager = MemoryManager.initialize(llm_callable=my_llm)
@@ -172,7 +172,7 @@ manager.add_to_mem0(
 ### Direct mem0 Access
 
 ```python
-from config.mem0 import MEM0
+from mypalclara.config.mem0 import MEM0
 
 # Search memories
 results = MEM0.search(
