@@ -49,7 +49,7 @@ cd mypalclara
 poetry shell
 
 # Or run directly with poetry
-poetry run python discord_bot.py
+poetry run python -m mypalclara.adapters.discord
 ```
 
 ## Discord Bot Issues
@@ -68,10 +68,10 @@ poetry run python discord_bot.py
 **Debug:**
 ```bash
 # Check logs
-poetry run python discord_bot.py 2>&1 | tee bot.log
+poetry run python -m mypalclara.adapters.discord 2>&1 | tee bot.log
 
 # Daemon mode logs
-poetry run python discord_bot.py --status
+poetry run python -m mypalclara.adapters.discord --status
 tail -f /var/log/clara.log
 ```
 
@@ -88,8 +88,8 @@ tail -f /var/log/clara.log
 # Update DISCORD_BOT_TOKEN in .env
 # Restart bot
 
-poetry run python discord_bot.py --stop
-poetry run python discord_bot.py --daemon
+poetry run python -m mypalclara.adapters.discord --stop
+poetry run python -m mypalclara.adapters.discord --daemon
 ```
 
 ### Permission Errors
@@ -155,7 +155,7 @@ ls -la qdrant_data/
 
 # Clear and restart
 rm -rf qdrant_data/
-poetry run python discord_bot.py
+poetry run python -m mypalclara.adapters.discord
 ```
 
 ### pgvector Issues (Production)
@@ -202,7 +202,7 @@ FALKORDB_GRAPH_NAME=clara
 ps aux | grep discord_bot
 
 # Stop daemon
-poetry run python discord_bot.py --stop
+poetry run python -m mypalclara.adapters.discord --stop
 
 # Clear lock
 rm -f assistant.db-journal
@@ -412,7 +412,7 @@ echo "test" | bash -c "your-command"
 **Solutions:**
 1. Limit conversation history
 2. Reduce `DISCORD_CHANNEL_HISTORY_LIMIT`
-3. Clear old sessions: `poetry run python clear_dbs.py`
+3. Clear old sessions: `poetry run python scripts/clear_dbs.py`
 
 ## Getting Help
 
@@ -420,20 +420,20 @@ echo "test" | bash -c "your-command"
 
 ```bash
 # Discord bot logs
-poetry run python discord_bot.py 2>&1 | tee debug.log
+poetry run python -m mypalclara.adapters.discord 2>&1 | tee debug.log
 
 # Gateway logs
 poetry run python -m mypalclara.gateway 2>&1 | tee gateway.log
 
 # With timestamps
-poetry run python discord_bot.py 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' | tee debug.log
+poetry run python -m mypalclara.adapters.discord 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' | tee debug.log
 ```
 
 ### Debug Mode
 
 Set environment variable for verbose output:
 ```bash
-DEBUG=1 poetry run python discord_bot.py
+DEBUG=1 poetry run python -m mypalclara.adapters.discord
 ```
 
 ### Report Issues

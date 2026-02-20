@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any
 
-from adapters.base import GatewayClient
+from mypalclara.adapters.base import GatewayClient
 from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 logger = logging.getLogger("web.chat.adapter")

@@ -15,9 +15,9 @@ Clara's tool system provides:
 ### Basic Tool
 
 ```python
-# tools/my_tools.py
+# mypalclara/tools/my_tools.py
 
-from clara_core.tool_registry import tool, ToolContext
+from mypalclara.core.tool_registry import tool, ToolContext
 
 @tool(
     name="greet_user",
@@ -87,10 +87,10 @@ async def admin_action(ctx: ToolContext) -> str:
 
 ### Core Tools
 
-Located in `clara_core/core_tools/`:
+Located in `mypalclara/core/core_tools/`:
 
 ```
-clara_core/core_tools/
+mypalclara/core/core_tools/
 ├── mcp_management.py   # MCP server management
 ├── chat_history.py     # Chat history retrieval
 └── system_logs.py      # System log access
@@ -98,10 +98,10 @@ clara_core/core_tools/
 
 ### Platform-Specific Tools
 
-Located in `tools/`:
+Located in `mypalclara/tools/`:
 
 ```
-tools/
+mypalclara/tools/
 ├── cli_files.py    # CLI file operations
 ├── cli_shell.py    # CLI shell execution
 ├── discord/        # Discord-specific tools
@@ -112,12 +112,12 @@ tools/
 
 ### Automatic Discovery
 
-Tools in `tools/` are automatically discovered and loaded.
+Tools in `mypalclara/tools/` are automatically discovered and loaded.
 
 ### Manual Registration
 
 ```python
-from clara_core.tool_registry import ToolRegistry
+from mypalclara.core.tool_registry import ToolRegistry
 
 registry = ToolRegistry()
 registry.register(greet_user)
@@ -183,7 +183,7 @@ async def risky_operation(ctx: ToolContext) -> str:
 ### Raise Exceptions
 
 ```python
-from clara_core.tool_registry import ToolError
+from mypalclara.core.tool_registry import ToolError
 
 @tool(name="strict_operation")
 async def strict_operation(ctx: ToolContext) -> str:
@@ -198,8 +198,8 @@ async def strict_operation(ctx: ToolContext) -> str:
 
 ```python
 import pytest
-from tools.my_tools import greet_user
-from clara_core.tool_registry import ToolContext
+from mypalclara.tools.my_tools import greet_user
+from mypalclara.core.tool_registry import ToolContext
 
 @pytest.mark.asyncio
 async def test_greet_user():
@@ -308,7 +308,7 @@ async def mcp_compatible(query: str, ctx: ToolContext) -> dict:
 ## File Structure Example
 
 ```
-tools/
+mypalclara/tools/
 ├── __init__.py
 ├── utilities/
 │   ├── __init__.py

@@ -75,7 +75,7 @@ services:
   backup:
     build:
       context: .
-      dockerfile: backup_service/Dockerfile
+      dockerfile: mypalclara/services/backup/Dockerfile
     container_name: mypalclara-backup
     environment:
       # PostgreSQL (main database)

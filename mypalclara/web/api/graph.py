@@ -7,8 +7,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser
-from db.user_identity import resolve_all_user_ids_for_canonical
+from mypalclara.db.models import CanonicalUser
+from mypalclara.db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.graph")

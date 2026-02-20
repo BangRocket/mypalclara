@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, PlatformLink
+from mypalclara.db.models import CanonicalUser, PlatformLink
 from mypalclara.web.auth.dependencies import get_admin_user, get_db
 
 logger = logging.getLogger("web.api.admin")

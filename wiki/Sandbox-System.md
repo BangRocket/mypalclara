@@ -251,7 +251,7 @@ Error: OOM killed
          │
          ▼
 ┌─────────────────┐
-│ Sandbox Manager │  (sandbox/manager.py)
+│ Sandbox Manager │  (mypalclara/sandbox/manager.py)
 │  Auto-selector  │
 └────────┬────────┘
          │

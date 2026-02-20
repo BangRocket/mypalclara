@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from clara_core.llm import (
+from mypalclara.core.llm import (
     DEFAULT_TIER,
     LLMConfig,
     LLMProvider,
@@ -18,8 +18,8 @@ from clara_core.llm import (
     make_llm,
     make_llm_streaming,
 )
-from clara_core.llm.messages import SystemMessage, UserMessage
-from clara_core.llm.providers import (
+from mypalclara.core.llm.messages import SystemMessage, UserMessage
+from mypalclara.core.llm.providers import (
     DirectAnthropicProvider,
     DirectOpenAIProvider,
     LangChainProvider,
@@ -359,14 +359,14 @@ class TestUnifiedToolCalling:
 
     def test_make_llm_with_tools_unified_returns_callable(self):
         """Test make_llm_with_tools_unified returns a callable."""
-        from clara_core.llm import make_llm_with_tools_unified
+        from mypalclara.core.llm import make_llm_with_tools_unified
 
         llm = make_llm_with_tools_unified()
         assert callable(llm)
 
     def test_make_llm_with_tools_unified_with_tools(self):
         """Test make_llm_with_tools_unified accepts tools parameter."""
-        from clara_core.llm import make_llm_with_tools_unified
+        from mypalclara.core.llm import make_llm_with_tools_unified
 
         tools = [
             {
@@ -383,7 +383,7 @@ class TestUnifiedToolCalling:
 
     def test_make_llm_with_tools_unified_with_tier(self):
         """Test make_llm_with_tools_unified accepts tier parameter."""
-        from clara_core.llm import make_llm_with_tools_unified
+        from mypalclara.core.llm import make_llm_with_tools_unified
 
         llm = make_llm_with_tools_unified(tier=ModelTier.HIGH)
         assert callable(llm)
@@ -391,8 +391,8 @@ class TestUnifiedToolCalling:
     def test_unified_returns_tool_response(self):
         """Test unified function returns ToolResponse object."""
         langchain_openai = pytest.importorskip("langchain_openai")
-        from clara_core.llm import make_llm_with_tools_unified
-        from clara_core.llm.providers import langchain
+        from mypalclara.core.llm import make_llm_with_tools_unified
+        from mypalclara.core.llm.providers import langchain
 
         langchain._model_cache.clear()
 
@@ -421,8 +421,8 @@ class TestUnifiedToolCalling:
     def test_unified_handles_tool_calls(self):
         """Test unified function handles tool calls correctly."""
         langchain_openai = pytest.importorskip("langchain_openai")
-        from clara_core.llm import make_llm_with_tools_unified
-        from clara_core.llm.providers import langchain
+        from mypalclara.core.llm import make_llm_with_tools_unified
+        from mypalclara.core.llm.providers import langchain
 
         langchain._model_cache.clear()
 
@@ -460,7 +460,7 @@ class TestUnifiedToolCalling:
 
     def test_unified_to_openai_dict_format(self):
         """Test ToolResponse.to_openai_dict() returns correct format."""
-        from clara_core.llm import ToolCall, ToolResponse
+        from mypalclara.core.llm import ToolCall, ToolResponse
 
         # Create a ToolResponse with tool calls
         tool_call = ToolCall(
@@ -510,7 +510,7 @@ class TestLangChainProviderIntegration:
     @pytest.fixture(autouse=True)
     def clear_model_cache(self):
         """Clear model cache before each test."""
-        from clara_core.llm.providers import langchain
+        from mypalclara.core.llm.providers import langchain
 
         langchain._model_cache.clear()
         yield
@@ -992,7 +992,7 @@ class TestUnifiedLLM:
         """Test that generate_response converts dict messages before calling provider."""
         from unittest.mock import MagicMock, patch
 
-        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+        from mypalclara.core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
 
         config = UnifiedLLMConfig(
             provider="openrouter",
@@ -1000,7 +1000,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_provider.complete.return_value = "test response"
             mock_get_provider.return_value = mock_provider
@@ -1031,7 +1031,7 @@ class TestUnifiedLLM:
         """Test that already-typed messages pass through without conversion."""
         from unittest.mock import MagicMock, patch
 
-        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+        from mypalclara.core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
 
         config = UnifiedLLMConfig(
             provider="openrouter",
@@ -1039,7 +1039,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_provider.complete.return_value = "typed response"
             mock_get_provider.return_value = mock_provider
@@ -1065,7 +1065,7 @@ class TestUnifiedLLM:
         """Test that generate_response converts dicts when tools are provided."""
         from unittest.mock import MagicMock, patch
 
-        from clara_core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
+        from mypalclara.core.memory.llm.unified import UnifiedLLM, UnifiedLLMConfig
 
         config = UnifiedLLMConfig(
             provider="openrouter",
@@ -1073,7 +1073,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_tool_response = MagicMock()
             mock_tool_response.has_tool_calls = True

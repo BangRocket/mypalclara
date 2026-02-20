@@ -7,8 +7,8 @@ import uuid
 from fastapi import Cookie, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session as DBSession
 
-from db.connection import SessionLocal
-from db.models import CanonicalUser, PlatformLink
+from mypalclara.db.connection import SessionLocal
+from mypalclara.db.models import CanonicalUser, PlatformLink
 from mypalclara.web.auth.session import decode_access_token
 from mypalclara.web.config import get_web_config
 

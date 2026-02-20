@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from clara_core.intentions import (
+from mypalclara.core.intentions import (
     CheckStrategy,
     TriggerType,
     _check_context_trigger,

@@ -46,17 +46,7 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --only main --no-interaction --no-ansi
 
 # Copy application code
-COPY *.py ./
-COPY clara_core/ ./clara_core/
-COPY config/ ./config/
-COPY db/ ./db/
-COPY sandbox/ ./sandbox/
-COPY storage/ ./storage/
-COPY tools/ ./tools/
 COPY mypalclara/ ./mypalclara/
-COPY adapters/ ./adapters/
-COPY email_service/ ./email_service/
-COPY vendor/ ./vendor/
 COPY VERSION ./
 
 # Copy built frontend from stage 1
