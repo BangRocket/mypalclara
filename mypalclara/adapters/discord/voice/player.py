@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
     pass

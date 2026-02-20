@@ -15,7 +15,7 @@ from typing import Any
 
 import aiohttp
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.teams.graph")
 

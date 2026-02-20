@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Any
 from botbuilder.core import ActivityHandler, TurnContext
 from botbuilder.schema import Activity, ActivityTypes, ChannelAccount
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
-    from adapters.teams.gateway_client import TeamsGatewayClient
+    from mypalclara.adapters.teams.gateway_client import TeamsGatewayClient
 
 logger = get_logger("adapters.teams.bot")
 

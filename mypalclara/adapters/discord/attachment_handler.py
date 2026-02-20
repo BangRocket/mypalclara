@@ -13,7 +13,7 @@ import base64
 import os
 from typing import TYPE_CHECKING, Any
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
     import discord
@@ -291,7 +291,7 @@ async def process_image_attachment(
             return None
 
         # Resize for vision processing
-        from clara_core.discord.utils import resize_image_for_vision
+        from mypalclara.core.discord.utils import resize_image_for_vision
 
         resized_bytes, media_type = resize_image_for_vision(
             image_bytes,

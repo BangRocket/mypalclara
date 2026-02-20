@@ -69,7 +69,7 @@ def graph_config():
 @pytest.fixture
 def memory_graph(mock_falkordb, mock_embedding, mock_llm, graph_config):
     """Create a MemoryGraph instance with all mocks."""
-    from clara_core.memory.graph.falkordb import MemoryGraph
+    from mypalclara.core.memory.graph.falkordb import MemoryGraph
 
     graph = MemoryGraph(graph_config)
     return graph
@@ -80,7 +80,7 @@ class TestMemoryGraphInit:
 
     def test_creates_vector_index(self, mock_falkordb, mock_embedding, mock_llm, graph_config):
         """Index creation should be attempted on init."""
-        from clara_core.memory.graph.falkordb import MemoryGraph
+        from mypalclara.core.memory.graph.falkordb import MemoryGraph
 
         MemoryGraph(graph_config)
         # Should have called query for index creation
@@ -90,7 +90,7 @@ class TestMemoryGraphInit:
     def test_index_creation_failure_is_silent(self, mock_falkordb, mock_embedding, mock_llm, graph_config):
         """If index already exists, exception should be swallowed."""
         mock_falkordb.query.side_effect = Exception("Index already exists")
-        from clara_core.memory.graph.falkordb import MemoryGraph
+        from mypalclara.core.memory.graph.falkordb import MemoryGraph
 
         # Should not raise
         MemoryGraph(graph_config)

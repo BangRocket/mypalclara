@@ -8,19 +8,19 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from adapters.discord.voice.config import (
+from mypalclara.adapters.discord.voice.config import (
     VOICE_ENABLE_INTERRUPTION,
     VOICE_IDLE_TIMEOUT,
 )
-from adapters.discord.voice.listener import VoiceListenerSink
-from adapters.discord.voice.player import AudioPlayer
-from adapters.discord.voice.synthesizer import synthesize
-from adapters.discord.voice.transcriber import STTProvider, get_transcriber
-from config.logging import get_logger
+from mypalclara.adapters.discord.voice.listener import VoiceListenerSink
+from mypalclara.adapters.discord.voice.player import AudioPlayer
+from mypalclara.adapters.discord.voice.synthesizer import synthesize
+from mypalclara.adapters.discord.voice.transcriber import STTProvider, get_transcriber
+from mypalclara.config.logging import get_logger
 from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
-    from adapters.discord.gateway_client import DiscordGatewayClient
+    from mypalclara.adapters.discord.gateway_client import DiscordGatewayClient
 
 logger = get_logger("adapters.discord.voice.manager")
 

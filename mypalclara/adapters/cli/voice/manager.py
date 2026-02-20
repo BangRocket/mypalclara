@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     from rich.console import Console
 
-    from adapters.cli.gateway_client import CLIGatewayClient
+    from mypalclara.adapters.cli.gateway_client import CLIGatewayClient
 
 logger = get_logger("adapters.cli.voice.manager")
 
@@ -48,9 +48,9 @@ class CLIVoiceManager:
         if self._active:
             return
 
-        from adapters.cli.voice.listener import CLIVoiceListener
-        from adapters.cli.voice.player import CLIAudioPlayer
-        from adapters.discord.voice.transcriber import get_transcriber
+        from mypalclara.adapters.cli.voice.listener import CLIVoiceListener
+        from mypalclara.adapters.cli.voice.player import CLIAudioPlayer
+        from mypalclara.adapters.discord.voice.transcriber import get_transcriber
 
         # Initialize components
         self._transcriber = get_transcriber()
@@ -111,7 +111,7 @@ class CLIVoiceManager:
         self.console.print(f"\n[dim]You (voice):[/dim] {text}")
 
         # Handle interruption: stop playback if speaking
-        from adapters.discord.voice.config import VOICE_ENABLE_INTERRUPTION
+        from mypalclara.adapters.discord.voice.config import VOICE_ENABLE_INTERRUPTION
 
         if VOICE_ENABLE_INTERRUPTION and self._player and self._player.is_playing:
             logger.info("Interruption detected — stopping playback")
@@ -153,7 +153,7 @@ class CLIVoiceManager:
             return
 
         try:
-            from adapters.discord.voice.synthesizer import synthesize
+            from mypalclara.adapters.discord.voice.synthesizer import synthesize
 
             audio_bytes = await synthesize(text)
             if audio_bytes:

@@ -7,6 +7,6 @@ Provides local mic → STT → gateway → TTS → speaker interaction via:
 - Audio I/O: sounddevice (PortAudio) for local mic/speaker
 """
 
-from adapters.cli.voice.manager import CLIVoiceManager
+from mypalclara.adapters.cli.voice.manager import CLIVoiceManager
 
 __all__ = ["CLIVoiceManager"]

@@ -7,12 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from clara_core.llm.messages import AssistantMessage, SystemMessage, UserMessage
+from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
 
 
 def _make_prompt_builder():
     """Create a PromptBuilder with mocked persona."""
-    from clara_core.prompt_builder import PromptBuilder
+    from mypalclara.core.prompt_builder import PromptBuilder
 
     return PromptBuilder(agent_id="test-agent")
 
@@ -235,19 +235,19 @@ class TestTokenTrimming:
 
 class TestTokenCounter:
     def test_count_tokens_basic(self):
-        from clara_core.token_counter import count_tokens
+        from mypalclara.core.token_counter import count_tokens
 
         result = count_tokens("hello world")
         assert result > 0
         assert isinstance(result, int)
 
     def test_count_tokens_empty(self):
-        from clara_core.token_counter import count_tokens
+        from mypalclara.core.token_counter import count_tokens
 
         assert count_tokens("") == 0
 
     def test_count_message_tokens(self):
-        from clara_core.token_counter import count_message_tokens
+        from mypalclara.core.token_counter import count_message_tokens
 
         msgs = [
             SystemMessage(content="system prompt"),
@@ -257,16 +257,16 @@ class TestTokenCounter:
         assert result > 0
 
     def test_get_context_window_claude(self):
-        from clara_core.token_counter import get_context_window
+        from mypalclara.core.token_counter import get_context_window
 
         assert get_context_window("claude-sonnet-4-5") == 200_000
 
     def test_get_context_window_gpt4o(self):
-        from clara_core.token_counter import get_context_window
+        from mypalclara.core.token_counter import get_context_window
 
         assert get_context_window("gpt-4o-mini") == 128_000
 
     def test_get_context_window_unknown(self):
-        from clara_core.token_counter import get_context_window
+        from mypalclara.core.token_counter import get_context_window
 
         assert get_context_window("some-unknown-model") == 128_000

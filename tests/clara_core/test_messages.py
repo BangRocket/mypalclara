@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from clara_core.llm.messages import (
+from mypalclara.core.llm.messages import (
     AssistantMessage,
     ContentPart,
     ContentPartType,
@@ -17,7 +17,7 @@ from clara_core.llm.messages import (
     message_from_dict,
     messages_from_dicts,
 )
-from clara_core.llm.tools.response import ToolCall, ToolResponse
+from mypalclara.core.llm.tools.response import ToolCall, ToolResponse
 
 # =============================================================================
 # SystemMessage
@@ -302,7 +302,7 @@ class TestContentPart:
 
 class TestMessagesToOpenAI:
     def test_basic_conversion(self):
-        from clara_core.llm.tools.formats import messages_to_openai
+        from mypalclara.core.llm.tools.formats import messages_to_openai
 
         msgs: list[Message] = [
             SystemMessage(content="Be helpful"),
@@ -316,7 +316,7 @@ class TestMessagesToOpenAI:
         assert result[2] == {"role": "assistant", "content": "Hello!"}
 
     def test_tool_result_conversion(self):
-        from clara_core.llm.tools.formats import message_to_openai
+        from mypalclara.core.llm.tools.formats import message_to_openai
 
         msg = ToolResultMessage(tool_call_id="call_1", content="42")
         result = message_to_openai(msg)
@@ -325,7 +325,7 @@ class TestMessagesToOpenAI:
 
 class TestMessagesToAnthropic:
     def test_extracts_system(self):
-        from clara_core.llm.tools.formats import messages_to_anthropic
+        from mypalclara.core.llm.tools.formats import messages_to_anthropic
 
         msgs: list[Message] = [
             SystemMessage(content="Be helpful"),
@@ -338,7 +338,7 @@ class TestMessagesToAnthropic:
         assert api_msgs[0] == {"role": "user", "content": "Hi"}
 
     def test_tool_result_becomes_user(self):
-        from clara_core.llm.tools.formats import messages_to_anthropic
+        from mypalclara.core.llm.tools.formats import messages_to_anthropic
 
         msgs: list[Message] = [
             UserMessage(content="Hi"),
@@ -352,7 +352,7 @@ class TestMessagesToAnthropic:
         assert api_msgs[1]["content"][0]["tool_use_id"] == "call_1"
 
     def test_assistant_with_tool_calls(self):
-        from clara_core.llm.tools.formats import message_to_anthropic
+        from mypalclara.core.llm.tools.formats import message_to_anthropic
 
         tc = ToolCall(id="call_1", name="search", arguments={"q": "test"})
         msg = AssistantMessage(content="Searching", tool_calls=[tc])
@@ -364,7 +364,7 @@ class TestMessagesToAnthropic:
         assert result["content"][1]["name"] == "search"
 
     def test_multimodal_user_message(self):
-        from clara_core.llm.tools.formats import message_to_anthropic
+        from mypalclara.core.llm.tools.formats import message_to_anthropic
 
         parts = [
             ContentPart(type=ContentPartType.TEXT, text="Look"),
@@ -385,7 +385,7 @@ class TestMessagesToAnthropic:
         assert result["content"][1]["source"]["data"] == "abc123"
 
     def test_image_url_user_message(self):
-        from clara_core.llm.tools.formats import message_to_anthropic
+        from mypalclara.core.llm.tools.formats import message_to_anthropic
 
         parts = [
             ContentPart(type=ContentPartType.IMAGE_URL, url="https://example.com/img.png"),
@@ -402,7 +402,7 @@ class TestMessagesToLangchain:
         from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
         from langchain_core.messages import SystemMessage as LCSystemMessage
 
-        from clara_core.llm.tools.formats import messages_to_langchain
+        from mypalclara.core.llm.tools.formats import messages_to_langchain
 
         msgs: list[Message] = [
             SystemMessage(content="Be helpful"),
@@ -426,7 +426,7 @@ class TestMessagesToLangchain:
     def test_assistant_with_tool_calls(self):
         from langchain_core.messages import AIMessage
 
-        from clara_core.llm.tools.formats import messages_to_langchain
+        from mypalclara.core.llm.tools.formats import messages_to_langchain
 
         tc = ToolCall(id="call_1", name="search", arguments={"q": "test"})
         msgs: list[Message] = [AssistantMessage(content="Searching", tool_calls=[tc])]
@@ -443,7 +443,7 @@ class TestMessagesToLangchain:
     def test_multimodal_user(self):
         from langchain_core.messages import HumanMessage
 
-        from clara_core.llm.tools.formats import messages_to_langchain
+        from mypalclara.core.llm.tools.formats import messages_to_langchain
 
         parts = [
             ContentPart(type=ContentPartType.TEXT, text="Look"),

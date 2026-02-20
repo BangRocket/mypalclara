@@ -9,8 +9,8 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session as DBSession
 
-from db.connection import SessionLocal
-from db.models import CanonicalUser, PlatformLink
+from mypalclara.db.connection import SessionLocal
+from mypalclara.db.models import CanonicalUser, PlatformLink
 from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user
 from mypalclara.web.auth.session import decode_access_token
 from mypalclara.web.chat.adapter import web_chat_adapter

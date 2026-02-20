@@ -12,19 +12,19 @@ Module structure:
 - main.py: Standalone bot entry point
 """
 
-from adapters.discord.adapter import DiscordAdapter
-from adapters.discord.attachment_handler import (
+from mypalclara.adapters.discord.adapter import DiscordAdapter
+from mypalclara.adapters.discord.attachment_handler import (
     extract_attachments,
     is_image_file,
     is_text_file,
 )
-from adapters.discord.channel_modes import (
+from mypalclara.adapters.discord.channel_modes import (
     ChannelModeManager,
     get_channel_mode,
     set_channel_mode,
 )
-from adapters.discord.gateway_client import DiscordGatewayClient
-from adapters.discord.message_builder import (
+from mypalclara.adapters.discord.gateway_client import DiscordGatewayClient
+from mypalclara.adapters.discord.message_builder import (
     DISCORD_MSG_LIMIT,
     clean_content,
     format_response,

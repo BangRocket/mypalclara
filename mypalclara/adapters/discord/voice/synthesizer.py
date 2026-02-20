@@ -6,12 +6,12 @@ import asyncio
 
 import replicate
 
-from adapters.discord.voice.config import (
+from mypalclara.adapters.discord.voice.config import (
     REPLICATE_API_TOKEN,
     VOICE_TTS_LANGUAGE,
     VOICE_TTS_SPEAKER,
 )
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.discord.voice.synthesizer")
 

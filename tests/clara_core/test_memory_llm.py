@@ -1,7 +1,7 @@
 """Tests for the memory system LLM integration."""
 
-from clara_core.memory.llm import UnifiedLLM, UnifiedLLMConfig
-from clara_core.memory.llm.base import BaseLlmConfig
+from mypalclara.core.memory.llm import UnifiedLLM, UnifiedLLMConfig
+from mypalclara.core.memory.llm.base import BaseLlmConfig
 
 
 class TestUnifiedLLMConfig:

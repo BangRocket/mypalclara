@@ -16,9 +16,9 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
-from adapters.base import GatewayClient
-from adapters.manifest import AdapterManifest, adapter
-from config.logging import get_logger
+from mypalclara.adapters.base import GatewayClient
+from mypalclara.adapters.manifest import AdapterManifest, adapter
+from mypalclara.config.logging import get_logger
 from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 logger = get_logger("adapters.cli.gateway")

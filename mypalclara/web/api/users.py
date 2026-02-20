@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, PlatformLink, utcnow
+from mypalclara.db.models import CanonicalUser, PlatformLink, utcnow
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()
