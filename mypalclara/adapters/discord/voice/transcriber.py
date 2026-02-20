@@ -7,13 +7,13 @@ from typing import Protocol
 
 import openai
 
-from adapters.discord.voice.config import (
+from mypalclara.adapters.discord.voice.config import (
     GROQ_API_KEY,
     OPENAI_API_KEY,
     VOICE_STT_MODEL,
     VOICE_STT_PROVIDER,
 )
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.discord.voice.transcriber")
 

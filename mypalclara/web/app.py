@@ -19,7 +19,7 @@ logger = logging.getLogger("web")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
-    from db.connection import init_db
+    from mypalclara.db.connection import init_db
 
     logger.info("Initializing database...")
     init_db()

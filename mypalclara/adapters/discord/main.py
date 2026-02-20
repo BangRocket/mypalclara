@@ -31,11 +31,11 @@ load_dotenv()
 import discord
 from discord.ext import commands as discord_commands
 
-from adapters.discord.channel_modes import get_channel_mode
-from adapters.discord.gateway_client import DiscordGatewayClient
-from adapters.discord.voice import VoiceManager
-from clara_core.discord import setup as setup_slash_commands
-from config.logging import get_logger, init_logging
+from mypalclara.adapters.discord.channel_modes import get_channel_mode
+from mypalclara.adapters.discord.gateway_client import DiscordGatewayClient
+from mypalclara.adapters.discord.voice import VoiceManager
+from mypalclara.config.logging import get_logger, init_logging
+from mypalclara.core.discord import setup as setup_slash_commands
 
 init_logging()
 logger = get_logger("adapters.discord")

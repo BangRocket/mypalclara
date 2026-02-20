@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, Intention, utcnow
-from db.user_identity import resolve_all_user_ids_for_canonical
+from mypalclara.db.models import CanonicalUser, Intention, utcnow
+from mypalclara.db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()

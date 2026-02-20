@@ -15,12 +15,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
     from prompt_toolkit import PromptSession
 
-    from adapters.cli.gateway_client import CLIGatewayClient
+    from mypalclara.adapters.cli.gateway_client import CLIGatewayClient
 
 logger = get_logger("adapters.cli.commands")
 
@@ -202,8 +202,8 @@ class CommandDispatcher:
 
     def _get_identity_links(self) -> list[str]:
         """Query linked identities for status display."""
-        from db import SessionLocal
-        from db.models import PlatformLink
+        from mypalclara.db import SessionLocal
+        from mypalclara.db.models import PlatformLink
 
         cli_prefixed = f"cli-{self.client.user_id}"
         with SessionLocal() as db:
@@ -324,7 +324,7 @@ class CommandDispatcher:
 
         name = args[0]
         try:
-            from clara_core.mcp import get_mcp_manager
+            from mypalclara.core.mcp import get_mcp_manager
 
             manager = get_mcp_manager()
 
@@ -362,7 +362,7 @@ class CommandDispatcher:
 
         query = " ".join(args)
         try:
-            from clara_core.mcp import SmitheryClient
+            from mypalclara.core.mcp import SmitheryClient
 
             client = SmitheryClient()
             result = await client.search(query)
@@ -493,8 +493,8 @@ class CommandDispatcher:
 
     async def _link_create(self, platform: str, platform_id: str) -> CommandResult:
         """Link CLI user to another platform identity."""
-        from db import SessionLocal
-        from db.models import CanonicalUser, PlatformLink
+        from mypalclara.db import SessionLocal
+        from mypalclara.db.models import CanonicalUser, PlatformLink
 
         cli_prefixed = f"cli-{self.client.user_id}"
         target_prefixed = f"{platform}-{platform_id}"
@@ -508,7 +508,7 @@ class CommandDispatcher:
                     canonical_user_id = target_link.canonical_user_id
                 else:
                     # Create new canonical user and link for target
-                    from db.models import gen_uuid
+                    from mypalclara.db.models import gen_uuid
 
                     canonical_user_id = gen_uuid()
                     canonical_user = CanonicalUser(
@@ -570,8 +570,8 @@ class CommandDispatcher:
 
     async def _link_status(self) -> CommandResult:
         """Show linked identities."""
-        from db import SessionLocal
-        from db.models import CanonicalUser, PlatformLink
+        from mypalclara.db import SessionLocal
+        from mypalclara.db.models import CanonicalUser, PlatformLink
 
         cli_prefixed = f"cli-{self.client.user_id}"
 
@@ -612,8 +612,8 @@ class CommandDispatcher:
         if not args:
             return CommandResult(handled=True, error="Usage: !unlink <platform>  (removes CLI's link)")
 
-        from db import SessionLocal
-        from db.models import PlatformLink
+        from mypalclara.db import SessionLocal
+        from mypalclara.db.models import PlatformLink
 
         cli_prefixed = f"cli-{self.client.user_id}"
 
@@ -667,7 +667,7 @@ class CommandDispatcher:
             return CommandResult(handled=True, output=Text("Voice is already active.", style="yellow"))
 
         try:
-            from adapters.cli.voice import CLIVoiceManager
+            from mypalclara.adapters.cli.voice import CLIVoiceManager
 
             if not self._voice_manager:
                 self._voice_manager = CLIVoiceManager(
@@ -706,7 +706,7 @@ class CommandDispatcher:
         table.add_row("Voice", "[green]Active[/green]" if active else "[dim]Inactive[/dim]")
 
         if active:
-            from adapters.discord.voice.config import (
+            from mypalclara.adapters.discord.voice.config import (
                 VOICE_STT_PROVIDER,
                 VOICE_TTS_SPEAKER,
                 VOICE_VAD_AGGRESSIVENESS,

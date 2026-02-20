@@ -12,7 +12,7 @@ class TestRedisCache:
         """Cache should be unavailable when REDIS_URL is not set."""
         with patch.dict("os.environ", {}, clear=True):
             # Clear any existing singleton
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -22,7 +22,7 @@ class TestRedisCache:
     def test_get_embedding_returns_none_when_unavailable(self):
         """get_embedding should return None when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -33,7 +33,7 @@ class TestRedisCache:
     def test_set_embedding_returns_false_when_unavailable(self):
         """set_embedding should return False when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -44,7 +44,7 @@ class TestRedisCache:
     def test_get_search_results_returns_none_when_unavailable(self):
         """get_search_results should return None when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -55,7 +55,7 @@ class TestRedisCache:
     def test_set_search_results_returns_false_when_unavailable(self):
         """set_search_results should return False when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -66,7 +66,7 @@ class TestRedisCache:
     def test_get_key_memories_returns_none_when_unavailable(self):
         """get_key_memories should return None when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -77,7 +77,7 @@ class TestRedisCache:
     def test_invalidate_returns_zero_when_unavailable(self):
         """invalidate_user_cache should return 0 when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -88,7 +88,7 @@ class TestRedisCache:
     def test_singleton_pattern(self):
         """get_instance should return the same instance."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -99,7 +99,7 @@ class TestRedisCache:
     def test_embedding_key_generation(self):
         """Embedding key should be deterministic and unique."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -119,7 +119,7 @@ class TestRedisCache:
     def test_search_key_generation(self):
         """Search key should include user_id, query hash, and type."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -138,7 +138,7 @@ class TestRedisCache:
     def test_stats_when_unavailable(self):
         """get_stats should return available=False when Redis unavailable."""
         with patch.dict("os.environ", {}, clear=True):
-            from clara_core.memory.cache.redis_cache import RedisCache
+            from mypalclara.core.memory.cache.redis_cache import RedisCache
 
             RedisCache.reset()
 
@@ -152,7 +152,7 @@ class TestRedisCacheWithMock:
 
     def test_get_embedding_cache_hit(self):
         """get_embedding should return cached value on hit."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -168,7 +168,7 @@ class TestRedisCacheWithMock:
 
     def test_get_embedding_cache_miss(self):
         """get_embedding should return None on miss."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -184,7 +184,7 @@ class TestRedisCacheWithMock:
 
     def test_set_embedding_success(self):
         """set_embedding should call setex with correct TTL."""
-        from clara_core.memory.cache.redis_cache import EMBEDDING_TTL, RedisCache
+        from mypalclara.core.memory.cache.redis_cache import EMBEDDING_TTL, RedisCache
 
         RedisCache.reset()
 
@@ -204,7 +204,7 @@ class TestRedisCacheWithMock:
 
     def test_get_search_results_cache_hit(self):
         """get_search_results should return cached results on hit."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -220,7 +220,7 @@ class TestRedisCacheWithMock:
 
     def test_set_search_results_with_filters(self):
         """set_search_results should handle filters in cache key."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -240,7 +240,7 @@ class TestRedisCacheWithMock:
 
     def test_invalidate_user_cache_deletes_keys(self):
         """invalidate_user_cache should delete matching keys."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -257,7 +257,7 @@ class TestRedisCacheWithMock:
 
     def test_invalidate_search_cache_only(self):
         """invalidate_search_cache should only delete search keys."""
-        from clara_core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
 
         RedisCache.reset()
 
@@ -283,7 +283,7 @@ class TestCachedEmbedding:
 
     def test_cache_disabled_calls_embedder_directly(self):
         """When cache disabled, should call embedder directly."""
-        from clara_core.memory.embeddings.cached import CachedEmbedding
+        from mypalclara.core.memory.embeddings.cached import CachedEmbedding
 
         mock_embedder = MagicMock()
         mock_embedder.embed.return_value = [0.1, 0.2, 0.3]
@@ -297,8 +297,8 @@ class TestCachedEmbedding:
 
     def test_cache_hit_returns_cached(self):
         """On cache hit, should return cached value without calling embedder."""
-        from clara_core.memory.cache.redis_cache import RedisCache
-        from clara_core.memory.embeddings.cached import CachedEmbedding
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.embeddings.cached import CachedEmbedding
 
         mock_embedder = MagicMock()
         mock_embedder.config.model = "test-model"
@@ -315,8 +315,8 @@ class TestCachedEmbedding:
 
     def test_cache_miss_calls_embedder_and_caches(self):
         """On cache miss, should call embedder and cache result."""
-        from clara_core.memory.cache.redis_cache import RedisCache
-        from clara_core.memory.embeddings.cached import CachedEmbedding
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.embeddings.cached import CachedEmbedding
 
         mock_embedder = MagicMock()
         mock_embedder.config.model = "test-model"
@@ -335,8 +335,8 @@ class TestCachedEmbedding:
 
     def test_stats_tracking(self):
         """Stats should track hits and misses."""
-        from clara_core.memory.cache.redis_cache import RedisCache
-        from clara_core.memory.embeddings.cached import CachedEmbedding
+        from mypalclara.core.memory.cache.redis_cache import RedisCache
+        from mypalclara.core.memory.embeddings.cached import CachedEmbedding
 
         mock_embedder = MagicMock()
         mock_embedder.config.model = "test-model"
@@ -362,7 +362,7 @@ class TestCachedEmbedding:
 
     def test_config_delegation(self):
         """config property should delegate to wrapped embedder."""
-        from clara_core.memory.embeddings.cached import CachedEmbedding
+        from mypalclara.core.memory.embeddings.cached import CachedEmbedding
 
         mock_embedder = MagicMock()
         mock_embedder.config = {"model": "test-model"}
@@ -376,7 +376,7 @@ class TestDualWriteVectorStore:
 
     def test_primary_only_writes_to_primary(self):
         """In primary_only mode, writes should go to primary only."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -397,7 +397,7 @@ class TestDualWriteVectorStore:
 
     def test_dual_write_writes_to_both(self):
         """In dual_write mode, writes should go to both stores."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -418,7 +418,7 @@ class TestDualWriteVectorStore:
 
     def test_secondary_only_writes_to_secondary(self):
         """In secondary_only mode, writes should go to secondary only."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -439,7 +439,7 @@ class TestDualWriteVectorStore:
 
     def test_primary_only_reads_from_primary(self):
         """In primary_only mode, reads should come from primary."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -462,7 +462,7 @@ class TestDualWriteVectorStore:
 
     def test_secondary_only_reads_from_secondary(self):
         """In secondary_only mode, reads should come from secondary."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -485,7 +485,7 @@ class TestDualWriteVectorStore:
 
     def test_dual_read_reads_from_both(self):
         """In dual_read mode, reads should come from both for comparison."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -511,7 +511,7 @@ class TestDualWriteVectorStore:
 
     def test_secondary_failure_does_not_fail_operation(self):
         """Secondary failure should not fail the operation in dual_write mode."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -532,7 +532,7 @@ class TestDualWriteVectorStore:
 
     def test_mode_change(self):
         """Mode should be changeable at runtime."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )
@@ -556,7 +556,7 @@ class TestDualWriteVectorStore:
 
     def test_stats(self):
         """get_stats should return mode and mismatch count."""
-        from clara_core.memory.vector.dual_write import (
+        from mypalclara.core.memory.vector.dual_write import (
             DualWriteMode,
             DualWriteVectorStore,
         )

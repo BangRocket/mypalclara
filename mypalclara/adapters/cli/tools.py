@@ -14,13 +14,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from adapters.cli.approval import get_write_approval, show_write_preview
-from adapters.cli.shell_executor import (
+from mypalclara.adapters.cli.approval import get_write_approval, show_write_preview
+from mypalclara.adapters.cli.shell_executor import (
     CommandSafety,
     classify_command,
     execute_shell,
 )
-from tools._base import ToolContext, ToolDef
+from mypalclara.tools._base import ToolContext, ToolDef
 
 MODULE_NAME = "cli_tools"
 MODULE_VERSION = "0.2.0"

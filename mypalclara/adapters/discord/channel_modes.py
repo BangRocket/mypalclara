@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.discord.channel_modes")
 
@@ -89,8 +89,8 @@ class ChannelModeManager:
             Channel mode from database or default
         """
         try:
-            from db import SessionLocal
-            from db.models import ChannelConfig
+            from mypalclara.db import SessionLocal
+            from mypalclara.db.models import ChannelConfig
 
             db = SessionLocal()
             try:
@@ -111,8 +111,8 @@ class ChannelModeManager:
             channel_id: Discord channel ID
             mode: Mode to save
         """
-        from db import SessionLocal
-        from db.models import ChannelConfig
+        from mypalclara.db import SessionLocal
+        from mypalclara.db.models import ChannelConfig
 
         db = SessionLocal()
         try:

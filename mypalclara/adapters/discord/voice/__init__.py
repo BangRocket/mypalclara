@@ -6,6 +6,6 @@ Provides voice-to-text-to-voice interaction via:
 - VAD: webrtcvad for silence detection
 """
 
-from adapters.discord.voice.manager import VoiceManager
+from mypalclara.adapters.discord.voice.manager import VoiceManager
 
 __all__ = ["VoiceManager"]

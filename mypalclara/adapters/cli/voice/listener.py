@@ -15,7 +15,7 @@ from typing import Callable, Coroutine
 import sounddevice as sd
 import webrtcvad
 
-from adapters.discord.voice.config import (
+from mypalclara.adapters.discord.voice.config import (
     VAD_CHANNELS,
     VAD_FRAME_DURATION_MS,
     VAD_FRAME_SIZE,
@@ -23,7 +23,7 @@ from adapters.discord.voice.config import (
     VOICE_SILENCE_DURATION,
     VOICE_VAD_AGGRESSIVENESS,
 )
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.cli.voice.listener")
 

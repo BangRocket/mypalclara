@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator
 from rich.console import Console
 from rich.markdown import Markdown
 
-from clara_core.platform import PlatformAdapter, PlatformContext, PlatformMessage
+from mypalclara.core.platform import PlatformAdapter, PlatformContext, PlatformMessage
 
 logger = logging.getLogger("cli.adapter")
 

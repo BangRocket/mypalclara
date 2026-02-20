@@ -13,7 +13,7 @@ import wave
 import numpy as np
 import sounddevice as sd
 
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.cli.voice.player")
 

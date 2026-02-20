@@ -30,8 +30,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from adapters.cli.gateway_client import CLIGatewayClient
-from config.logging import get_logger, init_logging
+from mypalclara.adapters.cli.gateway_client import CLIGatewayClient
+from mypalclara.config.logging import get_logger, init_logging
 
 init_logging()
 logger = get_logger("adapters.cli")

@@ -34,9 +34,9 @@ from aiohttp import web
 from botbuilder.core.integration import aiohttp_error_middleware
 from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
 
-from adapters.teams.bot import TeamsBot
-from adapters.teams.gateway_client import TeamsGatewayClient
-from config.logging import get_logger, init_logging
+from mypalclara.adapters.teams.bot import TeamsBot
+from mypalclara.adapters.teams.gateway_client import TeamsGatewayClient
+from mypalclara.config.logging import get_logger, init_logging
 
 init_logging()
 logger = get_logger("adapters.teams")

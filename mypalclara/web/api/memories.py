@@ -11,13 +11,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import (
+from mypalclara.db.models import (
     CanonicalUser,
     MemoryDynamics,
     MemoryHistory,
     MemorySupersession,
 )
-from db.user_identity import resolve_all_user_ids_for_canonical
+from mypalclara.db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 logger = logging.getLogger("web.api.memories")
@@ -59,7 +59,7 @@ def _get_user_ids(user: CanonicalUser, db: DBSession) -> list[str]:
 
 def _get_memory_client():
     """Get the ClaraMemory singleton (Rook)."""
-    from clara_core.memory import ROOK
+    from mypalclara.core.memory import ROOK
 
     if ROOK is None:
         logger.error("Rook memory system not initialized")

@@ -4,7 +4,7 @@ Usage:
     python -m adapters.discord
 """
 
-from adapters.discord.main import main
+from mypalclara.adapters.discord.main import main
 
 if __name__ == "__main__":
     import asyncio

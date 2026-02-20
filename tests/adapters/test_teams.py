@@ -20,7 +20,7 @@ class TestTeamsBot:
     @pytest.fixture
     def teams_bot(self, mock_gateway_client):
         """Create a TeamsBot instance."""
-        from adapters.teams.bot import TeamsBot
+        from mypalclara.adapters.teams.bot import TeamsBot
 
         return TeamsBot(gateway_client=mock_gateway_client)
 
@@ -110,7 +110,7 @@ class TestTeamsGatewayClient:
     @pytest.fixture
     def gateway_client(self, mock_graph_client):
         """Create a TeamsGatewayClient instance."""
-        from adapters.teams.gateway_client import TeamsGatewayClient
+        from mypalclara.adapters.teams.gateway_client import TeamsGatewayClient
 
         client = TeamsGatewayClient(
             gateway_url="ws://localhost:18789",
@@ -208,7 +208,7 @@ class TestGraphClient:
     @pytest.fixture
     def graph_client(self):
         """Create a GraphClient instance."""
-        from adapters.teams.graph_client import GraphClient
+        from mypalclara.adapters.teams.graph_client import GraphClient
 
         return GraphClient(
             app_id="test-app-id",
@@ -267,7 +267,7 @@ class TestAdaptiveCardBuilder:
     @pytest.fixture
     def card_builder(self):
         """Create an AdaptiveCardBuilder instance."""
-        from adapters.teams.message_builder import AdaptiveCardBuilder
+        from mypalclara.adapters.teams.message_builder import AdaptiveCardBuilder
 
         return AdaptiveCardBuilder()
 

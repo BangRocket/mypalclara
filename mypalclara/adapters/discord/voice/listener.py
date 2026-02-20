@@ -17,7 +17,7 @@ import webrtcvad
 from discord.sinks import Sink
 from discord.sinks.core import AudioData
 
-from adapters.discord.voice.config import (
+from mypalclara.adapters.discord.voice.config import (
     DISCORD_CHANNELS,
     DISCORD_SAMPLE_RATE,
     VAD_CHANNELS,
@@ -27,7 +27,7 @@ from adapters.discord.voice.config import (
     VOICE_SILENCE_DURATION,
     VOICE_VAD_AGGRESSIVENESS,
 )
-from config.logging import get_logger
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
     pass

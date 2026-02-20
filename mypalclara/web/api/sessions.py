@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 
-from db.models import CanonicalUser, Message
-from db.models import Session as ChatSession
-from db.user_identity import resolve_all_user_ids_for_canonical
+from mypalclara.db.models import CanonicalUser, Message
+from mypalclara.db.models import Session as ChatSession
+from mypalclara.db.user_identity import resolve_all_user_ids_for_canonical
 from mypalclara.web.auth.dependencies import get_approved_user, get_db
 
 router = APIRouter()

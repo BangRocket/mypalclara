@@ -15,6 +15,6 @@ Gateway clients (for connecting to Clara Gateway):
 As new platforms are added, their adapters will be registered here.
 """
 
-from adapters.base import GatewayClient
+from mypalclara.adapters.base import GatewayClient
 
 __all__ = ["GatewayClient"]
