@@ -26,16 +26,11 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --only main --no-interaction --no-ansi
 
 # Copy application code
-COPY adapters/ ./adapters/
-COPY clara_core/ ./clara_core/
-COPY config/ ./config/
-COPY db/ ./db/
-COPY gateway/ ./gateway/
-COPY vendor/ ./vendor/
+COPY mypalclara/ ./mypalclara/
 COPY VERSION ./
 
 # Expose Teams bot port
 EXPOSE 3978
 
 # Run the Teams adapter
-CMD ["python", "-m", "adapters.teams"]
+CMD ["python", "-m", "mypalclara.adapters.teams"]
