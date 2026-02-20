@@ -2,6 +2,10 @@
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import uvicorn
 
 from mypalclara.web.config import get_web_config
