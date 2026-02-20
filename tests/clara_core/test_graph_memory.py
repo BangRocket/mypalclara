@@ -16,7 +16,7 @@ class FakeQueryResult:
 @pytest.fixture
 def mock_falkordb():
     """Mock FalkorDB client and graph."""
-    with patch("clara_core.memory.graph.falkordb.falkordb") as mock_module:
+    with patch("mypalclara.core.memory.graph.falkordb.falkordb") as mock_module:
         mock_client = MagicMock()
         mock_graph = MagicMock()
         mock_module.FalkorDB.return_value = mock_client
@@ -29,7 +29,7 @@ def mock_falkordb():
 @pytest.fixture
 def mock_embedding():
     """Mock OpenAI embedding model."""
-    with patch("clara_core.memory.graph.falkordb.OpenAIEmbedding") as mock_cls:
+    with patch("mypalclara.core.memory.graph.falkordb.OpenAIEmbedding") as mock_cls:
         mock_embedder = MagicMock()
         mock_embedder.embed.return_value = [0.1] * 1536
         mock_cls.return_value = mock_embedder
@@ -39,7 +39,7 @@ def mock_embedding():
 @pytest.fixture
 def mock_llm():
     """Mock UnifiedLLM."""
-    with patch("clara_core.memory.graph.falkordb.UnifiedLLM") as mock_cls:
+    with patch("mypalclara.core.memory.graph.falkordb.UnifiedLLM") as mock_cls:
         mock_llm = MagicMock()
         mock_cls.return_value = mock_llm
         yield mock_llm
