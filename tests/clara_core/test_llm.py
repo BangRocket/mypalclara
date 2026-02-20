@@ -1000,7 +1000,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_provider.complete.return_value = "test response"
             mock_get_provider.return_value = mock_provider
@@ -1039,7 +1039,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_provider.complete.return_value = "typed response"
             mock_get_provider.return_value = mock_provider
@@ -1073,7 +1073,7 @@ class TestUnifiedLLM:
             api_key="test-key",
         )
 
-        with patch("clara_core.llm.providers.registry.get_provider") as mock_get_provider:
+        with patch("mypalclara.core.llm.providers.registry.get_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_tool_response = MagicMock()
             mock_tool_response.has_tool_calls = True
