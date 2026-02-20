@@ -35,28 +35,28 @@ MyPalClara uses a modular architecture with a central gateway for message proces
 
 ### Gateway Server
 
-The gateway (`gateway/`) is the central hub that:
+The gateway (`mypalclara/gateway/`) is the central hub that:
 - Accepts WebSocket connections from platform adapters
 - Routes messages through the processing pipeline
 - Manages sessions and user context
 - Coordinates tool execution
 
 Key files:
-- `gateway/server.py` - WebSocket server
-- `gateway/router.py` - Message routing and queuing
-- `gateway/processor.py` - Context building and memory retrieval
-- `gateway/llm_orchestrator.py` - LLM calls with streaming and tool detection
+- `mypalclara/gateway/server.py` - WebSocket server
+- `mypalclara/gateway/router.py` - Message routing and queuing
+- `mypalclara/gateway/processor.py` - Context building and memory retrieval
+- `mypalclara/gateway/llm_orchestrator.py` - LLM calls with streaming and tool detection
 
 ### Platform Adapters
 
 Adapters connect platform-specific APIs to the gateway:
 
-**Discord Adapter** (`adapters/discord/`):
+**Discord Adapter** (`mypalclara/adapters/discord/`):
 - Uses py-cord for Discord API
 - Handles message formatting, splitting, and reactions
 - Manages channel modes (active/mention/off)
 
-**Teams Adapter** (`adapters/teams/`):
+**Teams Adapter** (`mypalclara/adapters/teams/`):
 - Uses Bot Framework SDK
 - Adaptive Cards for rich responses
 - Azure Bot Service authentication

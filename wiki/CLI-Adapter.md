@@ -16,7 +16,7 @@ The CLI adapter provides a rich terminal interface for interacting with Clara:
 ### Standalone
 
 ```bash
-poetry run python -m adapters.cli
+poetry run python -m mypalclara.adapters.cli
 ```
 
 ### With Gateway
@@ -26,7 +26,7 @@ poetry run python -m adapters.cli
 poetry run python -m mypalclara.gateway
 
 # Terminal 2: Start CLI
-poetry run python -m adapters.cli
+poetry run python -m mypalclara.adapters.cli
 ```
 
 ## Configuration
@@ -111,7 +111,7 @@ Terminal Input
       │
       ▼
 ┌─────────────────┐
-│   CLI Adapter   │  (adapters/cli/)
+│   CLI Adapter   │  (mypalclara/adapters/cli/)
 │    main.py      │
 └────────┬────────┘
          │ WebSocket
@@ -124,7 +124,7 @@ Terminal Input
 ## File Structure
 
 ```
-adapters/cli/
+mypalclara/adapters/cli/
 ├── __init__.py
 ├── main.py           # Entry point and REPL
 ├── adapter.py        # CLI adapter implementation
@@ -140,7 +140,7 @@ adapters/cli/
 Test Clara's responses and tools without Discord:
 
 ```bash
-poetry run python -m adapters.cli
+poetry run python -m mypalclara.adapters.cli
 ```
 
 ### Scripting
@@ -148,7 +148,7 @@ poetry run python -m adapters.cli
 Pipe commands to Clara:
 
 ```bash
-echo "What is 2+2?" | poetry run python -m adapters.cli --no-interactive
+echo "What is 2+2?" | poetry run python -m mypalclara.adapters.cli
 ```
 
 ### Server Administration

@@ -108,7 +108,7 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 
 ```bash
 # Run the Discord bot directly
-poetry run python discord_bot.py
+poetry run python -m mypalclara.adapters.discord
 
 # Or run via gateway (multi-platform support)
 poetry run python -m mypalclara.gateway
@@ -117,14 +117,14 @@ poetry run python -m mypalclara.gateway
 ### Production
 
 ```bash
-# Daemon mode
-poetry run python discord_bot.py --daemon --logfile /var/log/clara.log
+# Daemon mode via gateway (recommended)
+poetry run python -m mypalclara.gateway start --adapter discord
 
 # Check status
-poetry run python discord_bot.py --status
+poetry run python -m mypalclara.gateway status
 
 # Stop
-poetry run python discord_bot.py --stop
+poetry run python -m mypalclara.gateway stop
 ```
 
 ### Docker
@@ -167,7 +167,7 @@ Ensure you're in the project directory and using Poetry:
 ```bash
 cd mypalclara
 poetry shell  # Activate virtual environment
-python discord_bot.py
+python -m mypalclara.adapters.discord
 ```
 
 ### Bot Not Responding

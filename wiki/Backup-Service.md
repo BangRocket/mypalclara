@@ -15,7 +15,7 @@ The backup service provides:
 ## Location
 
 ```
-backup_service/
+mypalclara/services/backup/
 ├── backup.py       # Main backup script
 ├── Dockerfile      # Container image
 └── requirements.txt
@@ -50,7 +50,7 @@ DB_RETRY_DELAY=2                     # Initial retry delay (seconds)
 ### Run Backup
 
 ```bash
-cd backup_service
+cd mypalclara/services/backup
 python backup.py
 ```
 
@@ -125,8 +125,8 @@ psql postgresql://user:pass@host:5432/clara_restore < clara_20260201_030000.sql
 
 ### Setup
 
-1. Create new service from `backup_service/` directory
-2. Set root directory to `backup_service`
+1. Create new service from `mypalclara/services/backup/` directory
+2. Set root directory to `mypalclara/services/backup`
 3. Configure environment variables
 4. Set cron schedule
 

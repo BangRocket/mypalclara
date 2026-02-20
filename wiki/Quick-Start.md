@@ -43,10 +43,10 @@ ANTHROPIC_MODEL=claude-sonnet-4-5
 
 ```bash
 # Direct run
-poetry run python discord_bot.py
+poetry run python -m mypalclara.adapters.discord
 
 # Or daemon mode
-poetry run python discord_bot.py --daemon
+poetry run python -m mypalclara.adapters.discord --daemon
 ```
 
 ## 4. Test
@@ -78,7 +78,7 @@ poetry run python discord_bot.py --daemon
 **Import errors?**
 ```bash
 poetry shell
-python discord_bot.py
+python -m mypalclara.adapters.discord
 ```
 
 See [[Troubleshooting]] for more help.

@@ -249,7 +249,7 @@ Rule matched: job_hunting (priority: 8)
 
 ```
 ┌─────────────────┐
-│  Email Monitor  │  (email_service/)
+│  Email Monitor  │  (mypalclara/services/email/)
 │   monitor.py    │
 └────────┬────────┘
          │
