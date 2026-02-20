@@ -48,6 +48,29 @@ def decode_access_token(token: str) -> dict | None:
         return None
 
 
+def create_game_redirect_token(
+    canonical_user_id: str,
+    display_name: str,
+    avatar_url: str | None,
+    audience: str = "games.mypalclara.com",
+) -> str:
+    """Create a short-lived JWT for game site auth redirect.
+
+    This token is only valid for 5 minutes and scoped to the games site.
+    """
+    config = get_web_config()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": canonical_user_id,
+        "name": display_name,
+        "avatar": avatar_url,
+        "aud": audience,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+    }
+    return jwt.encode(payload, config.secret_key, algorithm=config.jwt_algorithm)
+
+
 def hash_token(token: str) -> str:
     """Hash a session token for DB storage."""
     return hashlib.sha256(token.encode()).hexdigest()
