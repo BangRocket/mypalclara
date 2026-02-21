@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ChatRuntimeProvider } from "@/components/chat/ChatRuntimeProvider";
@@ -13,6 +14,12 @@ import { OAuthCallback } from "@/auth/OAuthCallback";
 import { PendingApproval } from "@/pages/PendingApproval";
 import { SuspendedPage } from "@/pages/Suspended";
 import { AdminUsersPage } from "@/pages/AdminUsers";
+import Lobby from "@/pages/Lobby";
+import Blackjack from "@/pages/Blackjack";
+import Checkers from "@/pages/Checkers";
+import GameHistory from "@/pages/GameHistory";
+import Replay from "@/pages/Replay";
+import { api } from "@/api/client";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -33,6 +40,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function WebSocketBridge({ children }: { children: React.ReactNode }) {
   useWebSocket();
   return <ChatRuntimeProvider>{children}</ChatRuntimeProvider>;
+}
+
+/** Routes to the correct game component based on game_type. */
+function GameRouter() {
+  const { id } = useParams();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["game", id],
+    queryFn: () => api.games.show(id!),
+  });
+  if (isLoading) return <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontFamily: "monospace" }}>Loading...</div>;
+  if (!data?.game) return <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", fontFamily: "monospace" }}>Game not found</div>;
+  if (data.game.game_type === "checkers") return <Checkers game={data.game} />;
+  return <Blackjack game={data.game} />;
 }
 
 export function App() {
@@ -58,6 +79,10 @@ export function App() {
                   <Route path="/intentions" element={<IntentionsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/admin/users" element={<AdminUsersPage />} />
+                  <Route path="/games" element={<Lobby />} />
+                  <Route path="/games/history" element={<GameHistory />} />
+                  <Route path="/games/history/:id" element={<Replay />} />
+                  <Route path="/games/:id" element={<GameRouter />} />
                 </Routes>
               </AppLayout>
             </WebSocketBridge>

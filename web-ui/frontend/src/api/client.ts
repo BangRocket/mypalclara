@@ -302,3 +302,33 @@ export const admin = {
     }),
   pendingCount: () => request<{ count: number }>(`${BASE}/admin/users/pending/count`),
 };
+
+// ── Games ─────────────────────────────────────────────────────────────
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export const games = {
+  lobby: () => request<any>(`${BASE}/lobby`),
+  create: (body: { game_type: string; ai_players: string[] }) =>
+    request<any>(`${BASE}/games`, { method: "POST", body: JSON.stringify(body) }),
+  show: (id: number | string) => request<any>(`${BASE}/games/${id}`),
+  move: (id: number | string, body: { move_type: string }) =>
+    request<any>(`${BASE}/games/${id}/move`, { method: "POST", body: JSON.stringify(body) }),
+  aiMove: (id: number | string, body: { game_player_id: number }) =>
+    request<any>(`${BASE}/games/${id}/ai_move`, { method: "POST", body: JSON.stringify(body) }),
+  history: () => request<any>(`${BASE}/history`),
+  replay: (id: number | string) => request<any>(`${BASE}/history/${id}`),
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// ── Unified API namespace ────────────────────────────────────────────
+
+export const api = {
+  auth,
+  memories,
+  graph,
+  sessions,
+  users,
+  intentions,
+  admin,
+  games,
+};

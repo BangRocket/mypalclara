@@ -13,10 +13,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:8000",
-      "/auth": "http://localhost:8000",
-      "/ws": {
-        target: "ws://localhost:8000",
+      "/api": "http://localhost:3000",
+      "/auth": "http://localhost:3000",
+      "/cable": {
+        target: "ws://localhost:3000",
         ws: true,
       },
     },

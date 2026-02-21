@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Brain,
+  Gamepad2,
   Network,
   Zap,
   Settings,
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { to: "/knowledge", icon: Brain, label: "Knowledge Base" },
   { to: "/graph", icon: Network, label: "Graph" },
   { to: "/intentions", icon: Zap, label: "Intentions" },
+  { to: "/games", icon: Gamepad2, label: "Games" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
