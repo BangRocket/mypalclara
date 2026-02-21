@@ -60,8 +60,11 @@ def _load_personality_text(personality: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _is_legal_move(chosen: dict[str, Any], legal_moves: list[str | dict[str, Any]]) -> bool:
+def _is_legal_move(chosen: str | dict[str, Any], legal_moves: list[str | dict[str, Any]]) -> bool:
     """Check if the chosen move matches any legal move."""
+    # LLM may return a bare string like "hit" instead of {"type": "hit"}
+    if isinstance(chosen, str):
+        return chosen in legal_moves
     # String-based moves (blackjack): {"type": "hit"} in ["hit", "stand"]
     move_type = chosen.get("type", "")
     if move_type and move_type in legal_moves:
@@ -136,6 +139,10 @@ Respond with ONLY valid JSON (no markdown fences):
 
         # Validate the move against legal moves
         chosen_move = result.get("move", {})
+        # Normalize: if LLM returned a bare string, wrap it
+        if isinstance(chosen_move, str):
+            result["move"] = {"type": chosen_move}
+            chosen_move = result["move"]
         if _is_legal_move(chosen_move, request.legal_moves):
             pass  # move is valid
         elif request.legal_moves:
