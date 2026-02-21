@@ -3,7 +3,9 @@ class AuthController < ApplicationController
 
   def auth_config
     result = IdentityProxy.get("/auth/config")
-    render json: result[:body], status: result[:status]
+    body = result[:body]
+    body["dev_mode"] = true if ENV["WEB_DEV_MODE"] == "true"
+    render json: body, status: result[:status]
   end
 
   def dev_login
