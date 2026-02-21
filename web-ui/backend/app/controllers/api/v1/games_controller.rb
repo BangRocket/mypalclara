@@ -79,7 +79,8 @@ module Api
 
           matching = legal.find { |m| m[:from] == parsed_move[:from] && m[:to] == parsed_move[:to] }
           unless matching
-            render json: { error: "Invalid move" }, status: :unprocessable_entity
+            Rails.logger.error("Invalid checkers move: parsed=#{parsed_move.inspect} legal=#{legal.inspect} game_state=#{@game.state}")
+            render json: { error: "Invalid move", attempted: parsed_move, legal_moves: legal, game_state: @game.state }, status: :unprocessable_entity
             return
           end
 

@@ -24,7 +24,7 @@ PERSONALITIES_DIR = Path(__file__).parent.parent.parent.parent / "personalities"
 class GameMoveRequest(BaseModel):
     game_type: str
     game_state: dict[str, Any]
-    legal_moves: list[str]
+    legal_moves: list[str | dict[str, Any]]
     personality: str
     user_id: str
     move_history: list[dict[str, Any]] = []
@@ -58,6 +58,20 @@ def _load_personality_text(personality: str) -> str:
         logger.warning("Personality file not found: %s, using clara", path)
         path = PERSONALITIES_DIR / "clara.md"
     return path.read_text(encoding="utf-8").strip()
+
+
+def _is_legal_move(chosen: dict[str, Any], legal_moves: list[str | dict[str, Any]]) -> bool:
+    """Check if the chosen move matches any legal move."""
+    # String-based moves (blackjack): {"type": "hit"} in ["hit", "stand"]
+    move_type = chosen.get("type", "")
+    if move_type and move_type in legal_moves:
+        return True
+    # Dict-based moves (checkers): match by from/to
+    if "from" in chosen and "to" in chosen:
+        for m in legal_moves:
+            if isinstance(m, dict) and m.get("from") == chosen["from"] and m.get("to") == chosen["to"]:
+                return True
+    return False
 
 
 async def get_clara_move(
@@ -108,7 +122,7 @@ Pick ONE move from the legal moves list. Provide commentary in character \
 Also indicate your mood.
 
 Respond with ONLY valid JSON (no markdown fences):
-{{"move": {{"type": "<your chosen move>"}}, "commentary": "<your in-character reaction>", "mood": "<one of: idle, happy, nervous, smug, surprised, defeated>"}}"""
+{{"move": <your chosen move from the list>, "commentary": "<your in-character reaction>", "mood": "<one of: idle, happy, nervous, smug, surprised, defeated>"}}"""
 
     try:
         messages = [{"role": "user", "content": prompt}]
@@ -120,11 +134,18 @@ Respond with ONLY valid JSON (no markdown fences):
 
         result = json.loads(content)
 
-        move_type = result.get("move", {}).get("type", "")
-        if move_type not in request.legal_moves:
-            logger.warning("Clara returned illegal move: %s, picking random", move_type)
-            result["move"] = {"type": random.choice(request.legal_moves)}
+        # Validate the move against legal moves
+        chosen_move = result.get("move", {})
+        if _is_legal_move(chosen_move, request.legal_moves):
+            pass  # move is valid
+        elif request.legal_moves:
+            logger.warning("Clara returned illegal move: %s, picking random", chosen_move)
+            fallback = random.choice(request.legal_moves)
+            result["move"] = fallback if isinstance(fallback, dict) else {"type": fallback}
             result["commentary"] = "Hmm, let me think... okay, I'll do this."
+        else:
+            result["move"] = {"type": "pass"}
+            result["commentary"] = "I... don't have any moves?"
 
         if result.get("mood") not in VALID_MOODS:
             result["mood"] = "idle"
@@ -133,8 +154,13 @@ Respond with ONLY valid JSON (no markdown fences):
 
     except Exception:
         logger.exception("Failed to get LLM game move")
+        if request.legal_moves:
+            fallback = random.choice(request.legal_moves)
+            move = fallback if isinstance(fallback, dict) else {"type": fallback}
+        else:
+            move = {"type": "pass"}
         return {
-            "move": {"type": random.choice(request.legal_moves)},
+            "move": move,
             "commentary": "Give me a second... okay, here goes.",
             "mood": "nervous",
         }
