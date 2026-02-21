@@ -69,15 +69,30 @@ module Api
         state = load_game_state(@game)
         player_id = gp_identifier(player)
 
-        legal = engine.legal_moves(state, player_id)
         move_type = params[:move_type]
 
-        unless legal.include?(move_type)
-          render json: { error: "Invalid move: #{move_type}. Legal moves: #{legal.join(', ')}" }, status: :unprocessable_entity
-          return
-        end
+        if @game.game_type == "checkers"
+          # Checkers: move_type is JSON like {"from":[5,2],"to":[4,1]}
+          parsed_move = move_type.is_a?(String) ? JSON.parse(move_type).deep_symbolize_keys : move_type.to_unsafe_h.deep_symbolize_keys
+          color = player.seat_position == 0 ? "red" : "black"
+          legal = engine.legal_moves(state, color)
 
-        new_state = engine.apply_move(state, player_id, move_type)
+          matching = legal.find { |m| m[:from] == parsed_move[:from] && m[:to] == parsed_move[:to] }
+          unless matching
+            render json: { error: "Invalid move" }, status: :unprocessable_entity
+            return
+          end
+
+          new_state = engine.apply_move(state, matching)
+        else
+          legal = engine.legal_moves(state, player_id)
+          unless legal.include?(move_type)
+            render json: { error: "Invalid move: #{move_type}. Legal moves: #{legal.join(', ')}" }, status: :unprocessable_entity
+            return
+          end
+
+          new_state = engine.apply_move(state, player_id, move_type)
+        end
 
         @game.increment!(:move_count)
         @game.update!(game_data: new_state)
@@ -113,7 +128,13 @@ module Api
         engine = game_engine(@game.game_type)
         state = load_game_state(@game)
         player_id = gp_identifier(ai_player)
-        legal = engine.legal_moves(state, player_id)
+
+        if @game.game_type == "checkers"
+          color = ai_player.seat_position == 0 ? "red" : "black"
+          legal = engine.legal_moves(state, color)
+        else
+          legal = engine.legal_moves(state, player_id)
+        end
 
         # Get AI decision from Clara API
         move_history = @game.moves.order(:move_number).map { |m| m.action }
@@ -127,10 +148,17 @@ module Api
           move_history: move_history
         )
 
-        move_type = response[:move].is_a?(Hash) ? response[:move][:type] : response[:move]
-        move_type = legal.first unless legal.include?(move_type)
-
-        new_state = engine.apply_move(state, player_id, move_type)
+        if @game.game_type == "checkers"
+          ai_move_data = response[:move].is_a?(Hash) ? response[:move].deep_symbolize_keys : JSON.parse(response[:move]).deep_symbolize_keys rescue legal.first
+          matching = legal.find { |m| m[:from] == ai_move_data[:from] && m[:to] == ai_move_data[:to] }
+          matching ||= legal.first
+          new_state = engine.apply_move(state, matching)
+          move_type = matching.to_json
+        else
+          move_type = response[:move].is_a?(Hash) ? response[:move][:type] : response[:move]
+          move_type = legal.first unless legal.include?(move_type)
+          new_state = engine.apply_move(state, player_id, move_type)
+        end
 
         @game.increment!(:move_count)
         @game.update!(game_data: new_state)
@@ -236,6 +264,18 @@ module Api
       end
 
       def check_game_end(game, engine, state)
+        if game.game_type == "checkers"
+          winner = engine.winner(state)
+          if winner
+            game.update!(state: "resolved", finished_at: Time.current)
+            game.game_players.each do |gp|
+              color = gp.seat_position == 0 ? "red" : "black"
+              gp.update!(result: color == winner ? "win" : "loss")
+            end
+          end
+          return
+        end
+
         return unless game.game_type == "blackjack"
 
         player_ids = game.game_players.order(:seat_position).map { |gp| gp_identifier(gp) }
