@@ -12,13 +12,12 @@ module ApplicationCable
       token = request.params[:token] || cookies[:access_token]
       return reject_unauthorized_connection unless token
 
-      secret = ENV.fetch("WEB_SECRET_KEY", "change-me-in-production")
-      payload = JWT.decode(token, secret, true, algorithm: "HS256").first
+      payload = JwtService.decode(token)
+      return reject_unauthorized_connection unless payload
+
       user = User.find_by(canonical_user_id: payload["sub"])
       return reject_unauthorized_connection unless user
       user
-    rescue JWT::DecodeError
-      reject_unauthorized_connection
     end
   end
 end

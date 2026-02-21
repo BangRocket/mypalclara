@@ -33,14 +33,10 @@ class ApplicationController < ActionController::API
     end
 
     # Fall back to cookie
-    cookies[:token]
+    cookies[:access_token]
   end
 
   def decode_jwt(token)
-    secret = ENV.fetch("WEB_SECRET_KEY", "change-me-in-production")
-    payload, _header = JWT.decode(token, secret, true, algorithm: "HS256")
-    payload
-  rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError
-    nil
+    JwtService.decode(token)
   end
 end

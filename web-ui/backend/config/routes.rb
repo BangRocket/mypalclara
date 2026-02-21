@@ -1,8 +1,15 @@
 Rails.application.routes.draw do
   # Auth stays at top level
-  get "auth/login", to: "auth#login"
-  get "auth/callback", to: "auth#callback"
-  delete "auth/logout", to: "auth#logout"
+  scope :auth do
+    get "config", to: "auth#config"
+    post "dev-login", to: "auth#dev_login"
+    get "login/:provider", to: "auth#login"
+    get "callback/:provider", to: "auth#callback"
+    post "logout", to: "auth#logout"
+    get "me", to: "auth#me"
+    post "link/:provider", to: "auth#link"
+    delete "link/:provider", to: "auth#unlink"
+  end
 
   namespace :api do
     namespace :v1 do
