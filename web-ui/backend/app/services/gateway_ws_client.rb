@@ -83,10 +83,25 @@ class GatewayWsClient
     @ws.on :close do
       client.instance_variable_set(:@connected, false)
       Rails.logger.warn("GatewayWsClient: Disconnected from gateway")
-      # Auto-reconnect after delay
+      # Auto-reconnect with exponential backoff
       Thread.new do
-        sleep 5
-        client.send(:connect) rescue nil
+        delay = 5
+        max_delay = 300
+        max_retries = 20
+        retries = 0
+        loop do
+          break if retries >= max_retries
+          sleep delay
+          begin
+            client.send(:connect)
+            break
+          rescue => e
+            retries += 1
+            Rails.logger.warn("GatewayWsClient: Reconnect attempt #{retries} failed: #{e.message}")
+            delay = [delay * 2, max_delay].min
+          end
+        end
+        Rails.logger.error("GatewayWsClient: Gave up reconnecting after #{max_retries} attempts") if retries >= max_retries
       end
     end
 

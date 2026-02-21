@@ -15,7 +15,7 @@ interface HistoryEntry {
 
 export default function GameHistory() {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery<HistoryEntry[]>({
+  const { data, isLoading } = useQuery<{ games: HistoryEntry[] }>({
     queryKey: ["gameHistory"],
     queryFn: () => api.games.history(),
   });
@@ -30,7 +30,7 @@ export default function GameHistory() {
     );
   }
 
-  const games = data;
+  const games = data.games;
   const filtered = filter === "all" ? games : games.filter((g) => g.game_type === filter);
 
   const totalGames = games.length;

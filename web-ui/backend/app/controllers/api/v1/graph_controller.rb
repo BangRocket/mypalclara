@@ -14,7 +14,7 @@ module Api
       def entity
         result = GatewayProxy.forward(
           method: :get,
-          path: "/api/v1/graph/entities/#{params[:name]}",
+          path: "/api/v1/graph/entities/#{CGI.escape(params[:name])}",
           user_id: current_user.canonical_user_id
         )
         render json: result[:body], status: result[:status]
