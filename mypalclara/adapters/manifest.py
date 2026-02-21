@@ -296,14 +296,15 @@ def discover_adapters() -> None:
     decorators execute and register them in the global registry.
     """
     adapter_modules = [
-        "adapters.discord.gateway_client",
-        "adapters.cli.gateway_client",
-        "adapters.teams.gateway_client",
-        "adapters.telegram.gateway_client",
-        "adapters.slack.gateway_client",
-        "adapters.whatsapp.gateway_client",
-        "adapters.signal.gateway_client",
-        "adapters.matrix.gateway_client",
+        "mypalclara.adapters.discord.gateway_client",
+        "mypalclara.adapters.cli.gateway_client",
+        "mypalclara.adapters.teams.gateway_client",
+        "mypalclara.adapters.telegram.gateway_client",
+        "mypalclara.adapters.slack.gateway_client",
+        "mypalclara.adapters.whatsapp.gateway_client",
+        "mypalclara.adapters.signal.gateway_client",
+        "mypalclara.adapters.matrix.gateway_client",
+        "mypalclara.adapters.game",
     ]
 
     for module_name in adapter_modules:

@@ -34,7 +34,7 @@ class TestGameMoveEndpoint:
             "user_id": "test-user-123",
             "move_history": [],
         }
-        with patch("mypalclara.web.api.game.get_clara_move") as mock_get_move:
+        with patch("mypalclara.adapters.game.api.get_clara_move") as mock_get_move:
             mock_get_move.return_value = {
                 "move": {"type": "stand"},
                 "commentary": "Playing it safe, huh?",
