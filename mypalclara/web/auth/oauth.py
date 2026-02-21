@@ -13,8 +13,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session as DBSession
 
 from mypalclara.db.models import CanonicalUser, OAuthToken, PlatformLink, WebSession, utcnow
-from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user, get_current_user, get_db
-from mypalclara.web.auth.session import create_access_token, hash_token
+from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user, get_approved_user, get_current_user, get_db
+from mypalclara.web.auth.session import create_access_token, create_game_redirect_token, hash_token
 from mypalclara.web.config import get_web_config
 
 logger = logging.getLogger("web.auth")
