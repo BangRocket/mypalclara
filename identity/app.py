@@ -28,23 +28,28 @@ logger = logging.getLogger("identity")
 class AuthorizeRequest(BaseModel):
     provider: str
 
+
 class CallbackRequest(BaseModel):
     provider: str
     code: str
 
+
 class RefreshRequest(BaseModel):
     token: str
+
 
 class EnsureLinkRequest(BaseModel):
     provider: str
     platform_user_id: str
     display_name: str = "User"
 
+
 class UserResponse(BaseModel):
     id: str
     display_name: str
     avatar_url: str | None = None
     email: str | None = None
+
 
 class LinkResponse(BaseModel):
     platform: str
@@ -87,10 +92,14 @@ def find_or_create_user(
     platform_user_id = normalized["platform_user_id"]
     prefixed = f"{provider}-{platform_user_id}"
 
-    link = db.query(PlatformLink).filter(
-        PlatformLink.platform == provider,
-        PlatformLink.platform_user_id == platform_user_id,
-    ).first()
+    link = (
+        db.query(PlatformLink)
+        .filter(
+            PlatformLink.platform == provider,
+            PlatformLink.platform_user_id == platform_user_id,
+        )
+        .first()
+    )
 
     if link:
         user = link.canonical_user
@@ -122,10 +131,14 @@ def find_or_create_user(
         )
         db.add(link)
 
-    existing_token = db.query(OAuthToken).filter(
-        OAuthToken.canonical_user_id == user.id,
-        OAuthToken.provider == provider,
-    ).first()
+    existing_token = (
+        db.query(OAuthToken)
+        .filter(
+            OAuthToken.canonical_user_id == user.id,
+            OAuthToken.provider == provider,
+        )
+        .first()
+    )
 
     if existing_token:
         existing_token.access_token = token_data.get("access_token", "")
@@ -159,9 +172,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    cors_origins = os.getenv(
-        "IDENTITY_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
-    ).split(",")
+    cors_origins = os.getenv("IDENTITY_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in cors_origins],
@@ -246,10 +257,14 @@ def create_app() -> FastAPI:
         db: DBSession = Depends(get_db),
         _=Depends(require_service_secret),
     ):
-        link = db.query(PlatformLink).filter(
-            PlatformLink.platform == provider,
-            PlatformLink.platform_user_id == platform_user_id,
-        ).first()
+        link = (
+            db.query(PlatformLink)
+            .filter(
+                PlatformLink.platform == provider,
+                PlatformLink.platform_user_id == platform_user_id,
+            )
+            .first()
+        )
         if not link:
             raise HTTPException(status_code=404, detail="User not found")
         user = link.canonical_user
@@ -268,10 +283,14 @@ def create_app() -> FastAPI:
     ):
         prefixed = f"{body.provider}-{body.platform_user_id}"
 
-        link = db.query(PlatformLink).filter(
-            PlatformLink.platform == body.provider,
-            PlatformLink.platform_user_id == body.platform_user_id,
-        ).first()
+        link = (
+            db.query(PlatformLink)
+            .filter(
+                PlatformLink.platform == body.provider,
+                PlatformLink.platform_user_id == body.platform_user_id,
+            )
+            .first()
+        )
 
         if link:
             return {"canonical_user_id": link.canonical_user_id}

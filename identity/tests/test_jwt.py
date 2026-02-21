@@ -1,11 +1,6 @@
 """Tests for JWT encoding/decoding."""
 
-import time
-
-import pytest
-
 from identity import jwt_service
-from identity.config import JWT_SECRET
 
 
 class TestJwtService:

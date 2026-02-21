@@ -55,11 +55,7 @@ def normalize_profile(provider: str, raw: dict) -> dict:
     """Normalize provider-specific profile into a common format."""
     if provider == "discord":
         avatar_hash = raw.get("avatar")
-        avatar_url = (
-            f"https://cdn.discordapp.com/avatars/{raw['id']}/{avatar_hash}.png"
-            if avatar_hash
-            else None
-        )
+        avatar_url = f"https://cdn.discordapp.com/avatars/{raw['id']}/{avatar_hash}.png" if avatar_hash else None
         return {
             "platform_user_id": str(raw["id"]),
             "display_name": raw.get("global_name") or raw.get("username") or "User",

@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from identity.app import create_app
-from identity.db import Base, CanonicalUser, PlatformLink, gen_uuid, get_db, utcnow
+from identity.db import Base, CanonicalUser, PlatformLink, gen_uuid, get_db
 from identity import jwt_service
 
 
@@ -104,11 +104,14 @@ class TestUserByPlatform:
 
 class TestEnsureLink:
     def test_creates_new_user(self, client, db_session):
-        resp = client.post("/users/ensure-link", json={
-            "provider": "discord",
-            "platform_user_id": "new-user-999",
-            "display_name": "New Guy",
-        })
+        resp = client.post(
+            "/users/ensure-link",
+            json={
+                "provider": "discord",
+                "platform_user_id": "new-user-999",
+                "display_name": "New Guy",
+            },
+        )
         assert resp.status_code == 200
         cuid = resp.json()["canonical_user_id"]
         assert cuid is not None
