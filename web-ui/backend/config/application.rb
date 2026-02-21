@@ -39,6 +39,10 @@ module ClaraGames
     # API-only mode — no views, assets, or browser middleware
     config.api_only = true
 
+    # Enable cookies middleware (not included by default in API mode).
+    # Required for httponly auth cookies set during OAuth callback.
+    config.middleware.use ActionDispatch::Cookies
+
     # Don't generate system test files.
     config.generators.system_tests = nil
   end
