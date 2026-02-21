@@ -1,7 +1,5 @@
 class JwtService
-  SECRET = ENV.fetch("WEB_SECRET_KEY", "change-me-in-production").tap do |s|
-    raise "WEB_SECRET_KEY must be set in production!" if defined?(Rails) && Rails.env.production? && s == "change-me-in-production"
-  end
+  SECRET = ENV.fetch("IDENTITY_JWT_SECRET", ENV.fetch("WEB_SECRET_KEY", "change-me-in-production"))
   EXPIRE_MINUTES = ENV.fetch("WEB_JWT_EXPIRE_MINUTES", "1440").to_i
 
   def self.encode(canonical_user_id, extra_claims = {})
