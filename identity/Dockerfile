@@ -13,7 +13,7 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi
 
-COPY identity/ ./identity/
+COPY . ./identity/
 
 RUN groupadd --system --gid 1000 app && \
     useradd app --uid 1000 --gid 1000 --create-home --shell /bin/bash
