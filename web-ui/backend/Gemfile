@@ -1,25 +1,8 @@
 source "https://rubygems.org"
 
 gem "rails", "~> 8.1.2"
-gem "propshaft"
 gem "pg", "~> 1.1"
 gem "puma", ">= 5.0"
-
-# JavaScript bundling with esbuild (for React + Inertia)
-gem "jsbundling-rails"
-
-# Hotwire (keeping turbo-rails for Action Cable integration)
-gem "turbo-rails"
-gem "stimulus-rails"
-
-# Inertia.js adapter for Rails
-gem "inertia_rails"
-
-# Tailwind CSS
-gem "tailwindcss-rails"
-
-# Use Active Model has_secure_password
-# gem "bcrypt", "~> 3.1.7"
 
 # JWT for authentication tokens
 gem "jwt", "~> 2.9"
@@ -44,8 +27,4 @@ group :development, :test do
   gem "factory_bot_rails"
   gem "rails-controller-testing"
   gem "webmock"
-end
-
-group :development do
-  gem "web-console"
 end
