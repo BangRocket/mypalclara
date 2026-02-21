@@ -14,6 +14,45 @@ Rails.application.routes.draw do
       end
       get "lobby", to: "lobby#index"
       resources :history, only: [:index, :show]
+
+      # Proxy endpoints (forwarded to Python gateway)
+      resources :sessions, only: [:index, :show, :update, :destroy] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
+      end
+
+      resources :memories, only: [:index, :show, :create, :update, :destroy] do
+        member do
+          get :history
+          get :dynamics
+          put :tags
+        end
+        collection do
+          get :stats
+          post :search
+          get "tags/all", to: "memories#all_tags"
+          get :export
+          post "import", to: "memories#import_memories"
+        end
+      end
+
+      get "graph/entities", to: "graph#entities"
+      get "graph/entities/:name", to: "graph#entity"
+      get "graph/search", to: "graph#search"
+      get "graph/subgraph", to: "graph#subgraph"
+
+      resources :intentions, only: [:index, :create, :update, :destroy]
+
+      get "users/me", to: "users#me"
+      put "users/me", to: "users#update_me"
+      get "users/me/links", to: "users#links"
+
+      get "admin/users", to: "admin#users"
+      post "admin/users/:id/approve", to: "admin#approve"
+      post "admin/users/:id/suspend", to: "admin#suspend"
+      get "admin/users/pending/count", to: "admin#pending_count"
     end
   end
 
