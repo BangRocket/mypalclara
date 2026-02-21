@@ -1,0 +1,33 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  username: clara_games
+  password: claragames2026
+  host: localhost
+
+development:
+  <<: *default
+  database: clara_games_development
+
+test:
+  <<: *default
+  database: clara_games_test
+
+production:
+  primary: &primary_production
+    <<: *default
+    database: clara_games_production
+    password: <%= ENV["CLARA_GAMES_DB_PASSWORD"] %>
+  cache:
+    <<: *primary_production
+    database: clara_games_production
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: clara_games_production
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production
+    database: clara_games_production
+    migrations_paths: db/cable_migrate

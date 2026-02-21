@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -29,6 +29,9 @@ DISCORD_USER_URL = "https://discord.com/api/v10/users/@me"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USER_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+# Allowed redirect hosts for game auth
+ALLOWED_GAME_REDIRECT_HOSTS = {"games.mypalclara.com"}
 
 
 def _set_auth_cookie(response: Response, jwt_token: str, config) -> None:
@@ -257,6 +260,27 @@ async def me(user: CanonicalUser = Depends(get_current_user), db: DBSession = De
             for l in links
         ],
     }
+
+
+@router.get("/game-redirect")
+async def game_redirect(
+    redirect_uri: str,
+    user: CanonicalUser = Depends(get_approved_user),
+):
+    """Issue a short-lived JWT and redirect to the games site."""
+    parsed = urlparse(redirect_uri)
+    if parsed.hostname not in ALLOWED_GAME_REDIRECT_HOSTS:
+        raise HTTPException(status_code=400, detail="Invalid redirect URI")
+
+    token = create_game_redirect_token(
+        canonical_user_id=user.id,
+        display_name=user.display_name,
+        avatar_url=user.avatar_url,
+    )
+
+    separator = "&" if "?" in redirect_uri else "?"
+    redirect_url = f"{redirect_uri}{separator}token={token}"
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 @router.post("/link/{provider}")
