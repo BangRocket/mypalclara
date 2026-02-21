@@ -8,13 +8,20 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session as DBSession
 
 from mypalclara.db.models import CanonicalUser, OAuthToken, PlatformLink, WebSession, utcnow
-from mypalclara.web.auth.dependencies import DEV_USER_ID, _get_or_create_dev_user, get_approved_user, get_current_user, get_db
-from mypalclara.web.auth.session import create_access_token, create_game_redirect_token, hash_token
+from mypalclara.web.auth.dependencies import (
+    DEV_USER_ID,
+    _extract_bearer,
+    _get_or_create_dev_user,
+    get_approved_user,
+    get_current_user,
+    get_db,
+)
+from mypalclara.web.auth.session import create_access_token, create_game_redirect_token, decode_access_token, hash_token
 from mypalclara.web.config import get_web_config
 
 logger = logging.getLogger("web.auth")
@@ -125,7 +132,14 @@ async def login(provider: str, request: Request):
 
 
 @router.get("/callback/{provider}")
-async def callback(provider: str, code: str, request: Request, response: Response, db: DBSession = Depends(get_db)):
+async def callback(
+    provider: str,
+    code: str,
+    request: Request,
+    response: Response,
+    state: str | None = None,
+    db: DBSession = Depends(get_db),
+):
     """Handle OAuth callback, create/find user, issue JWT."""
     config = get_web_config()
 
@@ -208,7 +222,26 @@ async def callback(provider: str, code: str, request: Request, response: Respons
     is_browser_redirect = "application/json" not in request.headers.get("content-type", "")
 
     if is_browser_redirect:
-        # Direct browser redirect from OAuth provider — set cookie and redirect to frontend
+        # Check if this was a game auth flow (state=game:<redirect_uri>)
+        if state and state.startswith("game:"):
+            game_redirect_uri = state[5:]  # Strip "game:" prefix
+            parsed = urlparse(game_redirect_uri)
+            if parsed.hostname in ALLOWED_GAME_REDIRECT_HOSTS:
+                # Issue game token directly and redirect to callback
+                game_token = create_game_redirect_token(
+                    canonical_user_id=canonical_user.id,
+                    display_name=canonical_user.display_name,
+                    avatar_url=canonical_user.avatar_url,
+                )
+                separator = "&" if "?" in game_redirect_uri else "?"
+                redirect = RedirectResponse(
+                    url=f"{game_redirect_uri}{separator}token={game_token}",
+                    status_code=302,
+                )
+                _set_auth_cookie(redirect, jwt_token, config)
+                return redirect
+
+        # Normal flow — redirect to frontend
         redirect = RedirectResponse(url=config.frontend_url, status_code=302)
         _set_auth_cookie(redirect, jwt_token, config)
         return redirect
@@ -264,14 +297,49 @@ async def me(user: CanonicalUser = Depends(get_current_user), db: DBSession = De
 
 @router.get("/game-redirect")
 async def game_redirect(
+    request: Request,
     redirect_uri: str,
-    user: CanonicalUser = Depends(get_approved_user),
+    access_token: str | None = Cookie(None),
+    authorization: str | None = Header(None),
+    db: DBSession = Depends(get_db),
 ):
-    """Issue a short-lived JWT and redirect to the games site."""
+    """Issue a short-lived JWT and redirect to the games site.
+
+    If the user is not authenticated, redirect them through Discord OAuth first,
+    storing the game redirect_uri in a cookie so we can resume after login.
+    """
     parsed = urlparse(redirect_uri)
     if parsed.hostname not in ALLOWED_GAME_REDIRECT_HOSTS:
         raise HTTPException(status_code=400, detail="Invalid redirect URI")
 
+    config = get_web_config()
+
+    # Try to get authenticated user
+    jwt_token = _extract_bearer(authorization) or access_token
+    user = None
+    if jwt_token:
+        payload = decode_access_token(jwt_token)
+        if payload and "sub" in payload:
+            user = db.query(CanonicalUser).filter(CanonicalUser.id == payload["sub"]).first()
+
+    if not user:
+        # Not authenticated — redirect through Discord OAuth
+        if not config.discord_client_id:
+            raise HTTPException(status_code=501, detail="Discord OAuth not configured")
+
+        params = {
+            "client_id": config.discord_client_id,
+            "redirect_uri": config.discord_redirect_uri,
+            "response_type": "code",
+            "scope": "identify email",
+            "state": f"game:{redirect_uri}",
+        }
+        response = RedirectResponse(
+            url=f"{DISCORD_AUTH_URL}?{urlencode(params)}", status_code=302
+        )
+        return response
+
+    # User is authenticated — issue game token and redirect
     token = create_game_redirect_token(
         canonical_user_id=user.id,
         display_name=user.display_name,
