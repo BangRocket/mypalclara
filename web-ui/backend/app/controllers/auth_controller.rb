@@ -29,13 +29,18 @@ class AuthController < ApplicationController
     provider = params[:provider]
     code = params[:code]
 
+    Rails.logger.info("[OAuth] Callback received: provider=#{provider}, code_present=#{code.present?}, xhr=#{request.xhr?}, content_type=#{request.content_type}")
+
     unless provider.present? && code.present?
+      Rails.logger.warn("[OAuth] Missing provider or code")
       return render json: { error: "Invalid callback" }, status: :bad_request
     end
 
     result = IdentityProxy.post("/oauth/callback", body: { provider: provider, code: code })
+    Rails.logger.info("[OAuth] Identity service response: status=#{result[:status]}, body=#{result[:body].to_json.truncate(500)}")
 
     unless result[:status] == 200
+      Rails.logger.error("[OAuth] Identity service returned #{result[:status]}: #{result[:body]}")
       if request.xhr? || request.content_type&.include?("json")
         return render json: result[:body], status: result[:status]
       else
