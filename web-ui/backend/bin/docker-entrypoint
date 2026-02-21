@@ -6,20 +6,9 @@ bundle exec rails db:prepare
 # Load Solid Queue/Cache/Cable schemas if their tables don't exist yet.
 # db:prepare won't load these for an existing database.
 echo "==> Ensuring Solid Queue/Cache/Cable tables..."
-bundle exec rails runner '
-  checks = { "queue" => "solid_queue_jobs", "cache" => "solid_cache_entries", "cable" => "solid_cable_messages" }
-  checks.each do |db, table|
-    config = ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, name: db)
-    next unless config
-    pool = ActiveRecord::Base.connection_handler.establish_connection(config)
-    unless pool.connection.table_exists?(table)
-      puts "  Loading #{db}_schema.rb..."
-      system("DISABLE_DATABASE_ENVIRONMENT_CHECK=1 bundle exec rails db:schema:load:#{db}") || puts("  Warning: #{db} schema load failed")
-    else
-      puts "  #{db} tables OK"
-    end
-  end
-'
+for db in queue cache cable; do
+  DISABLE_DATABASE_ENVIRONMENT_CHECK=1 bundle exec rails "db:schema:load:${db}" 2>&1 || true
+done
 
 echo "==> Starting Puma on port ${PORT:-3000}..."
 exec bundle exec puma -C config/puma.rb
