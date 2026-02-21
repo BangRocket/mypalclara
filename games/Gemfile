@@ -1,0 +1,51 @@
+source "https://rubygems.org"
+
+gem "rails", "~> 8.1.2"
+gem "propshaft"
+gem "pg", "~> 1.1"
+gem "puma", ">= 5.0"
+
+# JavaScript bundling with esbuild (for React + Inertia)
+gem "jsbundling-rails"
+
+# Hotwire (keeping turbo-rails for Action Cable integration)
+gem "turbo-rails"
+gem "stimulus-rails"
+
+# Inertia.js adapter for Rails
+gem "inertia_rails"
+
+# Tailwind CSS
+gem "tailwindcss-rails"
+
+# Use Active Model has_secure_password
+# gem "bcrypt", "~> 3.1.7"
+
+# JWT for authentication tokens
+gem "jwt", "~> 2.9"
+
+gem "tzinfo-data", platforms: %i[ windows jruby ]
+
+# Database-backed adapters for Rails.cache, Active Job, and Action Cable
+gem "solid_cache"
+gem "solid_queue"
+gem "solid_cable"
+
+gem "bootsnap", require: false
+gem "kamal", require: false
+gem "thruster", require: false
+
+group :development, :test do
+  gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
+  gem "bundler-audit", require: false
+  gem "brakeman", require: false
+  gem "rubocop-rails-omakase", require: false
+  gem "rspec-rails", "~> 7.0"
+  gem "factory_bot_rails"
+  gem "rails-controller-testing"
+  gem "webmock"
+end
+
+group :development do
+  gem "web-console"
+end
