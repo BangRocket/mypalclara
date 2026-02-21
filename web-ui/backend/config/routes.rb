@@ -65,4 +65,10 @@ Rails.application.routes.draw do
 
   # Health check
   get "up" => "rails/health#show", as: :rails_health_check
+
+  # SPA fallback — must be last
+  get "*path", to: "spa#index", constraints: ->(req) {
+    !req.path.start_with?("/api/", "/auth/", "/cable", "/up")
+  }
+  root to: "spa#index"
 end
