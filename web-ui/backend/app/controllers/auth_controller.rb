@@ -51,7 +51,12 @@ class AuthController < ApplicationController
 
     jwt = JwtService.encode(user.canonical_user_id, name: user.display_name)
     set_auth_cookie(jwt)
-    render json: { token: jwt, user: user_response(user) }
+
+    if request.xhr? || request.content_type&.include?("json")
+      render json: { token: jwt, user: user_response(user) }
+    else
+      redirect_to "/", allow_other_host: false
+    end
   end
 
   def logout
