@@ -4,7 +4,7 @@ This runs the Teams bot as a thin client that connects to the gateway
 for all message processing.
 
 Usage:
-    poetry run python -m adapters.teams
+    poetry run python -m mypalclara.adapters.teams
 
 Environment variables:
     TEAMS_APP_ID - Azure Bot registration App ID (required)

@@ -1,7 +1,7 @@
 """Entry point for running Teams adapter as a module.
 
 Usage:
-    python -m adapters.teams
+    python -m mypalclara.adapters.teams
 """
 
 from mypalclara.adapters.teams.main import run

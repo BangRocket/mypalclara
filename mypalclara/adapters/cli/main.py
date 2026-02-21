@@ -3,7 +3,7 @@
 Interactive command-line interface that connects to the gateway.
 
 Usage:
-    poetry run python -m adapters.cli
+    poetry run python -m mypalclara.adapters.cli
 
 Environment variables:
     CLARA_GATEWAY_URL - Gateway WebSocket URL (default: ws://127.0.0.1:18789)

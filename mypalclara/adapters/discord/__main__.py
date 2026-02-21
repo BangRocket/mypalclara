@@ -1,7 +1,7 @@
 """Entry point for running Discord adapter as a module.
 
 Usage:
-    python -m adapters.discord
+    python -m mypalclara.adapters.discord
 """
 
 from mypalclara.adapters.discord.main import main

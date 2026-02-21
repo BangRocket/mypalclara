@@ -46,4 +46,4 @@ Use ngrok for local testing:
 
 1. ngrok http 3978
 2. Update Azure Bot messaging endpoint to ngrok URL
-3. Run: poetry run python -m adapters.teams
+3. Run: poetry run python -m mypalclara.adapters.teams

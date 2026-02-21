@@ -4,7 +4,7 @@ This runs the Discord bot as a thin client that connects to the gateway
 for all message processing.
 
 Usage:
-    poetry run python -m adapters.discord
+    poetry run python -m mypalclara.adapters.discord
 
 Environment variables:
     DISCORD_BOT_TOKEN - Discord bot token (required)
