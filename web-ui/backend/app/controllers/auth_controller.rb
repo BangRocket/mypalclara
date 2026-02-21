@@ -1,8 +1,8 @@
 class AuthController < ApplicationController
   # Auth endpoints don't require existing authentication
-  skip_before_action :authenticate_user!, only: [:config, :dev_login, :login, :callback, :logout]
+  skip_before_action :authenticate_user!, only: [:auth_config, :dev_login, :login, :callback, :logout]
 
-  def config
+  def auth_config
     render json: {
       dev_mode: ENV["WEB_DEV_MODE"] == "true",
       providers: OauthService.available_providers

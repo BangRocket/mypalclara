@@ -107,11 +107,12 @@ export default function Checkers({ game: initialGame }: CheckersPageProps) {
     const subscription = cable.subscriptions.create(
       { channel: "GameChannel", game_id: game.id },
       {
-        received(data: { type: string; game?: GameProps; commentary?: string; mood?: string }) {
-          if (data.type === "game_update" && data.game) {
-            setGame(data.game);
-            if (data.commentary) setCommentary(data.commentary);
-            if (data.mood) setMood(data.mood as typeof mood);
+        received(data: unknown) {
+          const { type, game: updatedGame, commentary: newCommentary, mood: newMood } = data as { type: string; game?: GameProps; commentary?: string; mood?: string };
+          if (type === "game_update" && updatedGame) {
+            setGame(updatedGame);
+            if (newCommentary) setCommentary(newCommentary);
+            if (newMood) setMood(newMood as typeof mood);
             setLoading(false);
           }
         },

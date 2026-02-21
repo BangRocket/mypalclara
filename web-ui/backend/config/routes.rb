@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
   # Auth stays at top level
   scope :auth do
-    get "config", to: "auth#config"
+    get "config", to: "auth#auth_config"
     post "dev-login", to: "auth#dev_login"
     get "login/:provider", to: "auth#login"
     get "callback/:provider", to: "auth#callback"

@@ -19,7 +19,7 @@ ENV RAILS_ENV=production \
 # Stage 3: Build Ruby dependencies
 FROM base AS build
 RUN apt-get update -qq && apt-get install --no-install-recommends -y \
-    build-essential libpq-dev pkg-config && \
+    build-essential libpq-dev pkg-config libyaml-dev && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 COPY backend/Gemfile backend/Gemfile.lock ./
@@ -35,6 +35,9 @@ COPY --from=build /usr/local/bundle /usr/local/bundle
 COPY --from=build /app /app
 COPY --from=frontend /app/frontend/dist /app/public/
 
+# Ensure entrypoint is executable
+RUN chmod +x /app/bin/docker-entrypoint
+
 # Non-root user
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
@@ -42,5 +45,4 @@ RUN groupadd --system --gid 1000 rails && \
 USER rails:rails
 
 EXPOSE 3000
-HEALTHCHECK CMD curl -f http://localhost:3000/up || exit 1
-CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
+CMD ["/app/bin/docker-entrypoint"]
