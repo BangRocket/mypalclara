@@ -7,6 +7,9 @@ gem "puma", ">= 5.0"
 # JWT for authentication tokens
 gem "jwt", "~> 2.9"
 
+# WebSocket client for gateway communication
+gem "websocket-client-simple", "~> 0.8"
+
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 
 # Database-backed adapters for Rails.cache, Active Job, and Action Cable

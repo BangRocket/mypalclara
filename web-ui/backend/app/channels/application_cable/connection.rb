@@ -9,11 +9,16 @@ module ApplicationCable
     private
 
     def find_verified_user
-      if (user_id = cookies.encrypted[:user_id]) || (user_id = request.session[:user_id])
-        User.find_by(id: user_id)
-      else
-        reject_unauthorized_connection
-      end
+      token = request.params[:token] || cookies[:access_token]
+      return reject_unauthorized_connection unless token
+
+      secret = ENV.fetch("WEB_SECRET_KEY", "change-me-in-production")
+      payload = JWT.decode(token, secret, true, algorithm: "HS256").first
+      user = User.find_by(canonical_user_id: payload["sub"])
+      return reject_unauthorized_connection unless user
+      user
+    rescue JWT::DecodeError
+      reject_unauthorized_connection
     end
   end
 end
