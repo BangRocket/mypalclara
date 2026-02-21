@@ -8,14 +8,12 @@ class ApplicationController < ActionController::API
   def authenticate_user!
     token = extract_token
     unless token
-      Rails.logger.warn("[Auth] No token found. Bearer present: #{request.headers['Authorization'].present?}, Cookie keys: #{cookies.to_h.keys}, access_token cookie: #{cookies[:access_token].present?}")
       render json: { error: "Authentication required" }, status: :unauthorized
       return
     end
 
     payload = decode_jwt(token)
     unless payload
-      Rails.logger.warn("[Auth] JWT decode failed for token: #{token[0..20]}...")
       render json: { error: "Invalid or expired token" }, status: :unauthorized
       return
     end

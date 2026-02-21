@@ -199,12 +199,7 @@ def create_app() -> FastAPI:
         if body.provider not in PROVIDERS:
             raise HTTPException(status_code=400, detail=f"Unknown provider: {body.provider}")
 
-        logger.info(f"OAuth callback: provider={body.provider}, code_len={len(body.code)}")
-        try:
-            token_data = await oauth.exchange_code(body.provider, body.code)
-        except Exception as exc:
-            logger.error(f"Token exchange exception for {body.provider}: {exc!r}")
-            raise HTTPException(status_code=422, detail=f"OAuth token exchange error: {exc}")
+        token_data = await oauth.exchange_code(body.provider, body.code)
         if "access_token" not in token_data:
             logger.error(f"Token exchange failed for {body.provider}: {token_data}")
             raise HTTPException(status_code=422, detail="OAuth token exchange failed")
