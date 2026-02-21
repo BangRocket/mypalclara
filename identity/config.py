@@ -21,7 +21,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # Server
 HOST = os.environ.get("IDENTITY_HOST", "0.0.0.0")
-PORT = int(os.environ.get("IDENTITY_PORT", "18791"))
+PORT = int(os.environ.get("IDENTITY_PORT", os.environ.get("PORT", "18791")))
 
 # OAuth providers
 PROVIDERS: dict[str, dict] = {
