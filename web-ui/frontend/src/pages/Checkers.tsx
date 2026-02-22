@@ -266,7 +266,7 @@ export default function Checkers({ game: initialGame }: CheckersPageProps) {
   // Determine winner
   let winnerText = "";
   if (isGameOver && humanPlayer?.result) {
-    winnerText = humanPlayer.result === "won" ? "You Win!" : humanPlayer.result === "draw" ? "Draw" : "You Lose";
+    winnerText = humanPlayer.result === "win" || humanPlayer.result === "won" ? "You Win!" : humanPlayer.result === "draw" ? "Draw" : "You Lose";
   }
 
   return (
@@ -407,7 +407,7 @@ export default function Checkers({ game: initialGame }: CheckersPageProps) {
                   fontSize: 24,
                   fontWeight: "bold",
                   color:
-                    humanPlayer?.result === "won"
+                    humanPlayer?.result === "win" || humanPlayer?.result === "won"
                       ? "#4ade80"
                       : humanPlayer?.result === "draw"
                       ? "#facc15"
