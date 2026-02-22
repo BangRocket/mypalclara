@@ -1,10 +1,11 @@
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { ChatRuntimeProvider } from "@/components/chat/ChatRuntimeProvider";
+import { FeatureLayout } from "@/components/layout/FeatureLayout";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { LoginPage } from "@/pages/Login";
+import { HomePage } from "@/pages/HomePage";
 import { KnowledgeBasePage } from "@/pages/KnowledgeBase";
 import { ChatPage } from "@/pages/Chat";
 import { GraphExplorerPage } from "@/pages/GraphExplorer";
@@ -65,27 +66,118 @@ export function App() {
       <Route path="/pending" element={<PendingApproval />} />
       <Route path="/suspended" element={<SuspendedPage />} />
 
-      {/* Protected — WebSocket + ChatRuntime hoisted to wrap all routes */}
+      {/* Protected — Home page (no WebSocket, no sidebar) */}
       <Route
-        path="/*"
+        path="/"
+        element={
+          <ProtectedRoute>
+            <HomePage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected — Chat (WebSocket scoped here only) */}
+      <Route
+        path="/chat"
         element={
           <ProtectedRoute>
             <WebSocketBridge>
-              <AppLayout>
-                <Routes>
-                  <Route path="/" element={<ChatPage />} />
-                  <Route path="/knowledge" element={<KnowledgeBasePage />} />
-                  <Route path="/graph" element={<GraphExplorerPage />} />
-                  <Route path="/intentions" element={<IntentionsPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/admin/users" element={<AdminUsersPage />} />
-                  <Route path="/games" element={<Lobby />} />
-                  <Route path="/games/history" element={<GameHistory />} />
-                  <Route path="/games/history/:id" element={<Replay />} />
-                  <Route path="/games/:id" element={<GameRouter />} />
-                </Routes>
-              </AppLayout>
+              <FeatureLayout title="Chat">
+                <ChatPage />
+              </FeatureLayout>
             </WebSocketBridge>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected — Feature pages (no WebSocket, FeatureLayout wrapper) */}
+      <Route
+        path="/knowledge"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Knowledge Base">
+              <KnowledgeBasePage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/graph"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Memory Graph">
+              <GraphExplorerPage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/intentions"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Intentions">
+              <IntentionsPage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Settings">
+              <SettingsPage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Admin">
+              <AdminUsersPage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected — Games (FeatureLayout for lobby/history, own layout for active games) */}
+      <Route
+        path="/games"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Games">
+              <Lobby />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/games/history"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Game History">
+              <GameHistory />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/games/history/:id"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Replay">
+              <Replay />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/games/:id"
+        element={
+          <ProtectedRoute>
+            <GameRouter />
           </ProtectedRoute>
         }
       />
