@@ -177,13 +177,6 @@
 .tiptap pre code { @apply bg-transparent p-0; }
 .tiptap blockquote { @apply border-l-4 border-primary pl-4 italic my-2; }
 
-/* Home menu tile styles */
-.snes-container {
-  cursor: pointer;
-  text-decoration: none;
-  display: flex;
-}
-
 /* Pixel art rendering */
 .pixelated {
   image-rendering: pixelated;
