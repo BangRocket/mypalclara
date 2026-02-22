@@ -6,13 +6,13 @@ import { useTheme } from "@/hooks/useTheme";
 import { Sun, Moon, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-import chatIcon from "@/assets/icons/chat.svg";
-import knowledgeIcon from "@/assets/icons/knowledge.svg";
-import graphIcon from "@/assets/icons/graph.svg";
-import intentionsIcon from "@/assets/icons/intentions.svg";
-import gamesIcon from "@/assets/icons/games.svg";
-import settingsIcon from "@/assets/icons/settings.svg";
-import adminIcon from "@/assets/icons/admin.svg";
+import chatIcon from "@/assets/icons/chat.png";
+import knowledgeIcon from "@/assets/icons/knowledge.png";
+import graphIcon from "@/assets/icons/graph.png";
+import intentionsIcon from "@/assets/icons/intentions.png";
+import gamesIcon from "@/assets/icons/games.png";
+import settingsIcon from "@/assets/icons/settings.png";
+import adminIcon from "@/assets/icons/admin.png";
 
 export function HomePage() {
   const { user, logout } = useAuth();

@@ -22,7 +22,7 @@ export function MenuTile({ to, label, icon, accentColor, badge }: MenuTileProps)
         draggable={false}
         style={{
           imageRendering: "pixelated",
-          filter: `brightness(0) saturate(100%) drop-shadow(0 0 1px ${accentColor})`,
+          filter: `drop-shadow(0 0 4px ${accentColor}) drop-shadow(0 0 1px ${accentColor})`,
         }}
       />
       <span className="text-sm font-medium text-foreground">{label}</span>
