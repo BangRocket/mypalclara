@@ -218,9 +218,7 @@ async def get_clara_commentary(
                 )
                 memories = [r.get("memory", "") for r in (results or []) if r.get("memory")]
                 if memories:
-                    memory_context = "\n\nWhat you know about this player:\n" + "\n".join(
-                        f"- {m}" for m in memories
-                    )
+                    memory_context = "\n\nWhat you know about this player:\n" + "\n".join(f"- {m}" for m in memories)
         except Exception:
             logger.debug("Could not fetch user memories for game event", exc_info=True)
 
@@ -239,9 +237,7 @@ async def get_clara_commentary(
 
     history_text = ""
     if request.recent_history:
-        history_text = "\n\nRecent moves:\n" + "\n".join(
-            f"- {m}" for m in request.recent_history[-5:]
-        )
+        history_text = "\n\nRecent moves:\n" + "\n".join(f"- {m}" for m in request.recent_history[-5:])
 
     event_desc = {
         "game_start": "A new game is starting.",
