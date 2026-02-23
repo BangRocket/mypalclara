@@ -8,6 +8,7 @@ import logging
 import os
 import random
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +52,9 @@ def _verify_api_key(x_game_api_key: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
+@lru_cache(maxsize=8)
 def _load_personality_text(personality: str) -> str:
-    """Load personality file content."""
+    """Load personality file content (cached after first read)."""
     path = PERSONALITIES_DIR / f"{personality}.md"
     if not path.exists():
         logger.warning("Personality file not found: %s, using clara", path)
@@ -80,27 +82,30 @@ def _is_legal_move(chosen: str | dict[str, Any], legal_moves: list[str | dict[st
 async def get_clara_move(
     request: GameMoveRequest,
     personality_text: str,
+    *,
+    include_memories: bool = False,
 ) -> dict[str, Any]:
     """Call the LLM to get Clara's game move and commentary."""
     from mypalclara.core.llm import make_llm
 
     llm = make_llm(tier="mid")
 
-    # Fetch user memories for context
+    # Fetch user memories for context (skipped by default for latency)
     user_memories: list[str] = []
-    try:
-        from mypalclara.core.memory import ROOK
+    if include_memories:
+        try:
+            from mypalclara.core.memory import ROOK
 
-        if ROOK:
-            results = ROOK.search(
-                f"playing {request.game_type}",
-                user_id=request.user_id,
-                agent_id="mypalclara",
-                limit=5,
-            )
-            user_memories = [r.get("memory", "") for r in (results or []) if r.get("memory")]
-    except Exception:
-        logger.debug("Could not fetch user memories for game", exc_info=True)
+            if ROOK:
+                results = ROOK.search(
+                    f"playing {request.game_type}",
+                    user_id=request.user_id,
+                    agent_id="mypalclara",
+                    limit=5,
+                )
+                user_memories = [r.get("memory", "") for r in (results or []) if r.get("memory")]
+        except Exception:
+            logger.debug("Could not fetch user memories for game", exc_info=True)
 
     memory_context = ""
     if user_memories:
@@ -171,3 +176,111 @@ Respond with ONLY valid JSON (no markdown fences):
             "commentary": "Give me a second... okay, here goes.",
             "mood": "nervous",
         }
+
+
+class GameEventRequest(BaseModel):
+    event_type: str  # game_start, player_move, clara_move, player_chat, game_over
+    game_type: str
+    state_summary: str
+    event_data: dict[str, Any] = {}
+    position_eval: float = 0.0
+    user_id: str
+    recent_history: list[dict[str, Any]] = []
+
+
+class GameEventResponse(BaseModel):
+    commentary: str | None
+    mood: str
+
+
+async def get_clara_commentary(
+    request: GameEventRequest,
+    personality_text: str,
+) -> dict[str, Any]:
+    """Generate Clara's commentary for a game event using high-tier LLM."""
+    from mypalclara.core.llm import make_llm
+
+    tier = os.getenv("GAME_EVENT_LLM_TIER", "high")
+    llm = make_llm(tier=tier)
+
+    # Fetch user memories for richer commentary
+    memory_context = ""
+    if os.getenv("GAME_EVENT_MEMORIES", "true").lower() in ("true", "1", "yes"):
+        try:
+            from mypalclara.core.memory import ROOK
+
+            if ROOK:
+                results = ROOK.search(
+                    f"playing {request.game_type} with user",
+                    user_id=request.user_id,
+                    agent_id="mypalclara",
+                    limit=5,
+                )
+                memories = [r.get("memory", "") for r in (results or []) if r.get("memory")]
+                if memories:
+                    memory_context = "\n\nWhat you know about this player:\n" + "\n".join(
+                        f"- {m}" for m in memories
+                    )
+        except Exception:
+            logger.debug("Could not fetch user memories for game event", exc_info=True)
+
+    # Build emotional context from position evaluation
+    eval_desc = ""
+    if request.position_eval > 0.5:
+        eval_desc = "You're winning comfortably."
+    elif request.position_eval > 0.1:
+        eval_desc = "You're slightly ahead."
+    elif request.position_eval > -0.1:
+        eval_desc = "The game is close."
+    elif request.position_eval > -0.5:
+        eval_desc = "You're slightly behind."
+    else:
+        eval_desc = "You're losing."
+
+    history_text = ""
+    if request.recent_history:
+        history_text = "\n\nRecent moves:\n" + "\n".join(
+            f"- {m}" for m in request.recent_history[-5:]
+        )
+
+    event_desc = {
+        "game_start": "A new game is starting.",
+        "player_move": f"The player just made a move: {json.dumps(request.event_data)}",
+        "clara_move": f"You just made a move: {json.dumps(request.event_data)}",
+        "player_chat": f"The player says: \"{request.event_data.get('message', '')}\"",
+        "game_over": f"The game is over. Result: {json.dumps(request.event_data)}",
+    }.get(request.event_type, f"Game event: {request.event_type}")
+
+    prompt = f"""{personality_text}
+{memory_context}
+
+You are playing {request.game_type}.
+{request.state_summary}
+{eval_desc}
+{history_text}
+
+{event_desc}
+
+React in character. Be natural — trash talk, encouragement, \
+nervousness, gloating, whatever fits your personality and the situation.
+
+Respond with ONLY valid JSON (no markdown fences):
+{{"commentary": "<your in-character reaction>", "mood": "<one of: idle, happy, nervous, smug, surprised, defeated>"}}"""
+
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        content = await asyncio.to_thread(llm, messages)
+
+        content = re.sub(r"^```(?:json)?\s*\n?", "", content.strip())
+        content = re.sub(r"\n?```\s*$", "", content.strip())
+
+        result = json.loads(content)
+
+        if result.get("mood") not in VALID_MOODS:
+            result["mood"] = "idle"
+
+        return result
+
+    except Exception:
+        logger.exception("Failed to get LLM game commentary")
+        return {"commentary": None, "mood": "neutral"}
