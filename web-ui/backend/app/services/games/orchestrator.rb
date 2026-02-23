@@ -223,6 +223,24 @@ module Games
     end
 
     def check_game_end(state)
+      # Blackjack: detect when all players are stood or busted, then run dealer play
+      if game.game_type == "blackjack" && state[:phase] != :resolving
+        player_ids = game.game_players.order(:seat_position).map { |gp| gp_identifier(gp) }
+        all_done = player_ids.all? { |pid|
+          hand = state[:hands][pid] || state[:hands][pid.to_s]
+          hand_val = @definition.hand_value(hand || [])
+          stood = (state[:stood] || []).map(&:to_s).include?(pid.to_s)
+          hand_val > 21 || stood
+        }
+
+        if all_done
+          state = @definition.dealer_play(state)
+          game.update!(game_data: state)
+        else
+          return
+        end
+      end
+
       result = @definition.winner(state)
       return unless result&.over?
 
