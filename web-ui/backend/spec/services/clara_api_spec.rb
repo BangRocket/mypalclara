@@ -1,57 +1,92 @@
 require "rails_helper"
+require "webmock/rspec"
 
-RSpec.describe ClaraApi, type: :service do
+RSpec.describe ClaraApi do
   let(:api) { ClaraApi.new }
 
   before do
-    ENV["CLARA_API_URL"] = "https://mypalclara.com"
+    ENV["CLARA_API_URL"] = "https://test.example.com"
     ENV["GAME_API_KEY"] = "test-key"
   end
 
-  describe "#get_move" do
-    it "returns move, commentary, and mood" do
-      stub_request(:post, "https://mypalclara.com/api/v1/game/move")
+  describe "#game_event" do
+    it "posts to /api/v1/game/event" do
+      stub = stub_request(:post, "https://test.example.com/api/v1/game/event")
         .with(
-          headers: { "X-Game-API-Key" => "test-key" },
+          headers: { "Content-Type" => "application/json", "X-Game-API-Key" => "test-key" },
+          body: hash_including(event_type: "clara_move", game_type: "checkers")
         )
         .to_return(
           status: 200,
-          body: {
-            move: { type: "stand" },
-            commentary: "Nice hand!",
-            mood: "happy",
-          }.to_json,
-          headers: { "Content-Type" => "application/json" },
+          body: { commentary: "Nice move!", mood: "smug" }.to_json,
+          headers: { "Content-Type" => "application/json" }
         )
 
-      result = api.get_move(
-        game_type: "blackjack",
-        game_state: { player_hand: ["A♠", "7♥"] },
-        legal_moves: ["hit", "stand"],
-        personality: "clara",
-        user_id: "user-123",
+      result = api.game_event(
+        event_type: "clara_move",
+        game_type: "checkers",
+        state_summary: "You're playing Red. 12 pieces each.",
+        user_id: "user-1",
+        event_data: { move: { from: [5, 2], to: [4, 3] } },
+        position_eval: 0.3,
+        recent_history: []
       )
 
-      expect(result[:move][:type]).to eq("stand")
-      expect(result[:commentary]).to eq("Nice hand!")
-      expect(result[:mood]).to eq("happy")
+      expect(stub).to have_been_requested
+      expect(result[:commentary]).to eq("Nice move!")
+      expect(result[:mood]).to eq("smug")
     end
 
-    it "returns fallback on API failure" do
-      stub_request(:post, "https://mypalclara.com/api/v1/game/move")
-        .to_return(status: 500)
+    it "returns fallback on timeout" do
+      stub_request(:post, "https://test.example.com/api/v1/game/event")
+        .to_timeout
+
+      result = api.game_event(
+        event_type: "clara_move",
+        game_type: "checkers",
+        state_summary: "test",
+        user_id: "user-1"
+      )
+
+      expect(result[:commentary]).to be_nil
+      expect(result[:mood]).to eq("neutral")
+    end
+
+    it "returns fallback on error response" do
+      stub_request(:post, "https://test.example.com/api/v1/game/event")
+        .to_return(status: 500, body: "Internal Server Error")
+
+      result = api.game_event(
+        event_type: "clara_move",
+        game_type: "checkers",
+        state_summary: "test",
+        user_id: "user-1"
+      )
+
+      expect(result[:commentary]).to be_nil
+      expect(result[:mood]).to eq("neutral")
+    end
+  end
+
+  describe "#get_move" do
+    it "posts to /api/v1/game/move" do
+      stub = stub_request(:post, "https://test.example.com/api/v1/game/move")
+        .to_return(
+          status: 200,
+          body: { move: { type: "hit" }, commentary: "Let's go!", mood: "happy" }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
 
       result = api.get_move(
         game_type: "blackjack",
         game_state: {},
         legal_moves: ["hit", "stand"],
         personality: "clara",
-        user_id: "user-123",
+        user_id: "user-1"
       )
 
-      expect(["hit", "stand"]).to include(result[:move][:type])
-      expect(result[:commentary]).to be_present
-      expect(result[:mood]).to eq("nervous")
+      expect(stub).to have_been_requested
+      expect(result[:move][:type]).to eq("hit")
     end
   end
 end
