@@ -4,4 +4,5 @@ class User < ApplicationRecord
 
   has_many :games, foreign_key: :created_by_id
   has_many :game_players
+  has_many :file_system_entries, dependent: :destroy
 end

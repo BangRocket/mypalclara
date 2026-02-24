@@ -10,9 +10,43 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_20_215500) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_23_233129) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "character_profiles", force: :cascade do |t|
+    t.jsonb "base_layer", default: {}, null: false
+    t.jsonb "bg_layer", default: {}
+    t.jsonb "clothes_layer", default: {}
+    t.datetime "created_at", null: false
+    t.string "display_name", null: false
+    t.jsonb "eyebrows_layer", default: {}
+    t.jsonb "eyes_layer", default: {}
+    t.jsonb "hair_layer", default: {}
+    t.jsonb "mouth_layer", default: {}
+    t.string "personality", null: false
+    t.datetime "updated_at", null: false
+    t.index ["personality"], name: "index_character_profiles_on_personality", unique: true
+  end
+
+  create_table "file_system_entries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "app_id"
+    t.text "content"
+    t.datetime "created_at", null: false
+    t.boolean "disable_copy", default: false
+    t.boolean "disable_delete", default: false
+    t.string "entry_type", null: false
+    t.string "extension"
+    t.string "icon"
+    t.jsonb "icon_position", default: {"x" => 0, "y" => 0}
+    t.string "name", null: false
+    t.uuid "parent_id"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id", "name", "parent_id"], name: "index_file_system_entries_on_user_id_and_name_and_parent_id", unique: true
+    t.index ["user_id", "parent_id"], name: "index_file_system_entries_on_user_id_and_parent_id"
+    t.index ["user_id"], name: "index_file_system_entries_on_user_id"
+  end
 
   create_table "game_players", force: :cascade do |t|
     t.string "ai_personality"
@@ -60,10 +94,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_20_215500) do
     t.string "canonical_user_id"
     t.datetime "created_at", null: false
     t.string "display_name"
+    t.boolean "is_admin", default: false, null: false
     t.datetime "updated_at", null: false
     t.index ["canonical_user_id"], name: "index_users_on_canonical_user_id", unique: true
   end
 
+  add_foreign_key "file_system_entries", "file_system_entries", column: "parent_id"
+  add_foreign_key "file_system_entries", "users"
   add_foreign_key "game_players", "games"
   add_foreign_key "game_players", "users"
   add_foreign_key "games", "users", column: "created_by_id"
