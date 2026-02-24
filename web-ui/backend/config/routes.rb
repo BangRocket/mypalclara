@@ -52,6 +52,9 @@ Rails.application.routes.draw do
 
       resources :intentions, only: [:index, :create, :update, :destroy]
 
+      get "filesystem/tree", to: "filesystem#tree"
+      resources :filesystem, only: [:create, :update, :destroy]
+
       get "users/me", to: "users#me"
       put "users/me", to: "users#update_me"
       get "users/me/links", to: "users#links"
