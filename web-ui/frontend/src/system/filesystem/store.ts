@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { GRID_CELL_SIZE, TASKBAR_HEIGHT } from '../theme/constants';
 import type { AppDefinition } from '../apps/registry';
+import { api } from '../../api/client';
+import type { FileSystemEntryDTO } from '../../api/client';
 import type {
   EntryId,
   FSAppShortcut,
@@ -58,6 +60,64 @@ function now(): Date {
   return new Date();
 }
 
+/** Convert a backend DTO to a frontend FSEntry. */
+function dtoToEntry(dto: FileSystemEntryDTO): FSEntry {
+  const base = {
+    id: dto.id,
+    name: dto.name,
+    parentId: dto.parent_id,
+    iconPosition: dto.icon_position ?? { x: 0, y: 0 },
+    createdAt: new Date(dto.created_at),
+    updatedAt: new Date(dto.updated_at),
+    icon: dto.icon ?? undefined,
+    disableDelete: dto.disable_delete,
+    disableCopy: dto.disable_copy,
+  };
+
+  if (dto.type === 'directory') {
+    return { ...base, type: 'directory', children: dto.children ?? [] } as FSDirectory;
+  } else if (dto.type === 'app-shortcut') {
+    return {
+      ...base,
+      type: 'app-shortcut',
+      appId: dto.app_id ?? '',
+      extension: '.app' as const,
+    } as FSAppShortcut;
+  } else {
+    return {
+      ...base,
+      type: 'file',
+      extension: dto.extension ?? '',
+      content: dto.content ?? '',
+    } as FSFile;
+  }
+}
+
+/** Fire-and-forget: sync a single entry to the backend. */
+function syncEntryToBackend(entry: FSEntry): void {
+  const body: Record<string, unknown> = {
+    name: entry.name,
+    parent_id: entry.parentId,
+    entry_type: entry.type,
+    icon: entry.icon,
+    icon_position: entry.iconPosition,
+    disable_delete: entry.disableDelete ?? false,
+    disable_copy: entry.disableCopy ?? false,
+  };
+
+  if (entry.type === 'file') {
+    body.extension = entry.extension;
+    body.content = entry.content;
+  } else if (entry.type === 'app-shortcut') {
+    body.extension = entry.extension;
+    body.app_id = entry.appId;
+  }
+
+  api.filesystem.create(body as Parameters<typeof api.filesystem.create>[0]).catch(() => {
+    // Backend may not be available — silent fail for now
+  });
+}
+
 // --- Store ---
 
 interface FileSystemStoreState {
@@ -97,8 +157,9 @@ interface FileSystemStoreState {
   setIconPosition: (id: EntryId, pos: Position) => void;
   setRenaming: (id: EntryId | null) => void;
 
-  // Init
+  // Init & persistence
   initDesktop: (apps: Map<string, AppDefinition>) => void;
+  loadFromBackend: (apps: Map<string, AppDefinition>) => Promise<void>;
 }
 
 export const useFileSystemStore = create<FileSystemStoreState>()(
@@ -558,6 +619,29 @@ export const useFileSystemStore = create<FileSystemStoreState>()(
         state.lookup.set(myFilesId, myFiles);
         desktop.children.push(myFilesId);
       });
+    },
+
+    loadFromBackend: async (apps) => {
+      try {
+        const entries = await api.filesystem.tree();
+
+        if (!entries || entries.length === 0) {
+          // No backend data — initialize defaults (in-memory only)
+          get().initDesktop(apps);
+          return;
+        }
+
+        // Populate lookup from backend data
+        set((state) => {
+          state.lookup.clear();
+          for (const dto of entries) {
+            state.lookup.set(dto.id, dtoToEntry(dto));
+          }
+        });
+      } catch {
+        // Backend unavailable — fall back to in-memory defaults
+        get().initDesktop(apps);
+      }
     },
   })),
 );
