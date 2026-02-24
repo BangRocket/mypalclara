@@ -2,6 +2,8 @@ import { useCallback, useEffect } from 'react';
 import { useFileSystemStore } from './store';
 import { DesktopIcon } from './Icon';
 import { useAppRegistry } from '../apps/registry';
+import { useContextMenuStore } from '../contextmenu/store';
+import { buildDesktopMenu, buildIconMenu } from '../contextmenu/menuBuilder';
 import { TASKBAR_HEIGHT } from '../theme/constants';
 
 export function Desktop() {
@@ -22,12 +24,14 @@ export function Desktop() {
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    // Desktop context menu — will be wired in Task 13
+    const items = buildDesktopMenu('desktop');
+    useContextMenuStore.getState().show(items, { x: e.clientX, y: e.clientY });
   }, []);
 
   const handleIconContextMenu = useCallback(
-    (_e: React.MouseEvent, _entryId: string) => {
-      // Icon context menu — will be wired in Task 13
+    (e: React.MouseEvent, entryId: string) => {
+      const items = buildIconMenu(entryId);
+      useContextMenuStore.getState().show(items, { x: e.clientX, y: e.clientY });
     },
     [],
   );
