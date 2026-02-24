@@ -320,6 +320,52 @@ export const games = {
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+// ── Filesystem ───────────────────────────────────────────────────────
+
+export interface FileSystemEntryDTO {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  type: string;
+  extension: string | null;
+  app_id: string | null;
+  content: string | null;
+  icon_position: { x: number; y: number };
+  icon: string | null;
+  disable_delete: boolean;
+  disable_copy: boolean;
+  children: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export const filesystem = {
+  tree: () => request<FileSystemEntryDTO[]>(`${BASE}/filesystem/tree`),
+  create: (body: {
+    name: string;
+    parent_id: string | null;
+    entry_type: string;
+    extension?: string;
+    app_id?: string;
+    content?: string;
+    icon?: string;
+    icon_position?: { x: number; y: number };
+    disable_delete?: boolean;
+    disable_copy?: boolean;
+  }) =>
+    request<FileSystemEntryDTO>(`${BASE}/filesystem`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (id: string, body: Record<string, unknown>) =>
+    request<FileSystemEntryDTO>(`${BASE}/filesystem/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  delete: (id: string) =>
+    request<{ ok: boolean }>(`${BASE}/filesystem/${id}`, { method: "DELETE" }),
+};
+
 // ── Unified API namespace ────────────────────────────────────────────
 
 export const api = {
@@ -331,4 +377,5 @@ export const api = {
   intentions,
   admin,
   games,
+  filesystem,
 };

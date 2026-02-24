@@ -27,7 +27,7 @@ module Api
       def destroy
         entry = current_user.file_system_entries.find(params[:id])
         entry.destroy!
-        head :no_content
+        render json: { ok: true }
       end
 
       private
