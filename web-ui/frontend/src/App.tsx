@@ -11,6 +11,7 @@ import { defaultApps } from "@/system/apps/defaultApps";
 import { Wallpaper } from "@/system/theme/Wallpaper";
 import { Desktop } from "@/system/filesystem/Desktop";
 import { WindowSystem } from "@/system/window/WindowSystem";
+import { TopPanel } from "@/system/panel/TopPanel";
 import { Taskbar } from "@/system/taskbar/Taskbar";
 import { ContextMenu } from "@/system/contextmenu/ContextMenu";
 import { GlobalEvents } from "@/system/GlobalEvents";
@@ -49,6 +50,7 @@ function ClaraOSDesktop() {
 
   return (
     <AppRegistryProvider apps={defaultApps}>
+      <TopPanel />
       <Wallpaper>
         <Desktop />
         <WindowSystem />

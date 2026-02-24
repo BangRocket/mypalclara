@@ -1,13 +1,30 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { useFileSystemStore } from './store';
 import { DesktopIcon } from './Icon';
 import { useAppRegistry } from '../apps/registry';
 import { useContextMenuStore } from '../contextmenu/store';
 import { buildDesktopMenu, buildIconMenu } from '../contextmenu/menuBuilder';
-import { TASKBAR_HEIGHT } from '../theme/constants';
+import { TASKBAR_HEIGHT, TOP_PANEL_HEIGHT } from '../theme/constants';
+import type { FSDirectory, FSEntry } from './types';
 
 export function Desktop() {
-  const desktopEntries = useFileSystemStore((s) => s.getDesktopEntries());
+  // Select only the children ID array (stable reference from immer) to avoid
+  // infinite re-renders caused by .map().filter() creating new arrays each call.
+  const desktopChildIds = useFileSystemStore(
+    useShallow((s) => {
+      const desktop = s.lookup.get('desktop');
+      if (!desktop || desktop.type !== 'directory') return [] as string[];
+      return (desktop as FSDirectory).children;
+    }),
+  );
+  const desktopEntries = useMemo(
+    () =>
+      desktopChildIds
+        .map((cid) => useFileSystemStore.getState().lookup.get(cid))
+        .filter((e): e is FSEntry => e !== undefined),
+    [desktopChildIds],
+  );
   const lookupSize = useFileSystemStore((s) => s.lookup.size);
   const { apps } = useAppRegistry();
 

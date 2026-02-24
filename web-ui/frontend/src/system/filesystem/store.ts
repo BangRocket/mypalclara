@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { GRID_CELL_SIZE, TASKBAR_HEIGHT } from '../theme/constants';
+import { GRID_CELL_SIZE, TASKBAR_HEIGHT, TOP_PANEL_HEIGHT } from '../theme/constants';
 import type { AppDefinition } from '../apps/registry';
 import { api } from '../../api/client';
 import type { FileSystemEntryDTO } from '../../api/client';
@@ -49,7 +49,7 @@ function findEmptyGridPosition(
 }
 
 function getDesktopLayout(): { columns: number; rows: number } {
-  const availableHeight = window.innerHeight - TASKBAR_HEIGHT;
+  const availableHeight = window.innerHeight - TOP_PANEL_HEIGHT - TASKBAR_HEIGHT;
   return {
     columns: Math.floor(window.innerWidth / GRID_CELL_SIZE),
     rows: Math.floor(availableHeight / GRID_CELL_SIZE),

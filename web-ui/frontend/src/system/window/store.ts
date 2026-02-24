@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { DEFAULT_WINDOW_SIZE, TASKBAR_HEIGHT } from '../theme/constants';
+import { DEFAULT_WINDOW_SIZE, TASKBAR_HEIGHT, TOP_PANEL_HEIGHT } from '../theme/constants';
 import type { Position, Size, WindowInstance, WindowState } from './types';
 
 interface WindowStoreState {
@@ -42,9 +42,10 @@ function randomOffset(): number {
 }
 
 function centerPosition(size: Size): Position {
+  const usableHeight = window.innerHeight - TOP_PANEL_HEIGHT - TASKBAR_HEIGHT;
   return {
     x: Math.max(0, (window.innerWidth - size.width) / 2 + randomOffset()),
-    y: Math.max(0, (window.innerHeight - TASKBAR_HEIGHT - size.height) / 2 + randomOffset()),
+    y: Math.max(TOP_PANEL_HEIGHT, TOP_PANEL_HEIGHT + (usableHeight - size.height) / 2 + randomOffset()),
   };
 }
 
@@ -62,7 +63,7 @@ export const useWindowStore = create<WindowStoreState>()(
       if (!win) return { width: 0, height: 0 };
       return {
         width: Math.min(win.size.width, window.innerWidth),
-        height: Math.min(win.size.height, window.innerHeight - TASKBAR_HEIGHT),
+        height: Math.min(win.size.height, window.innerHeight - TOP_PANEL_HEIGHT - TASKBAR_HEIGHT),
       };
     },
     getWindowState: (id) => get().windows.get(id)?.state ?? 'normal',
@@ -166,8 +167,8 @@ export const useWindowStore = create<WindowStoreState>()(
         if (!win) return;
         win.previousPosition = { ...win.position };
         win.previousSize = { ...win.size };
-        win.position = { x: 0, y: 0 };
-        win.size = { width: window.innerWidth, height: window.innerHeight - TASKBAR_HEIGHT };
+        win.position = { x: 0, y: TOP_PANEL_HEIGHT };
+        win.size = { width: window.innerWidth, height: window.innerHeight - TOP_PANEL_HEIGHT - TASKBAR_HEIGHT };
         win.state = 'maximized';
       });
     },

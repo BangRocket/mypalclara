@@ -2,6 +2,7 @@
 // Reference: bogdan-os themes/index.ts with Clara customizations
 
 // Layout
+export const TOP_PANEL_HEIGHT = 28;
 export const TASKBAR_HEIGHT = 44;
 export const TASKBAR_ENTRY_WIDTH = 140;
 export const TASKBAR_ENTRY_HEIGHT = 32;

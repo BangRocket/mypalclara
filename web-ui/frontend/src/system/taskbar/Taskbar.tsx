@@ -1,6 +1,5 @@
 import { useWindowStore } from '../window/store';
 import { TaskbarEntry } from './TaskbarEntry';
-import { Clock } from './Clock';
 import { COLORS, TASKBAR_HEIGHT } from '../theme/constants';
 
 export function Taskbar() {
@@ -16,15 +15,11 @@ export function Taskbar() {
         zIndex: 9999,
       }}
     >
-      <div className="flex items-center px-2" style={{ color: COLORS.primary }}>
-        <span className="text-lg font-bold">C</span>
-      </div>
       <div className="flex items-center gap-1 flex-1 overflow-x-auto">
         {openedIds.map((id) => (
           <TaskbarEntry key={id} windowId={id} />
         ))}
       </div>
-      <Clock />
     </footer>
   );
 }
