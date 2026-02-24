@@ -415,6 +415,23 @@ export const useFileSystemStore = create<FileSystemStoreState>()(
         const layout = getDesktopLayout();
         const occupiedPositions: Position[] = [];
 
+        // Apps that go directly on the desktop (not in a folder)
+        const desktopAppIds = new Set([
+          'clara-chat',
+          'knowledge-base',
+          'graph-explorer',
+          'intentions',
+          'settings',
+          'admin',
+        ]);
+
+        // Apps that go inside the Games folder
+        const gameAppIds = new Set([
+          'game-lobby',
+          'blackjack',
+          'checkers',
+        ]);
+
         // Create root directory
         const root: FSDirectory = {
           id: 'root',
@@ -445,8 +462,10 @@ export const useFileSystemStore = create<FileSystemStoreState>()(
         };
         state.lookup.set('desktop', desktop);
 
-        // Place app shortcuts on desktop
+        // Place main app shortcuts on desktop
         for (const [appId, app] of apps) {
+          if (!desktopAppIds.has(appId)) continue;
+
           const shortcutId = `shortcut-${appId}`;
           const position = findEmptyGridPosition(occupiedPositions, layout);
           occupiedPositions.push(position);
@@ -468,6 +487,55 @@ export const useFileSystemStore = create<FileSystemStoreState>()(
 
           state.lookup.set(shortcutId, shortcut);
           desktop.children.push(shortcutId);
+        }
+
+        // Create "Games" folder on desktop
+        const gamesFolderId = 'games-folder';
+        const gamesFolderPosition = findEmptyGridPosition(occupiedPositions, layout);
+        occupiedPositions.push(gamesFolderPosition);
+
+        const gamesFolder: FSDirectory = {
+          id: gamesFolderId,
+          name: 'Games',
+          parentId: 'desktop',
+          type: 'directory',
+          iconPosition: gamesFolderPosition,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          children: [],
+          icon: '\u{1F3AE}',
+          disableDelete: true,
+          disableCopy: true,
+        };
+        state.lookup.set(gamesFolderId, gamesFolder);
+        desktop.children.push(gamesFolderId);
+
+        // Place game shortcuts inside Games folder
+        const gamePositions: Position[] = [];
+        for (const [appId, app] of apps) {
+          if (!gameAppIds.has(appId)) continue;
+
+          const shortcutId = `shortcut-${appId}`;
+          const position = findEmptyGridPosition(gamePositions, layout);
+          gamePositions.push(position);
+
+          const shortcut: FSAppShortcut = {
+            id: shortcutId,
+            name: app.name,
+            parentId: gamesFolderId,
+            type: 'app-shortcut',
+            appId,
+            extension: '.app',
+            iconPosition: position,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            disableDelete: true,
+            disableCopy: true,
+            icon: app.icon,
+          };
+
+          state.lookup.set(shortcutId, shortcut);
+          gamesFolder.children.push(shortcutId);
         }
 
         // Place "My Files" folder on desktop
