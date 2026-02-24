@@ -1,34 +1,83 @@
 import { lazy } from 'react';
 import type { AppDefinition } from './registry';
 
-const PlaceholderApp = lazy(() =>
-  Promise.resolve({
-    default: ({ windowId }: { windowId: string }) => {
-      return (
-        <div style={{ padding: 16, color: '#94a3b8' }}>
-          <p>App placeholder for window: {windowId}</p>
-        </div>
-      );
-    },
-  }),
-);
-
 export const defaultApps = new Map<string, AppDefinition>([
   ['clara-chat', {
     id: 'clara-chat',
     name: 'Clara',
     icon: '\u{1F4AC}',
     defaultWindowSize: { width: 700, height: 550 },
-    component: PlaceholderApp,
+    component: lazy(() => import('../../apps/clara-chat')),
     singleton: true,
     closeBehavior: 'minimize',
+  }],
+  ['knowledge-base', {
+    id: 'knowledge-base',
+    name: 'Knowledge Base',
+    icon: '\u{1F9E0}',
+    defaultWindowSize: { width: 800, height: 550 },
+    component: lazy(() => import('../../apps/knowledge-base')),
+    singleton: true,
+  }],
+  ['graph-explorer', {
+    id: 'graph-explorer',
+    name: 'Graph Explorer',
+    icon: '\u{1F578}\uFE0F',
+    defaultWindowSize: { width: 900, height: 600 },
+    component: lazy(() => import('../../apps/graph-explorer')),
+    singleton: true,
+  }],
+  ['intentions', {
+    id: 'intentions',
+    name: 'Intentions',
+    icon: '\u{1F3AF}',
+    defaultWindowSize: { width: 650, height: 500 },
+    component: lazy(() => import('../../apps/intentions')),
+    singleton: true,
   }],
   ['settings', {
     id: 'settings',
     name: 'Settings',
     icon: '\u2699\uFE0F',
     defaultWindowSize: { width: 500, height: 400 },
-    component: PlaceholderApp,
+    component: lazy(() => import('../../apps/settings')),
     singleton: true,
+  }],
+  ['admin', {
+    id: 'admin',
+    name: 'Admin',
+    icon: '\u{1F6E1}\uFE0F',
+    defaultWindowSize: { width: 700, height: 500 },
+    component: lazy(() => import('../../apps/admin')),
+    singleton: true,
+  }],
+  ['game-lobby', {
+    id: 'game-lobby',
+    name: 'Games',
+    icon: '\u{1F3AE}',
+    defaultWindowSize: { width: 650, height: 500 },
+    component: lazy(() => import('../../apps/game-lobby')),
+    singleton: true,
+  }],
+  ['blackjack', {
+    id: 'blackjack',
+    name: 'Blackjack',
+    icon: '\u{1F0CF}',
+    defaultWindowSize: { width: 800, height: 600 },
+    component: lazy(() => import('../../apps/blackjack')),
+  }],
+  ['checkers', {
+    id: 'checkers',
+    name: 'Checkers',
+    icon: '\u265F\uFE0F',
+    defaultWindowSize: { width: 700, height: 650 },
+    component: lazy(() => import('../../apps/checkers')),
+  }],
+  ['text-editor', {
+    id: 'text-editor',
+    name: 'Text Editor',
+    icon: '\u{1F4DD}',
+    defaultWindowSize: { width: 600, height: 450 },
+    component: lazy(() => import('../../apps/text-editor')),
   }],
 ]);
