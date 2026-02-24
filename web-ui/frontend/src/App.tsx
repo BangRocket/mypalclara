@@ -13,6 +13,7 @@ import { Desktop } from "@/system/filesystem/Desktop";
 import { WindowSystem } from "@/system/window/WindowSystem";
 import { Taskbar } from "@/system/taskbar/Taskbar";
 import { ContextMenu } from "@/system/contextmenu/ContextMenu";
+import { GlobalEvents } from "@/system/GlobalEvents";
 import { useWindowStore } from "@/system/window/store";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,7 @@ function ClaraOSDesktop() {
       </Wallpaper>
       <Taskbar />
       <ContextMenu />
+      <GlobalEvents />
     </AppRegistryProvider>
   );
 }
