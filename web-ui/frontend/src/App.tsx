@@ -9,6 +9,7 @@ import { SuspendedPage } from "@/pages/Suspended";
 import { AppRegistryProvider } from "@/system/apps/registry";
 import { defaultApps } from "@/system/apps/defaultApps";
 import { Wallpaper } from "@/system/theme/Wallpaper";
+import { Desktop } from "@/system/filesystem/Desktop";
 import { WindowSystem } from "@/system/window/WindowSystem";
 import { Taskbar } from "@/system/taskbar/Taskbar";
 import { useWindowStore } from "@/system/window/store";
@@ -47,6 +48,7 @@ function ClaraOSDesktop() {
   return (
     <AppRegistryProvider apps={defaultApps}>
       <Wallpaper>
+        <Desktop />
         <WindowSystem />
       </Wallpaper>
       <Taskbar />
