@@ -5,6 +5,7 @@ import ClaraSprite from "@/components/games/ClaraSprite";
 import SpeechBubble from "@/components/games/SpeechBubble";
 import { createConsumer } from "@rails/actioncable";
 import { api } from "@/api/client";
+import { useCharacterProfiles } from "@/hooks/useCharacterProfiles";
 
 type PieceType = "r" | "b" | "R" | "B" | null;
 
@@ -69,6 +70,7 @@ function countPieces(board: PieceType[][]): { red: number; black: number } {
 
 export default function Checkers({ game: initialGame }: CheckersPageProps) {
   const navigate = useNavigate();
+  const { data: profiles } = useCharacterProfiles();
   const [game, setGame] = useState(initialGame);
   const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
   const [commentary, setCommentary] = useState<string | null>(null);
@@ -343,7 +345,7 @@ export default function Checkers({ game: initialGame }: CheckersPageProps) {
       >
         {/* Clara with commentary */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-          <ClaraSprite mood={mood} size="sm" talking={loading} />
+          <ClaraSprite mood={mood} size="sm" talking={loading} profile={aiPlayer ? profiles?.get(aiPlayer.ai_personality!) : undefined} personality={aiPlayer?.ai_personality || undefined} />
           {commentary && <SpeechBubble text={commentary} speaker="Clara" direction="left" />}
         </div>
 

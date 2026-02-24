@@ -4,6 +4,7 @@ import { useState } from "react";
 import ClaraSprite from "@/components/games/ClaraSprite";
 import GameCard from "@/components/games/GameCard";
 import { api } from "@/api/client";
+import { useCharacterProfiles } from "@/hooks/useCharacterProfiles";
 
 interface GameStats {
   played: number;
@@ -37,6 +38,7 @@ const AI_PERSONALITIES = [
 
 export default function Lobby() {
   const navigate = useNavigate();
+  const { data: profiles } = useCharacterProfiles();
   const { data, isLoading } = useQuery<LobbyData>({
     queryKey: ["lobby"],
     queryFn: () => api.games.lobby(),
@@ -64,6 +66,7 @@ export default function Lobby() {
   }
 
   function toggleAI(id: string) {
+    if (selectedGame === "blackjack" && id === "clara") return;
     setSelectedAI((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
     );
@@ -121,7 +124,7 @@ export default function Lobby() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <ClaraSprite mood="happy" size="sm" />
+          <ClaraSprite mood="happy" size="sm" profile={profiles?.get("clara")} />
           <h1
             style={{
               fontSize: 24,
@@ -219,17 +222,19 @@ export default function Lobby() {
 
               <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16 }}>
                 {selectedGame === "blackjack"
-                  ? "Pick AI opponents to join your table:"
+                  ? "Clara always plays. Pick additional opponents:"
                   : "Pick an AI opponent:"}
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
                 {AI_PERSONALITIES.map((ai) => {
                   const isSelected = selectedAI.includes(ai.id);
+                  const isLocked = selectedGame === "blackjack" && ai.id === "clara";
                   return (
                     <button
                       key={ai.id}
                       onClick={() => {
+                        if (isLocked) return;
                         if (selectedGame === "checkers") {
                           setSelectedAI([ai.id]);
                         } else {
@@ -239,7 +244,7 @@ export default function Lobby() {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
+                        gap: 12,
                         padding: "12px 16px",
                         background: isSelected ? "#1a3a1a" : "#111",
                         border: `2px solid ${isSelected ? "#4ade80" : "#333"}`,
@@ -247,12 +252,15 @@ export default function Lobby() {
                         color: isSelected ? "#4ade80" : "#9ca3af",
                         fontFamily: "monospace",
                         fontSize: 14,
-                        cursor: "pointer",
+                        cursor: isLocked ? "default" : "pointer",
                         transition: "all 0.1s",
                       }}
                     >
-                      <span style={{ fontWeight: "bold" }}>{ai.name}</span>
-                      <span style={{ fontSize: 12 }}>{ai.desc}</span>
+                      <ClaraSprite size="sm" mood="neutral" profile={profiles?.get(ai.id)} personality={ai.id} />
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                        <span style={{ fontWeight: "bold" }}>{ai.name}</span>
+                        <span style={{ fontSize: 12 }}>{isLocked ? "Always plays" : ai.desc}</span>
+                      </div>
                     </button>
                   );
                 })}

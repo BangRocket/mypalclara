@@ -50,6 +50,7 @@ Rails.application.routes.draw do
       get "graph/search", to: "graph#search"
       get "graph/subgraph", to: "graph#subgraph"
 
+      resources :character_profiles, only: [:index, :show, :create, :update, :destroy]
       resources :intentions, only: [:index, :create, :update, :destroy]
 
       get "users/me", to: "users#me"

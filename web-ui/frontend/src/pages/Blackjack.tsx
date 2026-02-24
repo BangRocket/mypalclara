@@ -5,6 +5,7 @@ import PlayerHand from "@/components/games/PlayerHand";
 import SpeechBubble from "@/components/games/SpeechBubble";
 import { createConsumer } from "@rails/actioncable";
 import { api } from "@/api/client";
+import { useCharacterProfiles } from "@/hooks/useCharacterProfiles";
 
 interface Player {
   id: number;
@@ -76,6 +77,7 @@ function playerIdentifier(p: Player): string {
 
 export default function Blackjack({ game: initialGame }: BlackjackPageProps) {
   const navigate = useNavigate();
+  const { data: profiles } = useCharacterProfiles();
   const [game, setGame] = useState(initialGame);
   const [commentary, setCommentary] = useState<string | null>(null);
   const [mood, setMood] = useState<"happy" | "thinking" | "excited" | "neutral" | "sad">("neutral");
@@ -135,30 +137,55 @@ export default function Blackjack({ game: initialGame }: BlackjackPageProps) {
 
   // Auto-trigger AI moves after human acts
   const triggerAIMoves = useCallback(async () => {
-    const aiPlayers = game.players.filter(
-      (p) => p.ai_personality && p.player_state === "active"
-    );
+    let currentGame = game;
+    let keepGoing = true;
 
-    for (const aiPlayer of aiPlayers) {
-      const aiId = playerIdentifier(aiPlayer);
-      const aiHand = game.game_data.hands?.[aiId] || [];
-      const aiVal = handValue(aiHand);
-      const aiStood = (game.game_data.stood || []).includes(aiId);
+    while (keepGoing && currentGame.state === "in_progress") {
+      keepGoing = false;
 
-      if (aiVal > 21 || aiStood) continue;
+      const aiPlayers = currentGame.players.filter(
+        (p: Player) => p.ai_personality && p.player_state === "active"
+      );
 
-      setAiThinking(aiPlayer.id);
-      try {
-        const data = await api.games.aiMove(game.id, { game_player_id: aiPlayer.id });
-        if (data.game) {
-          setGame(data.game);
-          if (data.commentary) setCommentary(data.commentary);
-          if (data.mood) setMood(data.mood as typeof mood);
+      for (const aiPlayer of aiPlayers) {
+        const aiId = playerIdentifier(aiPlayer);
+        const aiHand = currentGame.game_data.hands?.[aiId] || [];
+        const aiVal = handValue(aiHand);
+        const aiStood = (currentGame.game_data.stood || []).includes(aiId);
+
+        if (aiVal > 21 || aiStood) continue;
+
+        setAiThinking(aiPlayer.id);
+        try {
+          const data = await api.games.aiMove(currentGame.id, { game_player_id: aiPlayer.id });
+          if (data.game) {
+            currentGame = data.game;
+            setGame(data.game);
+            if (data.commentary) setCommentary(data.commentary);
+            if (data.mood) setMood(data.mood as typeof mood);
+          }
+        } catch {
+          // Silently handle - game state will be updated via ActionCable
         }
-      } catch {
-        // Silently handle - game state will be updated via ActionCable
+        setAiThinking(null);
+
+        if (currentGame.state !== "in_progress") break;
       }
-      setAiThinking(null);
+
+      // If human is done (busted/stood), keep looping for remaining AI turns
+      if (currentGame.state === "in_progress") {
+        const hp = currentGame.players.find((p: Player) => p.user_id !== null);
+        if (hp) {
+          const hpId = playerIdentifier(hp);
+          const hpHand = currentGame.game_data.hands?.[hpId] || [];
+          const hpVal = handValue(hpHand);
+          const hpStood = (currentGame.game_data.stood || []).includes(hpId);
+          if (hpVal > 21 || hpStood) {
+            keepGoing = true;
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        }
+      }
     }
   }, [game]);
 
@@ -269,6 +296,7 @@ export default function Blackjack({ game: initialGame }: BlackjackPageProps) {
         gamePhase={gamePhase}
         commentary={commentary}
         mood={mood}
+        profile={profiles?.get("dealer")}
       />
 
       {/* Divider */}

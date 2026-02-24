@@ -303,6 +303,48 @@ export const admin = {
   pendingCount: () => request<{ count: number }>(`${BASE}/admin/users/pending/count`),
 };
 
+// ── Character Profiles ───────────────────────────────────────────────
+
+export interface LayerRef {
+  row: number;
+  col: number;
+  sheet?: string;
+}
+
+export interface CharacterProfile {
+  personality: string;
+  display_name: string;
+  base_layer: LayerRef;
+  hair_layer: LayerRef | Record<string, never>;
+  eyes_layer: LayerRef | Record<string, never>;
+  eyebrows_layer: LayerRef | Record<string, never>;
+  mouth_layer: LayerRef | Record<string, never>;
+  clothes_layer: LayerRef | Record<string, never>;
+  bg_layer: LayerRef | Record<string, never>;
+  created_at: string;
+  updated_at: string;
+}
+
+export const characterProfiles = {
+  list: () => request<CharacterProfile[]>(`${BASE}/character_profiles`),
+  get: (personality: string) =>
+    request<CharacterProfile>(`${BASE}/character_profiles/${personality}`),
+  create: (body: Omit<CharacterProfile, "created_at" | "updated_at">) =>
+    request<CharacterProfile>(`${BASE}/character_profiles`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (personality: string, body: Partial<Omit<CharacterProfile, "created_at" | "updated_at">>) =>
+    request<CharacterProfile>(`${BASE}/character_profiles/${personality}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  delete: (personality: string) =>
+    request<{ ok: boolean }>(`${BASE}/character_profiles/${personality}`, {
+      method: "DELETE",
+    }),
+};
+
 // ── Games ─────────────────────────────────────────────────────────────
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -331,4 +373,5 @@ export const api = {
   intentions,
   admin,
   games,
+  characterProfiles,
 };

@@ -1,6 +1,7 @@
 import Card from "./Card";
 import ClaraSprite from "./ClaraSprite";
 import SpeechBubble from "./SpeechBubble";
+import type { CharacterProfile } from "@/api/client";
 
 interface DealerAreaProps {
   dealerHand: string[];
@@ -8,6 +9,7 @@ interface DealerAreaProps {
   gamePhase: string; // "dealing", "player_turns", "resolving"
   commentary?: string | null;
   mood?: "happy" | "thinking" | "excited" | "neutral" | "sad";
+  profile?: CharacterProfile;
 }
 
 export default function DealerArea({
@@ -16,6 +18,7 @@ export default function DealerArea({
   gamePhase,
   commentary,
   mood = "neutral",
+  profile,
 }: DealerAreaProps) {
   const showSecondCard = gamePhase === "resolving";
   const isBusted = dealerValue > 21 && showSecondCard;
@@ -32,8 +35,8 @@ export default function DealerArea({
     >
       {/* Clara with speech bubble */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-        <ClaraSprite mood={mood} size="md" talking={!!commentary} />
-        {commentary && <SpeechBubble text={commentary} speaker="Clara" direction="left" />}
+        <ClaraSprite mood={mood} size="md" talking={!!commentary} profile={profile} personality="dealer" />
+        {commentary && <SpeechBubble text={commentary} speaker="Dealer" direction="left" />}
       </div>
 
       {/* Dealer label */}

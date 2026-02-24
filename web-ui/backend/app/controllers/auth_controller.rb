@@ -15,7 +15,11 @@ class AuthController < ApplicationController
 
     user = User.find_or_create_by(canonical_user_id: "00000000-0000-0000-0000-000000000dev") do |u|
       u.display_name = ENV.fetch("WEB_DEV_USER_NAME", "Dev User")
+      u.is_admin = true
     end
+
+    # Ensure dev user always has admin
+    user.update!(is_admin: true) unless user.is_admin
 
     token = JwtService.encode(user.canonical_user_id, name: user.display_name)
     set_auth_cookie(token)
@@ -119,7 +123,8 @@ class AuthController < ApplicationController
     {
       id: user.canonical_user_id,
       display_name: user.display_name,
-      avatar_url: user.avatar_url
+      avatar_url: user.avatar_url,
+      is_admin: user.is_admin
     }
   end
 end

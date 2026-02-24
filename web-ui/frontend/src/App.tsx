@@ -15,6 +15,7 @@ import { OAuthCallback } from "@/auth/OAuthCallback";
 import { PendingApproval } from "@/pages/PendingApproval";
 import { SuspendedPage } from "@/pages/Suspended";
 import { AdminUsersPage } from "@/pages/AdminUsers";
+import { AdminCharactersPage } from "@/pages/AdminCharacters";
 import Lobby from "@/pages/Lobby";
 import Blackjack from "@/pages/Blackjack";
 import Checkers from "@/pages/Checkers";
@@ -137,6 +138,16 @@ export function App() {
           <ProtectedRoute>
             <FeatureLayout title="Admin">
               <AdminUsersPage />
+            </FeatureLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/characters"
+        element={
+          <ProtectedRoute>
+            <FeatureLayout title="Admin">
+              <AdminCharactersPage />
             </FeatureLayout>
           </ProtectedRoute>
         }

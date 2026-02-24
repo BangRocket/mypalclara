@@ -111,6 +111,14 @@ export function HomePage() {
         badge: pendingData?.count,
         onClick: () => navigate("/admin/users"),
       });
+      base.push({
+        icon: gamesIcon,
+        label: "Characters",
+        description: "Sprite editor",
+        detail: "Compose pixel-art character appearances for each AI personality. Pick base, hair, eyes, clothes, and more from sprite sheets to build unique looks for Clara, Flo, and Clarissa.",
+        accentColor: "#f472b6",
+        onClick: () => navigate("/admin/characters"),
+      });
     }
     // Settings always last
     base.push({

@@ -38,6 +38,12 @@ class ApplicationController < ActionController::API
     cookies[:access_token]
   end
 
+  def require_admin!
+    unless current_user&.is_admin
+      render json: { error: "Admin access required" }, status: :forbidden
+    end
+  end
+
   def decode_jwt(token)
     JwtService.decode(token)
   end
