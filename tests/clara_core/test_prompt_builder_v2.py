@@ -9,12 +9,18 @@ import pytest
 from mypalclara.core.llm.messages import SystemMessage, UserMessage
 from mypalclara.core.prompt_builder import PromptBuilder, PromptMode
 
+# All FULL/MINIMAL mode tests mock _load_workspace_persona so they don't
+# depend on the workspace directory existing on disk.
+_MOCK_PERSONA = "You are Clara, a warm AI assistant."
+_WORKSPACE_PATCH = patch.object(
+    PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA
+)
+
 
 class TestPromptModes:
     def _make_builder(self):
         return PromptBuilder(agent_id="test", llm_callable=None)
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
     def test_none_mode_returns_minimal(self):
         builder = self._make_builder()
         messages = builder.build_prompt(
@@ -29,7 +35,6 @@ class TestPromptModes:
         assert len(messages) == 2
         assert messages[-1].content == "hi"
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
     def test_none_mode_system_message_has_bot_name(self):
         builder = self._make_builder()
         messages = builder.build_prompt(
@@ -44,7 +49,6 @@ class TestPromptModes:
         assert isinstance(messages[0], SystemMessage)
         assert "Clara" in messages[0].content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
     def test_none_mode_ignores_memories(self):
         builder = self._make_builder()
         messages = builder.build_prompt(
@@ -60,8 +64,8 @@ class TestPromptModes:
         all_content = " ".join(m.content for m in messages)
         assert "coffee" not in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_full_mode_preserves_existing_behavior(self):
+    @_WORKSPACE_PATCH
+    def test_full_mode_preserves_existing_behavior(self, _mock):
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=["likes coffee"],
@@ -75,8 +79,8 @@ class TestPromptModes:
         assert any("Clara" in m.content for m in messages if hasattr(m, "content"))
         assert messages[-1].content == "hello"
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_full_mode_includes_memories(self):
+    @_WORKSPACE_PATCH
+    def test_full_mode_includes_memories(self, _mock):
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=["likes coffee"],
@@ -89,8 +93,8 @@ class TestPromptModes:
         all_content = " ".join(m.content for m in messages)
         assert "coffee" in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_default_mode_is_full(self):
+    @_WORKSPACE_PATCH
+    def test_default_mode_is_full(self, _mock):
         builder = self._make_builder()
         # Call without mode parameter — should work (backward compatible)
         messages = builder.build_prompt(
@@ -102,8 +106,8 @@ class TestPromptModes:
         )
         assert len(messages) >= 2
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_minimal_mode_includes_persona(self):
+    @_WORKSPACE_PATCH
+    def test_minimal_mode_includes_persona(self, _mock):
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=["likes coffee"],
@@ -119,8 +123,8 @@ class TestPromptModes:
         # Should have user message at end
         assert messages[-1].content == "hi"
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_minimal_mode_skips_memories(self):
+    @_WORKSPACE_PATCH
+    def test_minimal_mode_skips_memories(self, _mock):
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=["likes coffee"],
@@ -135,8 +139,8 @@ class TestPromptModes:
         assert "coffee" not in all_content
         assert "project detail" not in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_minimal_mode_includes_runtime(self):
+    @_WORKSPACE_PATCH
+    def test_minimal_mode_includes_runtime(self, _mock):
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=[],
