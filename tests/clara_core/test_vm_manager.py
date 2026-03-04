@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mypalclara.core.vm_manager import VMManager
+from mypalclara.core.vm_manager import VMManager, _sanitize_user_id
 
 
 class TestVMManagerProvision:
@@ -129,3 +129,49 @@ class TestVMManagerReadWriteFile:
         with patch.object(manager, "exec_in_vm", new_callable=AsyncMock, return_value="") as mock_exec:
             await manager.write_file("discord-123", "/home/clara/workspace/USER.md", "new content")
             mock_exec.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_write_file_rejects_delimiter_in_content(self):
+        manager = VMManager()
+        manager._instances["discord-123"] = "clara-user-discord-123"
+        manager._statuses["discord-123"] = "running"
+        with pytest.raises(ValueError, match="reserved delimiter"):
+            await manager.write_file(
+                "discord-123",
+                "/home/clara/workspace/test.txt",
+                "some CLARA_EOF content",
+            )
+
+    @pytest.mark.asyncio
+    async def test_write_file_quotes_path(self):
+        manager = VMManager()
+        manager._instances["discord-123"] = "clara-user-discord-123"
+        manager._statuses["discord-123"] = "running"
+        with patch.object(manager, "exec_in_vm", new_callable=AsyncMock, return_value="") as mock_exec:
+            await manager.write_file(
+                "discord-123",
+                "/home/clara/workspace/my file.txt",
+                "content",
+            )
+            call_args = mock_exec.call_args[0]
+            shell_cmd = call_args[1][2]  # The sh -c argument
+            assert "'/home/clara/workspace/my file.txt'" in shell_cmd
+
+
+class TestSanitizeUserId:
+    def test_empty_user_id_raises(self):
+        with pytest.raises(ValueError, match="cannot be empty"):
+            _sanitize_user_id("")
+
+    def test_all_invalid_chars_raises(self):
+        with pytest.raises(ValueError, match="no valid characters"):
+            _sanitize_user_id("@@@")
+
+    def test_normal_id_passes(self):
+        assert _sanitize_user_id("discord-123") == "discord-123"
+
+    def test_special_chars_replaced(self):
+        assert _sanitize_user_id("user@name.com") == "user-name-com"
+
+    def test_leading_trailing_dashes_stripped(self):
+        assert _sanitize_user_id("@user@") == "user"
