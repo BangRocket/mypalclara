@@ -160,3 +160,124 @@ class TestWorkspaceCreate:
         result = await _handle_workspace_create({"filename": "EMPTY.md"}, CTX)
         assert "Created" in result
         assert (tmp_path / "EMPTY.md").read_text() == ""
+
+
+class TestWorkspaceUserScoping:
+    """Test that workspace tools route to user VM workspace when available."""
+
+    @pytest.mark.asyncio
+    async def test_read_from_user_vm_workspace(self, tmp_path, monkeypatch):
+        """When user has a VM, workspace_read reads from VM workspace."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        (user_ws / "USER.md").write_text("Name: Alice")
+
+        monkeypatch.setattr(mod, "_resolve_workspace_dir", lambda ctx: user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        result = await _handle_workspace_read({"filename": "USER.md"}, ctx)
+        assert "Name: Alice" in result
+
+    @pytest.mark.asyncio
+    async def test_write_to_user_vm_workspace(self, tmp_path, monkeypatch):
+        """When user has a VM, workspace_write writes to VM workspace."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        (user_ws / "USER.md").write_text("original")
+        monkeypatch.setattr(mod, "_resolve_workspace_dir", lambda ctx: user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        result = await _handle_workspace_write({"filename": "USER.md", "content": "Name: Bob"}, ctx)
+        assert "Updated" in result
+        assert (user_ws / "USER.md").read_text() == "Name: Bob"
+
+    @pytest.mark.asyncio
+    async def test_global_files_always_from_shared(self, tmp_path, monkeypatch):
+        """SOUL.md and IDENTITY.md always come from the shared workspace."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+
+        shared_ws = tmp_path / "shared"
+        shared_ws.mkdir()
+        (shared_ws / "SOUL.md").write_text("Global soul content")
+        monkeypatch.setattr(mod, "WORKSPACE_DIR", shared_ws)
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        # Even if the user workspace has a SOUL.md, the shared one should be used
+        (user_ws / "SOUL.md").write_text("User soul content - should not be read")
+        monkeypatch.setattr(mod, "_resolve_workspace_dir", lambda ctx: user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        result = await _handle_workspace_read({"filename": "SOUL.md"}, ctx)
+        assert "Global soul content" in result
+        assert "User soul content" not in result
+
+    @pytest.mark.asyncio
+    async def test_create_in_user_vm_workspace(self, tmp_path, monkeypatch):
+        """When user has a VM, workspace_create writes to VM workspace."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        monkeypatch.setattr(mod, "_resolve_workspace_dir", lambda ctx: user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        result = await _handle_workspace_create({"filename": "NOTES.md", "content": "My notes"}, ctx)
+        assert "Created" in result
+        assert (user_ws / "NOTES.md").read_text() == "My notes"
+        # Should NOT exist in the default WORKSPACE_DIR
+        assert not (WORKSPACE_DIR / "NOTES.md").exists() or WORKSPACE_DIR == user_ws
+
+    @pytest.mark.asyncio
+    async def test_list_from_user_vm_workspace(self, tmp_path, monkeypatch):
+        """When user has a VM, workspace_list lists from VM workspace."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        (user_ws / "CUSTOM.md").write_text("custom file")
+        monkeypatch.setattr(mod, "_resolve_workspace_dir", lambda ctx: user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        result = await _handle_workspace_list({}, ctx)
+        assert "CUSTOM.md" in result
+
+    @pytest.mark.asyncio
+    async def test_no_vm_falls_back_to_shared(self, tmp_path, monkeypatch):
+        """When user has no VM, workspace resolves to shared WORKSPACE_DIR."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+        from mypalclara.core.core_tools.workspace_tool import _resolve_workspace_dir
+
+        shared_ws = tmp_path / "shared"
+        shared_ws.mkdir()
+        (shared_ws / "USER.md").write_text("Shared user")
+        monkeypatch.setattr(mod, "WORKSPACE_DIR", shared_ws)
+        # Clear any user workspace registrations
+        monkeypatch.setattr(mod, "_user_workspace_dirs", {})
+
+        ctx = ToolContext(user_id="unknown-user")
+        resolved = _resolve_workspace_dir(ctx)
+        assert resolved == shared_ws
+
+    @pytest.mark.asyncio
+    async def test_register_user_workspace(self, tmp_path, monkeypatch):
+        """Registering a user workspace makes _resolve_workspace_dir return it."""
+        import mypalclara.core.core_tools.workspace_tool as mod
+        from mypalclara.core.core_tools.workspace_tool import (
+            _resolve_workspace_dir,
+            register_user_workspace,
+        )
+
+        user_ws = tmp_path / "vm_workspace"
+        user_ws.mkdir()
+        monkeypatch.setattr(mod, "_user_workspace_dirs", {})
+
+        register_user_workspace("discord-123", user_ws)
+
+        ctx = ToolContext(user_id="discord-123")
+        resolved = _resolve_workspace_dir(ctx)
+        assert resolved == user_ws
