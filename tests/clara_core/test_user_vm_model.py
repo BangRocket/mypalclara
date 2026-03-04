@@ -2,22 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from mypalclara.db.models import UserVM
-
-
-@pytest.fixture
-def db_session():
-    from mypalclara.db.models import Base
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
 
 
 class TestUserVMModel:

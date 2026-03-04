@@ -158,6 +158,66 @@ class TestVMManagerReadWriteFile:
             assert "'/home/clara/workspace/my file.txt'" in shell_cmd
 
 
+class TestVMManagerDBPersistence:
+    @pytest.mark.asyncio
+    async def test_provision_creates_db_record(self, db_session):
+        from mypalclara.db.models import UserVM
+
+        manager = VMManager(session_factory=lambda: db_session)
+        with patch.object(manager, "_run_incus", new_callable=AsyncMock, return_value=""):
+            await manager.provision("discord-789")
+
+        vm = db_session.query(UserVM).filter_by(user_id="discord-789").first()
+        assert vm is not None
+        assert vm.status == "running"
+        assert "discord-789" in vm.instance_name
+
+    @pytest.mark.asyncio
+    async def test_suspend_updates_db(self, db_session):
+        from mypalclara.db.models import UserVM
+
+        manager = VMManager(session_factory=lambda: db_session)
+        with patch.object(manager, "_run_incus", new_callable=AsyncMock, return_value=""):
+            await manager.provision("discord-789")
+            await manager.suspend("discord-789")
+
+        vm = db_session.query(UserVM).filter_by(user_id="discord-789").first()
+        assert vm.status == "suspended"
+        assert vm.suspended_at is not None
+
+    @pytest.mark.asyncio
+    async def test_resume_updates_db(self, db_session):
+        from mypalclara.db.models import UserVM
+
+        manager = VMManager(session_factory=lambda: db_session)
+        with patch.object(manager, "_run_incus", new_callable=AsyncMock, return_value=""):
+            await manager.provision("discord-789")
+            await manager.suspend("discord-789")
+            await manager.resume("discord-789")
+
+        vm = db_session.query(UserVM).filter_by(user_id="discord-789").first()
+        assert vm.status == "running"
+
+    @pytest.mark.asyncio
+    async def test_load_from_db_on_init(self, db_session):
+        from mypalclara.db.models import UserVM
+
+        # Seed a VM record
+        vm = UserVM(
+            user_id="discord-999",
+            instance_name="clara-user-discord-999",
+            instance_type="container",
+            status="suspended",
+        )
+        db_session.add(vm)
+        db_session.commit()
+
+        manager = VMManager(session_factory=lambda: db_session)
+        await manager.load_from_db()
+        assert "discord-999" in manager._instances
+        assert manager._statuses["discord-999"] == "suspended"
+
+
 class TestSanitizeUserId:
     def test_empty_user_id_raises(self):
         with pytest.raises(ValueError, match="cannot be empty"):
