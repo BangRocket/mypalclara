@@ -93,3 +93,58 @@ class TestGatherHeartbeatContext:
             assert user["channel"] == "discord-123"
             assert 55 <= user["idle_minutes"] <= 65  # ~60 min with tolerance
             assert "T" in user["last_active"]  # ISO format
+
+
+import asyncio
+
+
+class TestRunHeartbeatCheck:
+    def test_ack_response_returns_false(self):
+        from mypalclara.core.heartbeat import run_heartbeat_check
+
+        async def mock_llm(messages):
+            return "HEARTBEAT_OK"
+
+        should_send, message = asyncio.get_event_loop().run_until_complete(
+            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+        )
+        assert should_send is False
+        assert message == ""
+
+    def test_real_message_returns_true(self):
+        from mypalclara.core.heartbeat import run_heartbeat_check
+
+        async def mock_llm(messages):
+            return "Hey! Just wanted to check if you finished that project."
+
+        should_send, message = asyncio.get_event_loop().run_until_complete(
+            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+        )
+        assert should_send is True
+        assert "check" in message.lower()
+
+    def test_prompt_includes_heartbeat_md(self):
+        from mypalclara.core.heartbeat import run_heartbeat_check
+
+        captured = []
+
+        async def mock_llm(messages):
+            captured.append(messages)
+            return "HEARTBEAT_OK"
+
+        asyncio.get_event_loop().run_until_complete(
+            run_heartbeat_check(mock_llm, "MY_CUSTOM_INSTRUCTIONS", {"current_time": "now", "active_users": []})
+        )
+        all_content = " ".join(str(m) for m in captured[0])
+        assert "MY_CUSTOM_INSTRUCTIONS" in all_content
+
+    def test_llm_error_returns_false(self):
+        from mypalclara.core.heartbeat import run_heartbeat_check
+
+        async def mock_llm(messages):
+            raise RuntimeError("LLM down")
+
+        should_send, message = asyncio.get_event_loop().run_until_complete(
+            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+        )
+        assert should_send is False
