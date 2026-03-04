@@ -88,4 +88,8 @@ class TestGatherHeartbeatContext:
 
             ctx = gather_heartbeat_context()
             assert len(ctx["active_users"]) == 1
-            assert ctx["active_users"][0]["user_id"] == "user-1"
+            user = ctx["active_users"][0]
+            assert user["user_id"] == "user-1"
+            assert user["channel"] == "discord-123"
+            assert 55 <= user["idle_minutes"] <= 65  # ~60 min with tolerance
+            assert "T" in user["last_active"]  # ISO format
