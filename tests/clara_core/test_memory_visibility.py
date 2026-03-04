@@ -78,3 +78,11 @@ class TestUpdateVisibility:
         mem.vector_store.update_payload.assert_called_once()
         call_args = mem.vector_store.update_payload.call_args
         assert call_args[1]["payload"]["visibility"] == "public"
+
+    def test_update_memory_visibility_invalid_raises(self):
+        from mypalclara.core.memory.core.memory import ClaraMemory
+        mem = ClaraMemory.__new__(ClaraMemory)
+        mem.vector_store = MagicMock()
+        mem.db = MagicMock()
+        with pytest.raises(ValueError, match="Invalid visibility"):
+            mem.update_memory_visibility("mem-123", "secret")
