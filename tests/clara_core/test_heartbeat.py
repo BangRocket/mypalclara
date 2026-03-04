@@ -148,3 +148,57 @@ class TestRunHeartbeatCheck:
             run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
         )
         assert should_send is False
+
+
+class TestHeartbeatLoop:
+    def test_loop_calls_check_and_sleeps(self):
+        from mypalclara.core.heartbeat import heartbeat_loop
+
+        call_count = 0
+
+        async def mock_llm(messages):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise asyncio.CancelledError()  # Stop loop after 2 cycles
+            return "HEARTBEAT_OK"
+
+        async def mock_send(msg):
+            pass
+
+        with patch(
+            "mypalclara.core.heartbeat.gather_heartbeat_context",
+            return_value={"current_time": "now", "active_users": []},
+        ):
+            with patch("mypalclara.core.heartbeat._load_heartbeat_md", return_value="Check things"):
+                with pytest.raises(asyncio.CancelledError):
+                    asyncio.get_event_loop().run_until_complete(
+                        heartbeat_loop(mock_llm, mock_send, interval_minutes=0.001)
+                    )
+
+        assert call_count >= 1
+
+    def test_loop_delivers_message_when_not_ack(self):
+        from mypalclara.core.heartbeat import heartbeat_loop
+
+        delivered = []
+
+        async def mock_llm(messages):
+            return "Hey, how's it going?"
+
+        async def mock_send(msg):
+            delivered.append(msg)
+            raise asyncio.CancelledError()  # Stop after first delivery
+
+        with patch(
+            "mypalclara.core.heartbeat.gather_heartbeat_context",
+            return_value={"current_time": "now", "active_users": []},
+        ):
+            with patch("mypalclara.core.heartbeat._load_heartbeat_md", return_value="Check things"):
+                with pytest.raises(asyncio.CancelledError):
+                    asyncio.get_event_loop().run_until_complete(
+                        heartbeat_loop(mock_llm, mock_send, interval_minutes=0.001)
+                    )
+
+        assert len(delivered) == 1
+        assert "how's it going" in delivered[0]
