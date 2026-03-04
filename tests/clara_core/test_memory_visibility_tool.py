@@ -1,4 +1,5 @@
 """Tests for memory visibility tools."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -17,9 +18,7 @@ class TestSetVisibility:
 
         with patch("mypalclara.core.core_tools.memory_visibility_tool._get_memory") as mock_mem:
             mock_mem.return_value = MagicMock()
-            result = await _handle_set_visibility(
-                {"memory_id": "mem-123", "visibility": "public"}, CTX
-            )
+            result = await _handle_set_visibility({"memory_id": "mem-123", "visibility": "public"}, CTX)
             assert "public" in result.lower()
             mock_mem.return_value.update_memory_visibility.assert_called_once_with("mem-123", "public")
 
@@ -27,9 +26,7 @@ class TestSetVisibility:
     async def test_set_visibility_invalid(self):
         from mypalclara.core.core_tools.memory_visibility_tool import _handle_set_visibility
 
-        result = await _handle_set_visibility(
-            {"memory_id": "mem-123", "visibility": "secret"}, CTX
-        )
+        result = await _handle_set_visibility({"memory_id": "mem-123", "visibility": "secret"}, CTX)
         assert "error" in result.lower()
 
     @pytest.mark.asyncio
@@ -38,9 +35,7 @@ class TestSetVisibility:
 
         with patch("mypalclara.core.core_tools.memory_visibility_tool._get_memory") as mock_mem:
             mock_mem.return_value = MagicMock()
-            result = await _handle_set_visibility(
-                {"memory_id": "mem-123", "visibility": "private"}, CTX
-            )
+            result = await _handle_set_visibility({"memory_id": "mem-123", "visibility": "private"}, CTX)
             assert "private" in result.lower()
 
 

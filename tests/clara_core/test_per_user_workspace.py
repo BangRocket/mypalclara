@@ -17,9 +17,7 @@ from mypalclara.core.llm.messages import SystemMessage, UserMessage
 from mypalclara.core.prompt_builder import PromptBuilder
 
 _MOCK_PERSONA = "You are Clara."
-_WORKSPACE_PATCH = patch.object(
-    PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA
-)
+_WORKSPACE_PATCH = patch.object(PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA)
 
 
 def _make_prompt_builder() -> PromptBuilder:

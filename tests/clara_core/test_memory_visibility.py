@@ -81,6 +81,7 @@ class TestUpdateVisibility:
 
     def test_update_memory_visibility_invalid_raises(self):
         from mypalclara.core.memory.core.memory import ClaraMemory
+
         mem = ClaraMemory.__new__(ClaraMemory)
         mem.vector_store = MagicMock()
         mem.db = MagicMock()

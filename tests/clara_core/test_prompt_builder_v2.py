@@ -12,9 +12,7 @@ from mypalclara.core.prompt_builder import PromptBuilder, PromptMode
 # All FULL/MINIMAL mode tests mock _load_workspace_persona so they don't
 # depend on the workspace directory existing on disk.
 _MOCK_PERSONA = "You are Clara, a warm AI assistant."
-_WORKSPACE_PATCH = patch.object(
-    PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA
-)
+_WORKSPACE_PATCH = patch.object(PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA)
 
 
 class TestPromptModes:
