@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -95,7 +96,12 @@ class TestGatherHeartbeatContext:
             assert "T" in user["last_active"]  # ISO format
 
 
-import asyncio
+SAMPLE_USER = {
+    "user_id": "discord-123",
+    "channel": "dm-discord-123",
+    "idle_minutes": 120,
+    "last_active": "2026-03-05T12:00:00",
+}
 
 
 class TestRunHeartbeatCheck:
@@ -106,7 +112,7 @@ class TestRunHeartbeatCheck:
             return "HEARTBEAT_OK"
 
         should_send, message = asyncio.get_event_loop().run_until_complete(
-            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+            run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now")
         )
         assert should_send is False
         assert message == ""
@@ -118,7 +124,7 @@ class TestRunHeartbeatCheck:
             return "Hey! Just wanted to check if you finished that project."
 
         should_send, message = asyncio.get_event_loop().run_until_complete(
-            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+            run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now")
         )
         assert should_send is True
         assert "check" in message.lower()
@@ -133,10 +139,26 @@ class TestRunHeartbeatCheck:
             return "HEARTBEAT_OK"
 
         asyncio.get_event_loop().run_until_complete(
-            run_heartbeat_check(mock_llm, "MY_CUSTOM_INSTRUCTIONS", {"current_time": "now", "active_users": []})
+            run_heartbeat_check(mock_llm, "MY_CUSTOM_INSTRUCTIONS", SAMPLE_USER, "now")
         )
         all_content = " ".join(str(m) for m in captured[0])
         assert "MY_CUSTOM_INSTRUCTIONS" in all_content
+
+    def test_prompt_includes_user_info(self):
+        from mypalclara.core.heartbeat import run_heartbeat_check
+
+        captured = []
+
+        async def mock_llm(messages):
+            captured.append(messages)
+            return "HEARTBEAT_OK"
+
+        asyncio.get_event_loop().run_until_complete(
+            run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now")
+        )
+        all_content = " ".join(str(m) for m in captured[0])
+        assert "discord-123" in all_content
+        assert "120" in all_content
 
     def test_llm_error_returns_false(self):
         from mypalclara.core.heartbeat import run_heartbeat_check
@@ -145,7 +167,7 @@ class TestRunHeartbeatCheck:
             raise RuntimeError("LLM down")
 
         should_send, message = asyncio.get_event_loop().run_until_complete(
-            run_heartbeat_check(mock_llm, "Check things", {"current_time": "now", "active_users": []})
+            run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now")
         )
         assert should_send is False
 
@@ -163,12 +185,12 @@ class TestHeartbeatLoop:
                 raise asyncio.CancelledError()  # Stop loop after 2 cycles
             return "HEARTBEAT_OK"
 
-        async def mock_send(msg):
+        async def mock_send(user_id, channel_id, msg):
             pass
 
         with patch(
             "mypalclara.core.heartbeat.gather_heartbeat_context",
-            return_value={"current_time": "now", "active_users": []},
+            return_value={"current_time": "now", "active_users": [SAMPLE_USER]},
         ):
             with patch("mypalclara.core.heartbeat._load_heartbeat_md", return_value="Check things"):
                 with pytest.raises(asyncio.CancelledError):
@@ -178,7 +200,7 @@ class TestHeartbeatLoop:
 
         assert call_count >= 1
 
-    def test_loop_delivers_message_when_not_ack(self):
+    def test_loop_delivers_message_with_target(self):
         from mypalclara.core.heartbeat import heartbeat_loop
 
         delivered = []
@@ -186,13 +208,13 @@ class TestHeartbeatLoop:
         async def mock_llm(messages):
             return "Hey, how's it going?"
 
-        async def mock_send(msg):
-            delivered.append(msg)
+        async def mock_send(user_id, channel_id, msg):
+            delivered.append((user_id, channel_id, msg))
             raise asyncio.CancelledError()  # Stop after first delivery
 
         with patch(
             "mypalclara.core.heartbeat.gather_heartbeat_context",
-            return_value={"current_time": "now", "active_users": []},
+            return_value={"current_time": "now", "active_users": [SAMPLE_USER]},
         ):
             with patch("mypalclara.core.heartbeat._load_heartbeat_md", return_value="Check things"):
                 with pytest.raises(asyncio.CancelledError):
@@ -201,4 +223,36 @@ class TestHeartbeatLoop:
                     )
 
         assert len(delivered) == 1
-        assert "how's it going" in delivered[0]
+        user_id, channel_id, msg = delivered[0]
+        assert user_id == "discord-123"
+        assert channel_id == "dm-discord-123"
+        assert "how's it going" in msg
+
+    def test_loop_skips_users_with_no_action_needed(self):
+        from mypalclara.core.heartbeat import heartbeat_loop
+
+        delivered = []
+        call_count = 0
+
+        async def mock_llm(messages):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 3:
+                raise asyncio.CancelledError()
+            return "HEARTBEAT_OK"
+
+        async def mock_send(user_id, channel_id, msg):
+            delivered.append(msg)
+
+        users = [SAMPLE_USER, {"user_id": "discord-456", "channel": "dm-discord-456", "idle_minutes": 5, "last_active": "now"}]
+        with patch(
+            "mypalclara.core.heartbeat.gather_heartbeat_context",
+            return_value={"current_time": "now", "active_users": users},
+        ):
+            with patch("mypalclara.core.heartbeat._load_heartbeat_md", return_value="Check"):
+                with pytest.raises(asyncio.CancelledError):
+                    asyncio.get_event_loop().run_until_complete(
+                        heartbeat_loop(mock_llm, mock_send, interval_minutes=0.001)
+                    )
+
+        assert len(delivered) == 0  # All returned HEARTBEAT_OK
