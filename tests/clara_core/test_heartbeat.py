@@ -153,9 +153,7 @@ class TestRunHeartbeatCheck:
             captured.append(messages)
             return "HEARTBEAT_OK"
 
-        asyncio.get_event_loop().run_until_complete(
-            run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now")
-        )
+        asyncio.get_event_loop().run_until_complete(run_heartbeat_check(mock_llm, "Check things", SAMPLE_USER, "now"))
         all_content = " ".join(str(m) for m in captured[0])
         assert "discord-123" in all_content
         assert "120" in all_content
@@ -244,7 +242,10 @@ class TestHeartbeatLoop:
         async def mock_send(user_id, channel_id, msg):
             delivered.append(msg)
 
-        users = [SAMPLE_USER, {"user_id": "discord-456", "channel": "dm-discord-456", "idle_minutes": 5, "last_active": "now"}]
+        users = [
+            SAMPLE_USER,
+            {"user_id": "discord-456", "channel": "dm-discord-456", "idle_minutes": 5, "last_active": "now"},
+        ]
         with patch(
             "mypalclara.core.heartbeat.gather_heartbeat_context",
             return_value={"current_time": "now", "active_users": users},

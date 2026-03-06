@@ -75,9 +75,10 @@ class TestVMManagerEnsure:
         manager._instances["discord-123"] = "clara-user-discord-123"
         manager._statuses["discord-123"] = "suspended"
         with patch.object(manager, "_vm_exists", new_callable=AsyncMock, return_value=True):
-            with patch.object(manager, "resume", new_callable=AsyncMock) as mock:
-                await manager.ensure_vm("discord-123")
-                mock.assert_called_once_with("discord-123")
+            with patch.object(manager, "_ensure_seeded", new_callable=AsyncMock):
+                with patch.object(manager, "resume", new_callable=AsyncMock) as mock:
+                    await manager.ensure_vm("discord-123")
+                    mock.assert_called_once_with("discord-123")
 
     @pytest.mark.asyncio
     async def test_ensure_noop_if_running(self):
@@ -85,11 +86,12 @@ class TestVMManagerEnsure:
         manager._instances["discord-123"] = "clara-user-discord-123"
         manager._statuses["discord-123"] = "running"
         with patch.object(manager, "_vm_exists", new_callable=AsyncMock, return_value=True):
-            with patch.object(manager, "provision", new_callable=AsyncMock) as mock_p:
-                with patch.object(manager, "resume", new_callable=AsyncMock) as mock_r:
-                    await manager.ensure_vm("discord-123")
-                    mock_p.assert_not_called()
-                    mock_r.assert_not_called()
+            with patch.object(manager, "_ensure_seeded", new_callable=AsyncMock):
+                with patch.object(manager, "provision", new_callable=AsyncMock) as mock_p:
+                    with patch.object(manager, "resume", new_callable=AsyncMock) as mock_r:
+                        await manager.ensure_vm("discord-123")
+                        mock_p.assert_not_called()
+                        mock_r.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ensure_reprovisions_if_deleted_externally(self):

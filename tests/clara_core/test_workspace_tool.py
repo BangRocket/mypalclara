@@ -274,9 +274,7 @@ class TestWorkspaceVMRouting:
         _setup_vm_user(monkeypatch, "vm-user", vm_files)
 
         ctx = ToolContext(user_id="vm-user")
-        result = await _handle_workspace_write(
-            {"filename": "NOTES.md", "content": "line two", "mode": "append"}, ctx
-        )
+        result = await _handle_workspace_write({"filename": "NOTES.md", "content": "line two", "mode": "append"}, ctx)
         assert "Appended" in result
         assert "line one" in vm_files["NOTES.md"]
         assert "line two" in vm_files["NOTES.md"]

@@ -151,6 +151,7 @@ class TestMemoryFetchTimeout:
     @pytest.mark.asyncio
     async def test_memory_fetch_timeout_returns_empty(self):
         """When memory fetch times out, processor gets empty results."""
+
         # This tests the pattern directly without needing the full processor
         async def slow_fetch():
             await asyncio.sleep(5)
