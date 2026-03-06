@@ -775,3 +775,48 @@ class DiscordGatewayClient(GatewayClient):
         except Exception as e:
             logger.error(f"Failed to send buttons: {e}")
             return None
+
+    # =========================================================================
+    # Proactive Messages (heartbeat, etc.)
+    # =========================================================================
+
+    async def on_proactive_message(self, message: Any) -> None:
+        """Deliver a proactive message to a Discord user via DM.
+
+        Uses the user's platform_id to find or create a DM channel.
+        Falls back to channel ID if DM fails and a channel is specified.
+        """
+        import discord as _discord
+
+        target_platform_id = message.user.platform_id
+        content = message.content
+
+        if not target_platform_id or not content:
+            logger.warning("Proactive message missing user or content, skipping")
+            return
+
+        # Try to DM the user
+        try:
+            user = await self.bot.fetch_user(int(target_platform_id))
+            dm_channel = await user.create_dm()
+            for chunk in split_message(content):
+                await dm_channel.send(chunk)
+            logger.info(f"Delivered proactive message to {message.user.id} via DM")
+            return
+        except (_discord.NotFound, _discord.Forbidden) as e:
+            logger.warning(f"Cannot DM user {target_platform_id}: {e}")
+        except (ValueError, Exception) as e:
+            logger.warning(f"Failed to DM user {target_platform_id}: {e}")
+
+        # Fallback: try sending to the channel if specified
+        channel_id = message.channel.id
+        if channel_id:
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+                if channel is None:
+                    channel = await self.bot.fetch_channel(int(channel_id))
+                for chunk in split_message(content):
+                    await channel.send(chunk)
+                logger.info(f"Delivered proactive message to channel {channel_id}")
+            except Exception as e:
+                logger.warning(f"Failed to send proactive message to channel {channel_id}: {e}")
