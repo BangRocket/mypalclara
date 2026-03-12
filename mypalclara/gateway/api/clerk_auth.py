@@ -2,11 +2,16 @@
 
 Validates JWTs issued by Clerk (https://clerk.com) using their JWKS endpoint.
 Clerk publishes RS256 public keys at https://{domain}/.well-known/jwks.json.
+
+Security: The trusted issuer is read from CLERK_ISSUER_URL env var. If unset,
+the token's issuer must end with `.clerk.accounts.dev` as a safety net. The
+issuer from the *unverified* token is never used to construct the JWKS URL.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 import httpx
@@ -14,6 +19,11 @@ import jwt
 from fastapi import HTTPException, status
 
 logger = logging.getLogger("gateway.api.clerk_auth")
+
+# Trusted issuer URL from environment (e.g. "https://your-app.clerk.accounts.dev")
+_CLERK_ISSUER_URL: str | None = os.environ.get("CLERK_ISSUER_URL")
+
+_CLERK_DOMAIN_SUFFIX = ".clerk.accounts.dev"
 
 # Cache JWKS keys for 1 hour (Clerk rotates keys infrequently)
 _JWKS_CACHE_TTL_SECONDS = 3600
@@ -80,6 +90,59 @@ class ClerkJWKSCache:
 _cache = ClerkJWKSCache()
 
 
+def _get_trusted_issuer(token_issuer: str) -> str:
+    """Return the trusted issuer URL, validating against config or domain suffix.
+
+    If CLERK_ISSUER_URL is set, the token's issuer must match it exactly.
+    Otherwise, the token's issuer must end with `.clerk.accounts.dev`.
+
+    This prevents an attacker from crafting a token with an arbitrary issuer
+    that points to their own JWKS server.
+
+    Returns:
+        The trusted issuer URL to use for JWKS fetching.
+
+    Raises:
+        HTTPException(401): If the token's issuer is not trusted.
+    """
+    configured = _CLERK_ISSUER_URL
+    if configured:
+        # Strip trailing slash for consistent comparison
+        configured = configured.rstrip("/")
+        token_iss = token_issuer.rstrip("/")
+        if token_iss != configured:
+            logger.warning(
+                "JWT issuer %r does not match configured CLERK_ISSUER_URL %r",
+                token_issuer,
+                configured,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="JWT issuer mismatch",
+            )
+        return configured
+
+    # Fallback: validate the issuer domain when CLERK_ISSUER_URL is not configured
+    from urllib.parse import urlparse
+
+    parsed = urlparse(token_issuer)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or not parsed.hostname.endswith(_CLERK_DOMAIN_SUFFIX)
+    ):
+        logger.warning(
+            "JWT issuer %r is not a trusted Clerk domain (set CLERK_ISSUER_URL to "
+            "configure an explicit issuer)",
+            token_issuer,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT issuer is not a trusted Clerk domain",
+        )
+    return token_issuer.rstrip("/")
+
+
 async def verify_clerk_jwt(authorization: str) -> dict:
     """Verify a Clerk JWT from an Authorization header.
 
@@ -112,24 +175,27 @@ async def verify_clerk_jwt(authorization: str) -> dict:
         ) from exc
 
     kid = unverified_header.get("kid")
-    issuer = unverified_claims.get("iss")
+    token_issuer = unverified_claims.get("iss")
 
-    if not kid or not issuer:
+    if not kid or not token_issuer:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="JWT missing kid or iss",
         )
 
-    # Fetch the signing key
-    signing_key = await _cache.get_key(kid, issuer)
+    # Validate issuer against trusted config BEFORE fetching JWKS
+    trusted_issuer = _get_trusted_issuer(token_issuer)
 
-    # Verify signature, expiry, and issuer
+    # Fetch the signing key using the TRUSTED issuer, not the token's claim
+    signing_key = await _cache.get_key(kid, trusted_issuer)
+
+    # Verify signature, expiry, and issuer against the trusted value
     try:
         claims = jwt.decode(
             token,
             signing_key,
             algorithms=["RS256"],
-            issuer=issuer,
+            issuer=trusted_issuer,
         )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
