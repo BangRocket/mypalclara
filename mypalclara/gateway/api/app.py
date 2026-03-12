@@ -27,8 +27,8 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
-    # CORS — allow the Rails app and any configured origins
-    cors_origins = os.getenv("GATEWAY_API_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    # CORS — allow the React dev server and any configured origins
+    cors_origins = os.getenv("GATEWAY_API_CORS_ORIGINS", "http://localhost:5173").split(",")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in cors_origins],
