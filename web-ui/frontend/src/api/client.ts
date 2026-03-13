@@ -146,46 +146,6 @@ export const memories = {
     request<{ ok: boolean; imported: number; total: number }>(`${BASE}/memories/import`, { method: "POST", body: JSON.stringify(body) }),
 };
 
-// ── Graph ─────────────────────────────────────────────────────────────────
-
-export interface GraphNode {
-  id: string;
-  name: string;
-  type: string | null;
-}
-
-export interface GraphEdge {
-  source: string;
-  target: string;
-  label: string;
-}
-
-export const graph = {
-  entities: (params?: { offset?: number; limit?: number }) => {
-    const sp = new URLSearchParams();
-    if (params) {
-      for (const [k, v] of Object.entries(params)) sp.set(k, String(v));
-    }
-    return request<{ entities: { name: string; type: string }[]; total: number }>(`${BASE}/graph/entities?${sp}`);
-  },
-  entity: (name: string) =>
-    request<{
-      name: string;
-      relationships: { source: string; relationship: string; description: string; target: string; target_type: string }[];
-    }>(`${BASE}/graph/entities/${encodeURIComponent(name)}`),
-  search: (q: string, limit?: number) =>
-    request<{ results: { name: string; type: string }[] }>(`${BASE}/graph/search?q=${encodeURIComponent(q)}&limit=${limit || 20}`),
-  subgraph: (params?: { center?: string; depth?: number; limit?: number }) => {
-    const sp = new URLSearchParams();
-    if (params) {
-      for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined) sp.set(k, String(v));
-      }
-    }
-    return request<{ nodes: GraphNode[]; edges: GraphEdge[] }>(`${BASE}/graph/subgraph?${sp}`);
-  },
-};
-
 // ── Sessions ──────────────────────────────────────────────────────────────
 
 export interface ChatSession {
@@ -236,99 +196,11 @@ export const users = {
     request<{ ok: boolean }>(`${BASE}/users/me`, { method: "PUT", body: JSON.stringify(body) }),
 };
 
-// ── Intentions ────────────────────────────────────────────────────────────
-
-export interface Intention {
-  id: string;
-  content: string;
-  trigger_conditions: Record<string, unknown>;
-  priority: number;
-  fire_once: boolean;
-  fired: boolean;
-  fired_at: string | null;
-  created_at: string | null;
-  expires_at: string | null;
-}
-
-export const intentions = {
-  list: (params?: { fired?: boolean; offset?: number; limit?: number }) => {
-    const sp = new URLSearchParams();
-    if (params) {
-      for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined) sp.set(k, String(v));
-      }
-    }
-    return request<{ intentions: Intention[]; total: number }>(`${BASE}/intentions?${sp}`);
-  },
-  create: (body: { content: string; trigger_conditions: Record<string, unknown>; priority?: number; fire_once?: boolean }) =>
-    request<{ id: string; ok: boolean }>(`${BASE}/intentions`, { method: "POST", body: JSON.stringify(body) }),
-  update: (id: string, body: Partial<Intention>) =>
-    request<{ ok: boolean }>(`${BASE}/intentions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  delete: (id: string) => request<{ ok: boolean }>(`${BASE}/intentions/${id}`, { method: "DELETE" }),
-};
-
-// ── Admin ─────────────────────────────────────────────────────────────────
-
-export interface AdminUser {
-  id: string;
-  display_name: string;
-  email: string | null;
-  avatar_url: string | null;
-  created_at: string | null;
-  status?: "pending" | "active" | "suspended";
-  is_admin: boolean;
-  platforms: { platform: string; display_name: string }[];
-}
-
-export const admin = {
-  users: (params?: { status?: string; offset?: number; limit?: number }) => {
-    const sp = new URLSearchParams();
-    if (params) {
-      for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined) sp.set(k, String(v));
-      }
-    }
-    return request<{ users: AdminUser[]; total: number; offset: number; limit: number }>(
-      `${BASE}/admin/users?${sp}`,
-    );
-  },
-  approve: (userId: string) =>
-    request<{ ok: boolean; user_id: string; status: string }>(`${BASE}/admin/users/${userId}/approve`, {
-      method: "POST",
-    }),
-  suspend: (userId: string) =>
-    request<{ ok: boolean; user_id: string; status: string }>(`${BASE}/admin/users/${userId}/suspend`, {
-      method: "POST",
-    }),
-  pendingCount: () => request<{ count: number }>(`${BASE}/admin/users/pending/count`),
-};
-
-// ── Games ─────────────────────────────────────────────────────────────
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const games = {
-  lobby: () => request<any>(`${BASE}/lobby`),
-  create: (body: { game_type: string; ai_players: string[] }) =>
-    request<any>(`${BASE}/games`, { method: "POST", body: JSON.stringify(body) }),
-  show: (id: number | string) => request<any>(`${BASE}/games/${id}`),
-  move: (id: number | string, body: { move_type: string }) =>
-    request<any>(`${BASE}/games/${id}/move`, { method: "POST", body: JSON.stringify(body) }),
-  aiMove: (id: number | string, body: { game_player_id: number }) =>
-    request<any>(`${BASE}/games/${id}/ai_move`, { method: "POST", body: JSON.stringify(body) }),
-  history: () => request<any>(`${BASE}/history`),
-  replay: (id: number | string) => request<any>(`${BASE}/history/${id}`),
-};
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
 // ── Unified API namespace ────────────────────────────────────────────
 
 export const api = {
   auth,
   memories,
-  graph,
   sessions,
   users,
-  intentions,
-  admin,
-  games,
 };

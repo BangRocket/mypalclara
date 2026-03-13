@@ -1,13 +1,8 @@
-import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Brain,
-  Gamepad2,
-  Network,
-  Zap,
   Settings,
   LogOut,
-  Shield,
   PanelLeftClose,
   PanelLeft,
   PlusIcon,
@@ -17,18 +12,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
-import { admin } from "@/api/client";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ThreadList } from "@/components/assistant-ui/thread-list";
 import { useTheme } from "@/hooks/useTheme";
 
 const NAV_ITEMS = [
   { to: "/knowledge", icon: Brain, label: "Knowledge Base" },
-  { to: "/graph", icon: Network, label: "Graph" },
-  { to: "/intentions", icon: Zap, label: "Intentions" },
-  { to: "/games", icon: Gamepad2, label: "Games" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -45,18 +35,8 @@ export function UnifiedSidebar({
 }: UnifiedSidebarProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [pendingCount, setPendingCount] = useState(0);
   const location = useLocation();
   const isOnChat = location.pathname === "/";
-
-  useEffect(() => {
-    if (user?.is_admin) {
-      admin
-        .pendingCount()
-        .then((res) => setPendingCount(res.count))
-        .catch(() => {});
-    }
-  }, [user?.is_admin]);
 
   return (
     <aside
@@ -128,32 +108,6 @@ export function UnifiedSidebar({
           </NavLink>
         ))}
 
-        {/* Admin link */}
-        {user?.is_admin && (
-          <NavLink
-            to="/admin/users"
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                isActive
-                  ? "bg-sidebar-accent font-medium text-sidebar-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              )
-            }
-          >
-            <Shield size={16} />
-            <span className="flex-1">Admin</span>
-            {pendingCount > 0 && (
-              <Badge
-                variant="default"
-                className="h-[18px] min-w-[18px] bg-amber-500 px-1 text-[10px] text-white hover:bg-amber-500"
-              >
-                {pendingCount}
-              </Badge>
-            )}
-          </NavLink>
-        )}
       </div>
 
       {/* Theme toggle + User */}
