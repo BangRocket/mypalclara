@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/auth/AuthProvider";
+import { useUser, useClerk } from "@clerk/react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "@/components/assistant-ui/thread-list";
@@ -33,7 +33,8 @@ export function UnifiedSidebar({
   onToggle,
   onNavigate,
 }: UnifiedSidebarProps) {
-  const { user, logout } = useAuth();
+  const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const isOnChat = location.pathname === "/";
@@ -120,26 +121,26 @@ export function UnifiedSidebar({
           {theme === "dark" ? "Light mode" : "Dark mode"}
         </button>
 
-        {user && (
+        {clerkUser && (
           <div className="flex items-center gap-2 px-2 py-1">
             <Avatar className="h-7 w-7">
               <AvatarImage
-                src={user.avatar_url || undefined}
-                alt={user.display_name}
+                src={clerkUser.imageUrl || undefined}
+                alt={clerkUser.fullName || clerkUser.firstName || "User"}
               />
               <AvatarFallback className="bg-primary/20 text-xs text-primary">
-                {user.display_name?.[0]?.toUpperCase() || "?"}
+                {(clerkUser.firstName || clerkUser.fullName || "?")?.[0]?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-sidebar-foreground">
-                {user.display_name}
+                {clerkUser.fullName || clerkUser.firstName || "User"}
               </p>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              onClick={logout}
+              onClick={() => signOut()}
               title="Sign out"
               className="h-7 w-7 text-sidebar-foreground/60 hover:text-sidebar-foreground"
             >

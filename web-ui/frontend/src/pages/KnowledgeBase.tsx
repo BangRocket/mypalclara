@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Grid3x3, List, Bookmark, BookmarkPlus, X, Download, Upload } from "lucide-react";
 import { memories as memoriesApi, type Memory } from "@/api/client";
 import { cn } from "@/lib/utils";
@@ -7,6 +6,7 @@ import { SearchBar } from "@/components/knowledge/SearchBar";
 import { MemoryGrid } from "@/components/knowledge/MemoryGrid";
 import { MemoryList } from "@/components/knowledge/MemoryList";
 import { MemoryEditor } from "@/components/knowledge/MemoryEditor";
+import { useMemories } from "@/hooks/useMemories";
 import { useSavedSets } from "@/stores/savedSets";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,52 +23,20 @@ export function KnowledgeBasePage() {
   const [showSaveSet, setShowSaveSet] = useState(false);
   const [newSetName, setNewSetName] = useState("");
   const { sets: savedSets, addSet, removeSet } = useSavedSets();
-  const queryClient = useQueryClient();
   const importRef = useRef<HTMLInputElement>(null);
 
-  const importMutation = useMutation({
-    mutationFn: memoriesApi.importMemories,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-      queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
-    },
+  const {
+    memories: displayMemories,
+    stats,
+    isLoading: _isLoading,
+    importMemories,
+    refetchList,
+    refetchStats,
+  } = useMemories({
+    search: searchQuery || undefined,
+    category: category || undefined,
+    isKey: isKeyFilter,
   });
-
-  // List query
-  const listQuery = useQuery({
-    queryKey: ["memories", category, isKeyFilter],
-    queryFn: () =>
-      memoriesApi.list({
-        category: category || undefined,
-        is_key: isKeyFilter,
-        limit: 200,
-      }),
-    enabled: !searchQuery,
-  });
-
-  // Search query
-  const searchQueryResult = useQuery({
-    queryKey: ["memories-search", searchQuery],
-    queryFn: () => memoriesApi.search({ query: searchQuery, limit: 50 }),
-    enabled: !!searchQuery,
-  });
-
-  // Stats
-  const statsQuery = useQuery({ queryKey: ["memory-stats"], queryFn: memoriesApi.stats });
-
-  const displayMemories: Memory[] = searchQuery
-    ? (searchQueryResult.data?.results || []).map((r) => ({
-        id: r.id,
-        content: r.content,
-        metadata: r.metadata,
-        created_at: null,
-        updated_at: null,
-        user_id: null,
-        dynamics: r.dynamics
-          ? { ...r.dynamics, difficulty: null, retrieval_strength: null, storage_strength: null, access_count: 0, last_accessed_at: null }
-          : null,
-      }))
-    : listQuery.data?.memories || [];
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -78,7 +46,7 @@ export function KnowledgeBasePage() {
     setSearchQuery("");
   };
 
-  const categories = statsQuery.data?.by_category || {};
+  const categories = stats?.by_category || {};
 
   return (
     <div className="flex flex-col h-full">
@@ -88,9 +56,9 @@ export function KnowledgeBasePage() {
           <h1 className="text-xl font-bold">Knowledge Base</h1>
           <div className="flex items-center gap-2">
             {/* Stats summary */}
-            {statsQuery.data && (
+            {stats && (
               <span className="text-xs text-muted-foreground mr-3">
-                {statsQuery.data.total} memories, {statsQuery.data.key_count} key
+                {stats.total} memories, {stats.key_count} key
               </span>
             )}
 
@@ -119,7 +87,7 @@ export function KnowledgeBasePage() {
                 const text = await file.text();
                 try {
                   const data = JSON.parse(text);
-                  if (data.memories) importMutation.mutate({ memories: data.memories });
+                  if (data.memories) importMemories.mutate({ memories: data.memories });
                 } catch { /* ignore bad JSON */ }
                 if (importRef.current) importRef.current.value = "";
               }}
@@ -277,12 +245,12 @@ export function KnowledgeBasePage() {
           onClose={() => setSelectedMemory(null)}
           onSaved={() => {
             setSelectedMemory(null);
-            listQuery.refetch();
+            refetchList();
           }}
           onDeleted={() => {
             setSelectedMemory(null);
-            listQuery.refetch();
-            statsQuery.refetch();
+            refetchList();
+            refetchStats();
           }}
         />
       )}
