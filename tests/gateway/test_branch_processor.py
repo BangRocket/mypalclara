@@ -126,10 +126,18 @@ class TestGetBranchContext:
         mock_msg_2.content = "Hi there!"
         mock_msg_2.created_at = None
 
+        # Mock conversation for ownership check
+        mock_conversation = MagicMock()
+        mock_conversation.id = "conv-1"
+        mock_conversation.user_id = "user-1"
+
         mock_db = MagicMock()
-        # First query: find branch
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_branch
-        # Second query: branch messages
+        # first() is called twice: first for Branch, then for Conversation
+        mock_db.query.return_value.filter.return_value.first.side_effect = [
+            mock_branch,
+            mock_conversation,
+        ]
+        # Branch messages query
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
             mock_msg_1,
             mock_msg_2,
@@ -157,8 +165,16 @@ class TestGetBranchContext:
             msg.created_at = None
             mock_messages.append(msg)
 
+        # Mock conversation for ownership check
+        mock_conversation = MagicMock()
+        mock_conversation.id = "conv-1"
+        mock_conversation.user_id = "user-1"
+
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_branch
+        mock_db.query.return_value.filter.return_value.first.side_effect = [
+            mock_branch,
+            mock_conversation,
+        ]
         mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_messages
 
         with patch("mypalclara.gateway.processor.SessionLocal", return_value=mock_db):

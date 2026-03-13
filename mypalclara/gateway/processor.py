@@ -20,7 +20,7 @@ from mypalclara.config.logging import get_logger
 from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
 from mypalclara.core.llm.messages import Message as LLMMessage
 from mypalclara.db import SessionLocal
-from mypalclara.db.models import Branch, BranchMessage, Message
+from mypalclara.db.models import Branch, BranchMessage, Conversation, Message
 from mypalclara.db.models import Session as DBSession
 from mypalclara.gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
 from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
@@ -352,6 +352,12 @@ class MessageProcessor:
             branch = db.query(Branch).filter(Branch.id == branch_id).first()
             if not branch:
                 logger.warning(f"Branch {branch_id} not found for context lookup")
+                return []
+
+            # Verify branch belongs to the requesting user
+            conversation = db.query(Conversation).filter(Conversation.id == branch.conversation_id).first()
+            if not conversation or conversation.user_id != user_id:
+                logger.warning(f"Branch {branch_id} not owned by user {user_id}")
                 return []
 
             # Collect ancestor messages by walking the parent chain

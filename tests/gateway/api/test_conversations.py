@@ -168,15 +168,15 @@ class TestListBranches:
         client.get("/api/v1/conversation")
         resp = client.get("/api/v1/branches")
         assert resp.status_code == 200
-        branches = resp.json()
-        assert len(branches) == 1
-        assert branches[0]["name"] == "main"
+        data = resp.json()
+        assert len(data["branches"]) == 1
+        assert data["branches"][0]["name"] == "main"
 
     def test_empty_when_no_conversation(self, client):
         """Returns empty list when user has no conversation."""
         resp = client.get("/api/v1/branches")
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json() == {"branches": []}
 
     def test_filter_by_status(self, client):
         """Filters branches by status."""
@@ -184,11 +184,11 @@ class TestListBranches:
         client.get("/api/v1/conversation")
         resp = client.get("/api/v1/branches?status=active")
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        assert len(resp.json()["branches"]) == 1
 
         resp = client.get("/api/v1/branches?status=archived")
         assert resp.status_code == 200
-        assert len(resp.json()) == 0
+        assert len(resp.json()["branches"]) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ class TestForkBranch:
             json={"parent_branch_id": main_id, "name": "experiment"},
         )
         assert resp.status_code == 201
-        data = resp.json()
+        data = resp.json()["branch"]
         assert data["parent_branch_id"] == main_id
         assert data["name"] == "experiment"
         assert data["status"] == "active"
@@ -255,7 +255,7 @@ class TestForkBranch:
             json={"parent_branch_id": main_id, "fork_message_id": "msg-1", "name": "from-msg"},
         )
         assert resp.status_code == 201
-        assert resp.json()["fork_message_id"] == "msg-1"
+        assert resp.json()["branch"]["fork_message_id"] == "msg-1"
 
 
 # ---------------------------------------------------------------------------
@@ -308,11 +308,11 @@ class TestMergeBranch:
         conv = client.get("/api/v1/conversation").json()
         main_id = conv["branches"][0]["id"]
 
-        child = client.post(
+        resp = client.post(
             "/api/v1/branches/fork",
             json={"parent_branch_id": main_id, "name": "child"},
         ).json()
-        return main_id, child["id"]
+        return main_id, resp["branch"]["id"]
 
     def test_squash_merge(self, client):
         """Squash merge marks branch as merged."""
@@ -321,8 +321,7 @@ class TestMergeBranch:
         resp = client.post(f"/api/v1/branches/{child_id}/merge", json={"strategy": "squash"})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "merged"
-        assert data["merged_at"] is not None
+        assert data["ok"] is True
 
     def test_full_merge_copies_messages(self, client, db_session):
         """Full merge copies messages to parent branch."""
@@ -341,7 +340,7 @@ class TestMergeBranch:
 
         resp = client.post(f"/api/v1/branches/{child_id}/merge", json={"strategy": "full"})
         assert resp.status_code == 200
-        assert resp.json()["status"] == "merged"
+        assert resp.json()["ok"] is True
 
         # Verify messages were copied to parent
         parent_msgs = (
@@ -392,11 +391,11 @@ class TestDeleteBranch:
         main_id = conv["branches"][0]["id"]
 
         # Fork a child
-        child = client.post(
+        resp = client.post(
             "/api/v1/branches/fork",
             json={"parent_branch_id": main_id, "name": "to-delete"},
         ).json()
-        child_id = child["id"]
+        child_id = resp["branch"]["id"]
 
         # Add a message
         msg = BranchMessage(
@@ -455,7 +454,7 @@ class TestGetBranchMessages:
 
         resp = client.get(f"/api/v1/branches/{main_id}/messages")
         assert resp.status_code == 200
-        messages = resp.json()
+        messages = resp.json()["messages"]
         assert len(messages) == 3
         assert messages[0]["content"] == "message 0"
         assert messages[1]["role"] == "assistant"
@@ -477,11 +476,11 @@ class TestGetBranchMessages:
         db_session.commit()
 
         # Fork from main
-        child = client.post(
+        fork_resp = client.post(
             "/api/v1/branches/fork",
             json={"parent_branch_id": main_id, "name": "child"},
         ).json()
-        child_id = child["id"]
+        child_id = fork_resp["branch"]["id"]
 
         # Add messages to child
         msg2 = BranchMessage(
@@ -496,7 +495,7 @@ class TestGetBranchMessages:
         # Get child messages with ancestors
         resp = client.get(f"/api/v1/branches/{child_id}/messages?include_ancestors=true")
         assert resp.status_code == 200
-        messages = resp.json()
+        messages = resp.json()["messages"]
         assert len(messages) == 2
         assert messages[0]["content"] == "parent message"
         assert messages[1]["content"] == "child message"
@@ -517,11 +516,11 @@ class TestGetBranchMessages:
         db_session.commit()
 
         # Fork
-        child = client.post(
+        fork_resp = client.post(
             "/api/v1/branches/fork",
             json={"parent_branch_id": main_id, "name": "child"},
         ).json()
-        child_id = child["id"]
+        child_id = fork_resp["branch"]["id"]
 
         msg2 = BranchMessage(
             branch_id=child_id,
@@ -533,7 +532,7 @@ class TestGetBranchMessages:
         db_session.commit()
 
         resp = client.get(f"/api/v1/branches/{child_id}/messages?include_ancestors=false")
-        messages = resp.json()
+        messages = resp.json()["messages"]
         assert len(messages) == 1
         assert messages[0]["content"] == "child message"
 
@@ -553,7 +552,7 @@ class TestGetBranchMessages:
         db_session.commit()
 
         resp = client.get(f"/api/v1/branches/{main_id}/messages?limit=2&offset=1")
-        messages = resp.json()
+        messages = resp.json()["messages"]
         assert len(messages) == 2
         assert messages[0]["content"] == "message 1"
         assert messages[1]["content"] == "message 2"
@@ -575,7 +574,7 @@ class TestGetBranchMessages:
         db_session.commit()
 
         resp = client.get(f"/api/v1/branches/{main_id}/messages")
-        messages = resp.json()
+        messages = resp.json()["messages"]
         assert len(messages) == 1
         assert isinstance(messages[0]["attachments"], list)
         assert messages[0]["attachments"][0]["type"] == "image"

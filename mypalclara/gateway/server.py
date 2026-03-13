@@ -120,6 +120,32 @@ class GatewayServer:
             await self._server.wait_closed()
             logger.info("Gateway server stopped")
 
+    async def _resolve_clerk_to_canonical(self, clerk_user_id: str) -> str | None:
+        """Resolve a Clerk user ID to a canonical user ID.
+
+        Looks up the PlatformLink for the clerk platform. Returns the
+        canonical user ID if found, None otherwise.
+        """
+        from mypalclara.db.db import SessionLocal
+        from mypalclara.db.models import PlatformLink
+
+        db = SessionLocal()
+        try:
+            link = (
+                db.query(PlatformLink)
+                .filter(
+                    PlatformLink.platform == "clerk",
+                    PlatformLink.platform_user_id == clerk_user_id,
+                )
+                .first()
+            )
+            return link.canonical_user_id if link else None
+        except Exception as e:
+            logger.warning(f"Failed to resolve clerk user {clerk_user_id}: {e}")
+            return None
+        finally:
+            db.close()
+
     async def _authenticate_websocket(
         self,
         websocket: WebSocketServerProtocol,
@@ -287,6 +313,15 @@ class GatewayServer:
             msg: The message request
         """
         self._message_count += 1
+
+        # For JWT-authenticated web clients, enforce the authenticated identity
+        # so the client cannot impersonate another user via the JSON payload.
+        clerk_user_id = self._authenticated_users.get(websocket)
+        if clerk_user_id:
+            canonical_user_id = await self._resolve_clerk_to_canonical(clerk_user_id)
+            if canonical_user_id:
+                msg.user.id = canonical_user_id
+                msg.user.platform_id = clerk_user_id
 
         # Get node info
         node = await self.node_registry.get_node_by_websocket(websocket)

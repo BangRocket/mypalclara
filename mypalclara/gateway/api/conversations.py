@@ -126,22 +126,24 @@ def _message_to_dict(msg: BranchMessage) -> dict:
     }
 
 
-def _promote_branch_memories(db: DBSession, branch_id: str, user_id: str) -> None:
-    """Promote branch-scoped memories to global on merge."""
+def _promote_branch_memories(db: DBSession, branch_id: str, user_id: str) -> int:
+    """Promote branch-scoped memories to global on merge. Returns count."""
     from mypalclara.core.memory.branch_memory import promote_branch_memories
 
     try:
         count = promote_branch_memories(user_id=user_id, branch_id=branch_id)
         if count:
             logger.info("Promoted %d memories for branch %s", count, branch_id)
+        return count
     except Exception:
         logger.exception("Failed to promote memories for branch %s", branch_id)
+        return 0
 
 
-def _copy_messages_to_parent(db: DBSession, branch: Branch) -> None:
+def _copy_messages_to_parent(db: DBSession, branch: Branch) -> int:
     """Copy BranchMessages from a branch to its parent branch for full merge."""
     if not branch.parent_branch_id:
-        return
+        return 0
 
     source_messages = (
         db.query(BranchMessage)
@@ -161,6 +163,8 @@ def _copy_messages_to_parent(db: DBSession, branch: Branch) -> None:
             created_at=msg.created_at,
         )
         db.add(copied)
+
+    return len(source_messages)
 
 
 # ---------------------------------------------------------------------------
@@ -209,14 +213,14 @@ async def list_branches(
     """List branches for the user's conversation."""
     conversation = db.query(Conversation).filter(Conversation.user_id == user.id).first()
     if not conversation:
-        return []
+        return {"branches": []}
 
     query = db.query(Branch).filter(Branch.conversation_id == conversation.id)
     if status:
         query = query.filter(Branch.status == status)
 
     branches = query.order_by(Branch.created_at.asc()).all()
-    return [_branch_to_dict(b) for b in branches]
+    return {"branches": [_branch_to_dict(b) for b in branches]}
 
 
 @router.post("/branches/fork", status_code=201)
@@ -246,7 +250,7 @@ async def fork_branch(
     db.commit()
     db.refresh(new_branch)
 
-    return _branch_to_dict(new_branch)
+    return {"branch": _branch_to_dict(new_branch)}
 
 
 @router.patch("/branches/{branch_id}")
@@ -293,21 +297,22 @@ async def merge_branch(
     if body.strategy not in ("squash", "full"):
         raise HTTPException(status_code=400, detail="Strategy must be 'squash' or 'full'")
 
+    appended_messages = 0
     if body.strategy == "full":
-        _copy_messages_to_parent(db, branch)
+        appended_messages = _copy_messages_to_parent(db, branch)
 
     # Mark as merged
     branch.status = "merged"
     branch.merged_at = utcnow()
 
-    # Memory promotion placeholder (Task 4)
+    # Promote branch-scoped memories to global
+    merged_memories = 0
     conversation = db.query(Conversation).filter(Conversation.id == branch.conversation_id).first()
     if conversation:
-        _promote_branch_memories(db, branch_id, conversation.user_id)
+        merged_memories = _promote_branch_memories(db, branch_id, conversation.user_id)
 
     db.commit()
-    db.refresh(branch)
-    return _branch_to_dict(branch)
+    return {"ok": True, "merged_memories": merged_memories, "appended_messages": appended_messages}
 
 
 @router.delete("/branches/{branch_id}", status_code=204)
@@ -372,4 +377,4 @@ async def get_branch_messages(
     total = len(messages)
     paginated = messages[offset : offset + limit]
 
-    return [_message_to_dict(m) for m in paginated]
+    return {"messages": [_message_to_dict(m) for m in paginated]}
