@@ -170,6 +170,7 @@ class MessageRequest(BaseModel):
         description="Previous messages in the reply chain",
     )
     tier_override: str | None = Field(None, description="Model tier override (high/mid/low)")
+    branch_id: str | None = Field(None, description="Web UI branch targeting")
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Platform-specific metadata",

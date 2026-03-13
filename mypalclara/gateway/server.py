@@ -11,6 +11,7 @@ import json
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlparse
 
 import websockets
 from websockets.server import WebSocketServerProtocol, serve
@@ -86,6 +87,9 @@ class GatewayServer:
         self._started_at: datetime | None = None
         self._message_count = 0
 
+        # Map of WebSocket -> clerk_user_id for JWT-authenticated connections
+        self._authenticated_users: dict[WebSocketServerProtocol, str] = {}
+
         # Processor will be set by gateway.main
         self._processor: Any = None
 
@@ -116,6 +120,49 @@ class GatewayServer:
             await self._server.wait_closed()
             logger.info("Gateway server stopped")
 
+    async def _authenticate_websocket(
+        self,
+        websocket: WebSocketServerProtocol,
+    ) -> bool:
+        """Authenticate a WebSocket connection via JWT query param.
+
+        Extracts ``?token=...`` from the WebSocket request path and validates
+        it as a Clerk JWT. If a token is present and valid, the clerk_user_id
+        is stored in ``self._authenticated_users``. If the token is present
+        but invalid, the connection is closed with code 4001.
+
+        Connections without a token query param are allowed through (they
+        will authenticate via the existing registration flow).
+
+        Args:
+            websocket: The WebSocket connection
+
+        Returns:
+            True if the connection should proceed, False if it was closed.
+        """
+        path = getattr(websocket, "path", None) or "/"
+        parsed = urlparse(path)
+        params = parse_qs(parsed.query)
+        token_list = params.get("token")
+
+        if not token_list:
+            return True  # No token — proceed with adapter-style auth
+
+        token = token_list[0]
+        try:
+            from mypalclara.gateway.api.clerk_auth import verify_clerk_jwt
+
+            claims = await verify_clerk_jwt(f"Bearer {token}")
+            clerk_user_id = claims.get("sub")
+            if clerk_user_id:
+                self._authenticated_users[websocket] = clerk_user_id
+                logger.info(f"WebSocket JWT auth succeeded for Clerk user {clerk_user_id}")
+            return True
+        except Exception as e:
+            logger.warning(f"WebSocket JWT auth failed: {e}")
+            await websocket.close(4001, "Authentication failed")
+            return False
+
     async def _handle_connection(
         self,
         websocket: WebSocketServerProtocol,
@@ -125,6 +172,10 @@ class GatewayServer:
         Args:
             websocket: The WebSocket connection
         """
+        # Authenticate via JWT query param (if present)
+        if not await self._authenticate_websocket(websocket):
+            return
+
         node_id = None
         try:
             async for message in websocket:
@@ -182,6 +233,7 @@ class GatewayServer:
             logger.debug("Connection closed")
         finally:
             # Clean up on disconnect
+            self._authenticated_users.pop(websocket, None)
             if node_id:
                 await self.node_registry.unregister(websocket)
 

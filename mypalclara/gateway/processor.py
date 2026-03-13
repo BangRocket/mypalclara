@@ -20,7 +20,7 @@ from mypalclara.config.logging import get_logger
 from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
 from mypalclara.core.llm.messages import Message as LLMMessage
 from mypalclara.db import SessionLocal
-from mypalclara.db.models import Message
+from mypalclara.db.models import Branch, BranchMessage, Message
 from mypalclara.db.models import Session as DBSession
 from mypalclara.gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
 from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
@@ -327,6 +327,104 @@ class MessageProcessor:
         finally:
             db.close()
 
+    def _get_branch_context(
+        self,
+        branch_id: str,
+        user_id: str,
+        limit: int = 30,
+    ) -> list[dict[str, str]]:
+        """Get conversation context from a branch, including ancestor messages.
+
+        Walks the parent chain collecting messages up to each fork point,
+        then appends the branch's own messages.
+
+        Args:
+            branch_id: The branch to get context for
+            user_id: The user ID (for logging only; ownership is not checked here)
+            limit: Maximum messages to return
+
+        Returns:
+            List of dicts with 'role' and 'content' keys, chronological order.
+            Returns empty list if the branch does not exist.
+        """
+        db = SessionLocal()
+        try:
+            branch = db.query(Branch).filter(Branch.id == branch_id).first()
+            if not branch:
+                logger.warning(f"Branch {branch_id} not found for context lookup")
+                return []
+
+            # Collect ancestor messages by walking the parent chain
+            from mypalclara.gateway.api.conversations import _get_ancestor_messages
+
+            ancestor_messages: list[BranchMessage] = []
+            if branch.parent_branch_id is not None:
+                ancestor_messages = _get_ancestor_messages(db, branch)
+
+            # Get this branch's own messages
+            branch_messages = (
+                db.query(BranchMessage)
+                .filter(BranchMessage.branch_id == branch_id)
+                .order_by(BranchMessage.created_at.asc())
+                .all()
+            )
+
+            all_messages = ancestor_messages + branch_messages
+
+            # Take last N messages
+            trimmed = all_messages[-limit:]
+
+            return [{"role": msg.role, "content": msg.content or ""} for msg in trimmed]
+        except Exception as e:
+            logger.warning(f"Failed to get branch context: {e}")
+            return []
+        finally:
+            db.close()
+
+    def _store_branch_message(
+        self,
+        branch_id: str,
+        user_id: str,
+        role: str,
+        content: str,
+        attachments: str | None = None,
+        tool_calls: str | None = None,
+    ) -> str:
+        """Store a message in a branch.
+
+        Args:
+            branch_id: The branch to store the message in
+            user_id: The user ID
+            role: Message role ('user' or 'assistant')
+            content: Message content
+            attachments: Optional JSON-encoded attachments
+            tool_calls: Optional JSON-encoded tool calls
+
+        Returns:
+            The ID of the created BranchMessage
+        """
+        db = SessionLocal()
+        try:
+            msg = BranchMessage(
+                branch_id=branch_id,
+                user_id=user_id,
+                role=role,
+                content=content,
+                attachments=attachments,
+                tool_calls=tool_calls,
+            )
+            db.add(msg)
+            db.commit()
+            db.refresh(msg)
+            msg_id = msg.id
+            return msg_id
+        except Exception as e:
+            logger.warning(f"Failed to store branch message: {e}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     async def process(
         self,
         request: MessageRequest,
@@ -495,6 +593,118 @@ class MessageProcessor:
         tools: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Build context for the LLM including memories and prompt.
+
+        If request.branch_id is set, uses branch-aware context instead of
+        the session-based flow.
+
+        Args:
+            request: The message request
+            tools: Optional tool schemas for WORM capability inventory
+
+        Returns:
+            Context dict with messages, user_id, project_id, etc.
+        """
+        if request.branch_id:
+            return await self._build_branch_context(request, tools=tools)
+        return await self._build_session_context(request, tools=tools)
+
+    async def _build_branch_context(
+        self,
+        request: MessageRequest,
+        tools: list[dict] | None = None,
+    ) -> dict[str, Any]:
+        """Build context from a conversation branch.
+
+        Uses branch history and branch-scoped memory search instead of
+        the session-based flow.
+
+        Args:
+            request: The message request (must have branch_id set)
+            tools: Optional tool schemas for WORM capability inventory
+
+        Returns:
+            Context dict with messages, user_id, branch_id, etc.
+        """
+        loop = asyncio.get_event_loop()
+        user_id = request.user.id
+        branch_id = request.branch_id
+
+        # Get branch history (ancestor + own messages)
+        branch_history = await loop.run_in_executor(
+            BLOCKING_EXECUTOR,
+            lambda: self._get_branch_context(branch_id, user_id),
+        )
+
+        # Convert branch history to Message-like objects for build_prompt
+        # build_prompt expects objects with .role and .content attributes
+        recent_msgs = []
+        for msg_dict in branch_history:
+            m = Message()
+            m.role = msg_dict["role"]
+            m.content = msg_dict["content"]
+            m.created_at = None
+            recent_msgs.append(m)
+
+        # Prepare user content
+        user_content = request.content
+        text_attachments = self._format_text_attachments(request.attachments)
+        if text_attachments:
+            if user_content:
+                user_content = f"{user_content}\n\n{text_attachments}"
+            else:
+                user_content = text_attachments
+
+        # Fetch branch-scoped memories
+        from mypalclara.core.memory.branch_memory import search_memory_for_branch
+
+        try:
+            mem_result = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: search_memory_for_branch(
+                    query=user_content,
+                    user_id=user_id,
+                    branch_id=branch_id,
+                ),
+            )
+            user_mems = mem_result.get("results", [])
+        except Exception as e:
+            logger.warning(f"Branch memory search failed: {e}")
+            user_mems = []
+
+        # Build prompt using memory manager
+        messages = self._memory_manager.build_prompt(
+            user_mems,
+            [],  # No project memories for branch context
+            None,  # No session summary
+            recent_msgs,
+            user_content,
+            tools=tools,
+        )
+
+        # Add gateway context
+        gateway_context = self._build_gateway_context(request, is_dm=True, participants=None)
+        messages.insert(1, SystemMessage(content=gateway_context))
+
+        return {
+            "messages": messages,
+            "user_id": user_id,
+            "channel_id": request.channel.id,
+            "is_dm": True,  # Branch context is always treated as DM-like
+            "user_mems": user_mems,
+            "proj_mems": [],
+            "participants": [],
+            "db_session_id": None,  # Not using sessions for branches
+            "branch_id": branch_id,
+            "user_content": user_content,
+            "fired_intentions": [],
+        }
+
+    async def _build_session_context(
+        self,
+        request: MessageRequest,
+        tools: list[dict] | None = None,
+    ) -> dict[str, Any]:
+        """Build context from the session-based flow (existing behavior).
 
         Args:
             request: The message request
@@ -875,6 +1085,9 @@ class MessageProcessor:
     ) -> None:
         """Store user and assistant messages in the database (fast path).
 
+        Routes to branch storage if context contains branch_id, otherwise
+        uses the existing session-based storage.
+
         Args:
             request: The original request
             response: Clara's response
@@ -884,6 +1097,29 @@ class MessageProcessor:
             return
 
         loop = asyncio.get_event_loop()
+
+        branch_id = context.get("branch_id")
+        if branch_id:
+            user_content = context.get("user_content", request.content)
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._store_branch_message(
+                    branch_id,
+                    context["user_id"],
+                    "user",
+                    user_content,
+                ),
+            )
+            await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._store_branch_message(
+                    branch_id,
+                    context["user_id"],
+                    "assistant",
+                    response,
+                ),
+            )
+            return
 
         db_session_id = context.get("db_session_id")
         if db_session_id:
@@ -923,16 +1159,29 @@ class MessageProcessor:
 
             # Store in mem0 for semantic memory
             loop = asyncio.get_event_loop()
+            branch_id = context.get("branch_id")
             try:
-                await loop.run_in_executor(
-                    BLOCKING_EXECUTOR,
-                    lambda: self._memory_manager.add_to_memory(
-                        context["user_id"],
-                        request.content,
-                        response,
-                        is_dm=context["is_dm"],
-                    ),
-                )
+                if branch_id:
+                    from mypalclara.core.memory.branch_memory import add_memory_for_branch
+
+                    await loop.run_in_executor(
+                        BLOCKING_EXECUTOR,
+                        lambda: add_memory_for_branch(
+                            messages=f"User: {request.content}\nAssistant: {response}",
+                            user_id=context["user_id"],
+                            branch_id=branch_id,
+                        ),
+                    )
+                else:
+                    await loop.run_in_executor(
+                        BLOCKING_EXECUTOR,
+                        lambda: self._memory_manager.add_to_memory(
+                            context["user_id"],
+                            request.content,
+                            response,
+                            is_dm=context["is_dm"],
+                        ),
+                    )
             except Exception as e:
                 logger.warning(f"Failed to store in mem0: {e}")
 

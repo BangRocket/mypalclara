@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from mypalclara.gateway.api.admin import router as admin_router
+from mypalclara.gateway.api.conversations import router as conversations_router
 from mypalclara.gateway.api.game import router as game_router
 from mypalclara.gateway.api.graph import router as graph_router
 from mypalclara.gateway.api.intentions import router as intentions_router
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     )
 
     # Mount all API routers under /api/v1/
+    app.include_router(conversations_router, prefix="/api/v1", tags=["conversations"])
     app.include_router(sessions_router, prefix="/api/v1/sessions", tags=["sessions"])
     app.include_router(memories_router, prefix="/api/v1/memories", tags=["memories"])
     app.include_router(graph_router, prefix="/api/v1/graph", tags=["graph"])
