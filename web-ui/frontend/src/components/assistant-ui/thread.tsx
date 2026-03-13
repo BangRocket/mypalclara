@@ -18,8 +18,11 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  useMessage,
 } from "@assistant-ui/react";
 import { TierSelector } from "@/components/chat/TierSelector";
+import { useBranches } from "@/hooks/useBranches";
+import { useChatStore } from "@/stores/chatStore";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -28,6 +31,7 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  GitBranchIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -206,7 +210,7 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root
-      className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
+      className="aui-assistant-message-root fade-in slide-in-from-bottom-1 group/msg relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
       <div className="flex gap-3">
@@ -229,6 +233,7 @@ const AssistantMessage: FC = () => {
           <div className="aui-assistant-message-footer mt-1 flex">
             <BranchPicker />
             <AssistantActionBar />
+            <ForkButton />
           </div>
         </div>
       </div>
@@ -288,7 +293,7 @@ const AssistantActionBar: FC = () => {
 const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
-      className="aui-user-message-root fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--thread-max-width) animate-in justify-end py-3 duration-150"
+      className="aui-user-message-root fade-in slide-in-from-bottom-1 group/msg mx-auto flex w-full max-w-(--thread-max-width) animate-in justify-end py-3 duration-150"
       data-role="user"
     >
       <div className="relative max-w-[85%]">
@@ -299,7 +304,10 @@ const UserMessage: FC = () => {
         <div className="aui-user-action-bar-wrapper absolute right-full top-1/2 -translate-y-1/2 pr-2">
           <UserActionBar />
         </div>
-        <BranchPicker className="aui-user-branch-picker mt-1 justify-end" />
+        <div className="mt-1 flex items-center justify-end gap-1">
+          <BranchPicker className="aui-user-branch-picker justify-end" />
+          <ForkButton />
+        </div>
       </div>
     </MessagePrimitive.Root>
   );
@@ -341,6 +349,32 @@ const EditComposer: FC = () => {
         </div>
       </ComposerPrimitive.Root>
     </MessagePrimitive.Root>
+  );
+};
+
+/** Fork button that appears on hover for each message. */
+const ForkButton: FC = () => {
+  const messageId = useMessage((s) => s.id);
+  const activeBranchId = useChatStore((s) => s.activeBranchId);
+  const { fork } = useBranches();
+
+  const handleFork = () => {
+    if (!activeBranchId) return;
+    fork.mutate({
+      parentBranchId: activeBranchId,
+      forkMessageId: messageId,
+    });
+  };
+
+  return (
+    <TooltipIconButton
+      tooltip="Fork from here"
+      onClick={handleFork}
+      disabled={!activeBranchId || fork.isPending}
+      className="opacity-0 transition-opacity group-hover/msg:opacity-100"
+    >
+      <GitBranchIcon />
+    </TooltipIconButton>
   );
 };
 

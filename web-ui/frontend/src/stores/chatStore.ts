@@ -1,7 +1,21 @@
+/**
+ * Zustand store for branch-aware chat state.
+ *
+ * This store manages messages, branches, connection status, and streaming
+ * state. It does NOT contain WebSocket connection logic -- that lives in
+ * `useGatewayWebSocket`. The hook calls the store's action methods to
+ * dispatch incoming gateway events.
+ */
+
 import { create } from "zustand";
-import { sessions as sessionsApi, type ChatSession, type ChatMessage } from "@/api/client";
+import { sessions as sessionsApi, type ChatSession, type ChatMessage as ApiChatMessage } from "@/api/client";
+
+// ── Types ──────────────────────────────────────────────────────────────
+
+export type ModelTier = "low" | "mid" | "high";
 
 export interface ToolEvent {
+  type: "tool_start" | "tool_result";
   tool_name: string;
   step?: number;
   description?: string | null;
@@ -11,41 +25,82 @@ export interface ToolEvent {
   duration_ms?: number | null;
 }
 
-export interface StreamMessage {
+export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  tools: ToolEvent[];
-  streaming: boolean;
+  toolEvents?: ToolEvent[];
+  attachments?: unknown[];
+  streaming?: boolean;
+  created_at?: string;
 }
 
-export type ModelTier = "low" | "mid" | "high";
+export interface BranchInfo {
+  id: string;
+  conversation_id: string;
+  parent_branch_id: string | null;
+  fork_message_id: string | null;
+  name: string | null;
+  status: "active" | "merged" | "archived";
+  created_at: string;
+  merged_at: string | null;
+}
 
-interface ChatStore {
-  // Current thread
-  messages: StreamMessage[];
-  currentThreadId: string | null; // null = new thread
+// ── Backward-compat alias ──────────────────────────────────────────────
+// ChatRuntimeProvider and other consumers reference `StreamMessage` and its
+// `tools` field. Keep an alias so existing code doesn't break.
+export type StreamMessage = ChatMessage & { tools: ToolEvent[] };
 
-  // Thread list
-  threads: ChatSession[];
-  archivedThreads: ChatSession[];
-  threadsLoading: boolean;
+// ── Store Interface ────────────────────────────────────────────────────
 
+interface ChatState {
   // Connection
   connected: boolean;
   connectionError: string | null;
-  ws: WebSocket | null;
-  activeRequestId: string | null;
-  selectedTier: ModelTier;
 
-  // Actions
-  connect: (token: string) => void;
-  disconnect: () => void;
-  sendMessage: (content: string, tier?: string, attachments?: { name: string; type: string; base64: string }[]) => void;
-  cancel: () => void;
+  // Branch state
+  branches: BranchInfo[];
+  activeBranchId: string | null;
+
+  // Messages for active branch
+  messages: ChatMessage[];
+
+  // Thread list (sessions -- kept for backward compat with ChatRuntimeProvider)
+  threads: ChatSession[];
+  archivedThreads: ChatSession[];
+  threadsLoading: boolean;
+  currentThreadId: string | null;
+
+  // UI state
+  selectedTier: ModelTier;
+  streaming: boolean;
+  activeRequestId: string | null;
+
+  // ── Connection actions ───────────────────────────────────────────────
+  setConnected: (connected: boolean) => void;
+  setConnectionError: (error: string | null) => void;
+
+  // ── Branch actions ───────────────────────────────────────────────────
+  setBranches: (branches: BranchInfo[]) => void;
+  setActiveBranch: (branchId: string | null) => void;
+
+  // ── Message actions ──────────────────────────────────────────────────
+  setMessages: (messages: ChatMessage[]) => void;
+  addUserMessage: (content: string, attachments?: unknown[]) => string;
+  setActiveRequestId: (id: string | null) => void;
+
+  // ── Tier ─────────────────────────────────────────────────────────────
   setTier: (tier: ModelTier) => void;
 
-  // Thread actions
+  // ── Streaming event handlers ─────────────────────────────────────────
+  onResponseStart: (requestId: string) => void;
+  onChunk: (content: string, isAccumulated: boolean) => void;
+  onToolStart: (name: string, step?: number, description?: string, emoji?: string) => void;
+  onToolResult: (name: string, success: boolean, outputPreview?: string, durationMs?: number) => void;
+  onResponseEnd: (fullText: string, toolCount?: number, files?: string[]) => void;
+  onError: (message: string) => void;
+
+  // ── Thread management (backward compat) ──────────────────────────────
   loadThreads: () => Promise<void>;
   switchToThread: (threadId: string) => Promise<void>;
   switchToNewThread: () => void;
@@ -53,182 +108,206 @@ interface ChatStore {
   archiveThread: (threadId: string) => Promise<void>;
   unarchiveThread: (threadId: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
+
+  // ── Legacy compat (used by ChatRuntimeProvider) ──────────────────────
+  sendMessage: (content: string, tier?: string, attachments?: { name: string; type: string; base64: string }[]) => void;
+  cancel: () => void;
 }
+
+// ── Helpers ────────────────────────────────────────────────────────────
 
 let msgCounter = 0;
 
-/** Convert API messages to our StreamMessage format. */
-function apiToStreamMessages(messages: ChatMessage[]): StreamMessage[] {
+/** Convert API messages to our ChatMessage format. */
+function apiToMessages(messages: ApiChatMessage[]): ChatMessage[] {
   return messages.map((m, i) => ({
     id: `hist-${i}`,
     role: m.role as "user" | "assistant",
     content: m.content,
-    tools: [],
+    toolEvents: [],
     streaming: false,
   }));
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
+// ── Store ──────────────────────────────────────────────────────────────
+
+export const useChatStore = create<ChatState>((set, get) => ({
+  // ── Initial state ────────────────────────────────────────────────────
+  connected: false,
+  connectionError: null,
+
+  branches: [],
+  activeBranchId: null,
+
   messages: [],
-  currentThreadId: null,
+
   threads: [],
   archivedThreads: [],
   threadsLoading: false,
-  connected: false,
-  connectionError: null,
-  ws: null,
-  activeRequestId: null,
+  currentThreadId: null,
+
   selectedTier: "mid",
+  streaming: false,
+  activeRequestId: null,
 
-  connect: (token: string) => {
-    const apiUrl = import.meta.env.VITE_API_URL || "";
-    const params = token ? `?token=${token}` : "";
-    let wsUrl: string;
-    if (apiUrl) {
-      const parsed = new URL(apiUrl);
-      const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
-      wsUrl = `${wsProtocol}//${parsed.host}/ws/chat${params}`;
-    } else {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      wsUrl = `${protocol}//${window.location.host}/ws/chat${params}`;
-    }
-    const ws = new WebSocket(wsUrl);
+  // ── Connection ───────────────────────────────────────────────────────
 
-    ws.onopen = () => set({ connected: true, connectionError: null });
+  setConnected: (connected) => set({ connected }),
 
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      const { messages } = get();
+  setConnectionError: (error) => set({ connectionError: error }),
 
-      switch (data.type) {
-        case "response_start": {
-          const assistantMsg: StreamMessage = {
-            id: `a-${++msgCounter}`,
-            role: "assistant",
-            content: "",
-            tools: [],
-            streaming: true,
-          };
-          set({ messages: [...messages, assistantMsg] });
-          break;
-        }
+  // ── Branches ─────────────────────────────────────────────────────────
 
-        case "chunk": {
-          const last = messages[messages.length - 1];
-          if (last?.role === "assistant" && last.streaming) {
-            const updated = { ...last, content: data.accumulated || last.content + data.text };
-            set({ messages: [...messages.slice(0, -1), updated] });
-          }
-          break;
-        }
+  setBranches: (branches) => set({ branches }),
 
-        case "tool_start": {
-          const last = messages[messages.length - 1];
-          if (last?.role === "assistant") {
-            const tool: ToolEvent = {
-              tool_name: data.tool_name,
-              step: data.step,
-              description: data.description,
-              emoji: data.emoji,
-            };
-            const updated = { ...last, tools: [...last.tools, tool] };
-            set({ messages: [...messages.slice(0, -1), updated] });
-          }
-          break;
-        }
+  setActiveBranch: (branchId) => set({ activeBranchId: branchId }),
 
-        case "tool_result": {
-          const last = messages[messages.length - 1];
-          if (last?.role === "assistant") {
-            const tools = last.tools.map((t) =>
-              t.tool_name === data.tool_name && t.success === undefined
-                ? { ...t, success: data.success, output_preview: data.output_preview, duration_ms: data.duration_ms }
-                : t,
-            );
-            set({ messages: [...messages.slice(0, -1), { ...last, tools }] });
-          }
-          break;
-        }
+  // ── Messages ─────────────────────────────────────────────────────────
 
-        case "response_end": {
-          const last = messages[messages.length - 1];
-          if (last?.role === "assistant") {
-            set({
-              messages: [...messages.slice(0, -1), { ...last, content: data.full_text, streaming: false }],
-              activeRequestId: null,
-            });
-          }
-          // Refresh thread list after response completes (new session may have been created)
-          get().loadThreads();
-          break;
-        }
+  setMessages: (messages) => set({ messages }),
 
-        case "error": {
-          const errorMsg: StreamMessage = {
-            id: `e-${++msgCounter}`,
-            role: "assistant",
-            content: `Error: ${data.message}`,
-            tools: [],
-            streaming: false,
-          };
-          set({ messages: [...messages, errorMsg], activeRequestId: null });
-          break;
-        }
-      }
-    };
-
-    ws.onclose = (e) => {
-      const errorMap: Record<number, string> = {
-        4001: "Authentication failed",
-        4500: "Server error",
-        4503: "Chat gateway not available — is the gateway running?",
-      };
-      const connectionError = errorMap[e.code] || null;
-      set({ connected: false, ws: null, connectionError });
-    };
-    ws.onerror = () => set({ connected: false });
-
-    set({ ws });
-  },
-
-  disconnect: () => {
-    get().ws?.close();
-    set({ ws: null, connected: false });
-  },
-
-  sendMessage: (content: string, tier?: string, attachments?: { name: string; type: string; base64: string }[]) => {
-    const { ws, messages, currentThreadId } = get();
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-    const userMsg: StreamMessage = {
-      id: `u-${++msgCounter}`,
+  addUserMessage: (content, attachments) => {
+    const id = `u-${++msgCounter}`;
+    const userMsg: ChatMessage = {
+      id,
       role: "user",
       content,
-      tools: [],
+      toolEvents: [],
+      attachments,
       streaming: false,
     };
-    set({ messages: [...messages, userMsg] });
-
-    const payload: Record<string, unknown> = { type: "message", content, tier };
-    if (currentThreadId) {
-      payload.session_id = currentThreadId;
-    }
-    if (attachments?.length) {
-      payload.attachments = attachments;
-    }
-    ws.send(JSON.stringify(payload));
+    set((state) => ({ messages: [...state.messages, userMsg] }));
+    return id;
   },
 
-  cancel: () => {
-    const { ws, activeRequestId } = get();
-    if (ws && activeRequestId) {
-      ws.send(JSON.stringify({ type: "cancel", request_id: activeRequestId }));
-    }
+  setActiveRequestId: (id) => set({ activeRequestId: id }),
+
+  // ── Tier ─────────────────────────────────────────────────────────────
+
+  setTier: (tier) => set({ selectedTier: tier }),
+
+  // ── Streaming event handlers ─────────────────────────────────────────
+
+  onResponseStart: (requestId) => {
+    const assistantMsg: ChatMessage = {
+      id: `a-${++msgCounter}`,
+      role: "assistant",
+      content: "",
+      toolEvents: [],
+      streaming: true,
+    };
+    set((state) => ({
+      messages: [...state.messages, assistantMsg],
+      streaming: true,
+      activeRequestId: requestId,
+    }));
   },
 
-  setTier: (tier: ModelTier) => set({ selectedTier: tier }),
+  onChunk: (content, isAccumulated) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant" || !last.streaming) return state;
 
-  // ── Thread management ─────────────────────────────────────────────
+      const updated: ChatMessage = {
+        ...last,
+        content: isAccumulated ? content : last.content + content,
+      };
+      messages[messages.length - 1] = updated;
+      return { messages };
+    });
+  },
+
+  onToolStart: (name, step, description, emoji) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant") return state;
+
+      const toolEvent: ToolEvent = {
+        type: "tool_start",
+        tool_name: name,
+        step,
+        description,
+        emoji,
+      };
+      const updated: ChatMessage = {
+        ...last,
+        toolEvents: [...(last.toolEvents ?? []), toolEvent],
+      };
+      messages[messages.length - 1] = updated;
+      return { messages };
+    });
+  },
+
+  onToolResult: (name, success, outputPreview, durationMs) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant") return state;
+
+      const toolEvents = (last.toolEvents ?? []).map((t) =>
+        t.tool_name === name && t.success === undefined
+          ? { ...t, type: "tool_result" as const, success, output_preview: outputPreview, duration_ms: durationMs }
+          : t,
+      );
+      const updated: ChatMessage = { ...last, toolEvents };
+      messages[messages.length - 1] = updated;
+      return { messages };
+    });
+  },
+
+  onResponseEnd: (fullText) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "assistant") return state;
+
+      const updated: ChatMessage = {
+        ...last,
+        content: fullText,
+        streaming: false,
+      };
+      messages[messages.length - 1] = updated;
+      return { messages, streaming: false, activeRequestId: null };
+    });
+    // Refresh thread list after response completes (new session may have been created)
+    get().loadThreads();
+  },
+
+  onError: (message) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const last = messages[messages.length - 1];
+
+      // If there's a streaming assistant message, finalize it with the error
+      if (last?.role === "assistant" && last.streaming) {
+        const updated: ChatMessage = {
+          ...last,
+          content: last.content || `Error: ${message}`,
+          streaming: false,
+        };
+        messages[messages.length - 1] = updated;
+        return { messages, streaming: false, activeRequestId: null };
+      }
+
+      // Otherwise, add a new error message
+      const errorMsg: ChatMessage = {
+        id: `e-${++msgCounter}`,
+        role: "assistant",
+        content: `Error: ${message}`,
+        toolEvents: [],
+        streaming: false,
+      };
+      return {
+        messages: [...messages, errorMsg],
+        streaming: false,
+        activeRequestId: null,
+      };
+    });
+  },
+
+  // ── Thread management ────────────────────────────────────────────────
 
   loadThreads: async () => {
     set({ threadsLoading: true });
@@ -247,47 +326,62 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  switchToThread: async (threadId: string) => {
+  switchToThread: async (threadId) => {
     if (get().currentThreadId === threadId) return;
     try {
       const session = await sessionsApi.get(threadId);
       set({
         currentThreadId: threadId,
-        messages: apiToStreamMessages(session.messages),
+        messages: apiToMessages(session.messages),
       });
     } catch {
-      // Session not found or access denied — stay on current thread
+      // Session not found or access denied -- stay on current thread
     }
   },
 
   switchToNewThread: () => {
-    set({ currentThreadId: null, messages: [] });
+    set({ currentThreadId: null, messages: [], activeBranchId: null });
   },
 
-  renameThread: async (threadId: string, title: string) => {
+  renameThread: async (threadId, title) => {
     await sessionsApi.rename(threadId, title);
     await get().loadThreads();
   },
 
-  archiveThread: async (threadId: string) => {
+  archiveThread: async (threadId) => {
     await sessionsApi.archive(threadId);
-    // If we archived the active thread, switch to new
     if (get().currentThreadId === threadId) {
       set({ currentThreadId: null, messages: [] });
     }
     await get().loadThreads();
   },
 
-  unarchiveThread: async (threadId: string) => {
+  unarchiveThread: async (threadId) => {
     await sessionsApi.unarchive(threadId);
     await get().loadThreads();
   },
 
-  deleteThread: async (threadId: string) => {
+  deleteThread: async (threadId) => {
     await sessionsApi.delete(threadId);
     if (get().currentThreadId === threadId) {
       set({ currentThreadId: null, messages: [] });
     }
     await get().loadThreads();
+  },
+
+  // ── Legacy compat ────────────────────────────────────────────────────
+  // These are called by ChatRuntimeProvider which doesn't have access to
+  // the WebSocket hook. They add messages to the store; the actual WS
+  // send happens in useGatewayWebSocket.sendMessage() which the runtime
+  // provider should call instead. For now, keep these as no-op stubs so
+  // the existing code doesn't crash.
+
+  sendMessage: (_content, _tier, _attachments) => {
+    // No-op: WebSocket sending moved to useGatewayWebSocket.sendMessage()
+    // ChatRuntimeProvider will be updated in Task 9 to use the hook.
+  },
+
+  cancel: () => {
+    // No-op: cancellation moved to useGatewayWebSocket.cancel()
   },
 }));

@@ -1,12 +1,12 @@
 /**
- * Convert our StreamMessage + ToolEvent[] into assistant-ui's ThreadMessageLike.
+ * Convert our ChatMessage + ToolEvent[] into assistant-ui's ThreadMessageLike.
  *
  * This is the critical bridge between our WebSocket protocol and assistant-ui's
  * internal message format.
  */
 
 import type { MessageStatus } from "@assistant-ui/react";
-import type { StreamMessage, ToolEvent } from "./chatStore";
+import type { ChatMessage, ToolEvent } from "./chatStore";
 
 function toolEventToContentPart(tool: ToolEvent, index: number) {
   return {
@@ -19,20 +19,28 @@ function toolEventToContentPart(tool: ToolEvent, index: number) {
   };
 }
 
-export function convertMessage(msg: StreamMessage, _idx: number) {
+export function convertMessage(msg: ChatMessage, _idx: number) {
   if (msg.role === "user") {
-    return {
+    const result: Record<string, unknown> = {
       role: "user" as const,
       id: msg.id,
       content: [{ type: "text" as const, text: msg.content }],
     };
+
+    // Include attachments if present so they render in message history
+    if (msg.attachments && msg.attachments.length > 0) {
+      result.attachments = msg.attachments;
+    }
+
+    return result;
   }
 
   // Build content parts: tool calls + text
   const content: unknown[] = [];
+  const tools = msg.toolEvents ?? [];
 
-  for (let i = 0; i < msg.tools.length; i++) {
-    content.push(toolEventToContentPart(msg.tools[i], i));
+  for (let i = 0; i < tools.length; i++) {
+    content.push(toolEventToContentPart(tools[i], i));
   }
 
   if (msg.content) {

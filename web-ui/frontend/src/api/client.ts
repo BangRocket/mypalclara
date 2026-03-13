@@ -1,38 +1,40 @@
-/** Typed API client for the Clara web backend. */
+/** Typed API client for the Clara gateway backend. */
 
-const API_ORIGIN = import.meta.env.VITE_API_URL || "";
-const BASE = `${API_ORIGIN}/api/v1`;
+const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || "http://localhost:18790";
+const BASE = `${GATEWAY_URL}/api/v1`;
 
-// ── Token management ─────────────────────────────────────────────────────
-const TOKEN_KEY = "clara_token";
-let _token: string | null = sessionStorage.getItem(TOKEN_KEY);
+// ── Token management (set from React via TokenBridge) ────────────────────
 
-export function setToken(token: string | null) {
-  _token = token;
-  if (token) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } else {
-    sessionStorage.removeItem(TOKEN_KEY);
-  }
+let _getToken: (() => Promise<string | null>) | null = null;
+
+export function setTokenGetter(getter: () => Promise<string | null>) {
+  _getToken = getter;
 }
 
-export function getToken(): string | null {
-  return _token;
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!_getToken) return {};
+  const token = await _getToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Get a fresh token for non-HTTP uses (e.g. WebSocket auth). */
+export async function getToken(): Promise<string | null> {
+  if (!_getToken) return null;
+  return _getToken();
 }
 
 // ── Request helper ───────────────────────────────────────────────────────
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = path.startsWith("/") ? `${API_ORIGIN}${path}` : path;
+  const url = path.startsWith("http") ? path : `${GATEWAY_URL}${path}`;
+  const authHeaders = await getAuthHeaders();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...authHeaders,
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  if (_token) {
-    headers["Authorization"] = `Bearer ${_token}`;
-  }
   const res = await fetch(url, {
-    credentials: "include",
     ...init,
     headers,
   });
@@ -42,34 +44,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return res.json();
 }
-
-// ── Auth ──────────────────────────────────────────────────────────────────
-
-export interface User {
-  id: string;
-  display_name: string;
-  email: string | null;
-  avatar_url: string | null;
-  created_at: string | null;
-  status?: "pending" | "active" | "suspended";
-  is_admin?: boolean;
-  platforms?: { platform: string; platform_user_id: string; display_name: string; linked_at: string | null }[];
-}
-
-export interface AuthConfig {
-  dev_mode: boolean;
-  providers: { discord: boolean; google: boolean };
-}
-
-export const auth = {
-  config: () => request<AuthConfig>("/auth/config"),
-  me: () => request<User>("/auth/me"),
-  loginUrl: (provider: string) => request<{ url: string }>(`/auth/login/${provider}`),
-  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
-  devLogin: () => request<{ user: User; token: string }>("/auth/dev-login", { method: "POST" }),
-  callback: (provider: string, code: string) =>
-    request<{ user: User; token: string }>(`/auth/callback/${provider}?code=${code}`),
-};
 
 // ── Memories ──────────────────────────────────────────────────────────────
 
@@ -190,6 +164,17 @@ export const sessions = {
 
 // ── Users ─────────────────────────────────────────────────────────────────
 
+export interface User {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  created_at: string | null;
+  status?: "pending" | "active" | "suspended";
+  is_admin?: boolean;
+  platforms?: { platform: string; platform_user_id: string; display_name: string; linked_at: string | null }[];
+}
+
 export const users = {
   me: () => request<User & { links: { id: string; platform: string; platform_user_id: string; prefixed_user_id: string; display_name: string; linked_at: string | null; linked_via: string }[] }>(`${BASE}/users/me`),
   update: (body: { display_name?: string; avatar_url?: string }) =>
@@ -199,7 +184,6 @@ export const users = {
 // ── Unified API namespace ────────────────────────────────────────────
 
 export const api = {
-  auth,
   memories,
   sessions,
   users,

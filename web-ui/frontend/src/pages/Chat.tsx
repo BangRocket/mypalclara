@@ -1,5 +1,6 @@
 import { Thread } from "@/components/assistant-ui/thread";
 import { ArtifactPanel } from "@/components/chat/ArtifactPanel";
+import { BranchSidebar } from "@/components/chat/BranchSidebar";
 import { useArtifactStore } from "@/stores/artifactStore";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -22,6 +23,7 @@ export function ChatPage() {
         </div>
       )}
       <div className="flex flex-1 overflow-hidden">
+        <BranchSidebar />
         <div className="flex-1">
           <Thread />
         </div>
