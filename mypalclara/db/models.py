@@ -758,6 +758,86 @@ class PersonalityTraitHistory(Base):
 
 
 # =============================================================================
+# Conversation Branching Models (Web UI)
+# =============================================================================
+
+
+class Conversation(Base):
+    """A user's conversation container (one per user).
+
+    Unlike the Discord-oriented Session model, Conversations support
+    git-style branching for the web UI.
+    """
+
+    __tablename__ = "conversations"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    branches = relationship(
+        "Branch",
+        back_populates="conversation",
+        order_by="Branch.created_at",
+    )
+
+
+class Branch(Base):
+    """A branch within a conversation (git-style).
+
+    The main trunk has parent_branch_id=None. Forked branches reference
+    their parent and the message they diverged from.
+    """
+
+    __tablename__ = "branches"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
+    parent_branch_id = Column(String, ForeignKey("branches.id"), nullable=True)
+    fork_message_id = Column(String, ForeignKey("branch_messages.id"), nullable=True)
+    name = Column(String, nullable=True)
+    status = Column(String, default="active")  # active, merged, archived
+    created_at = Column(DateTime, default=utcnow)
+    merged_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_branch_conversation_status", "conversation_id", "status"),)
+
+    conversation = relationship("Conversation", back_populates="branches")
+    parent_branch = relationship(
+        "Branch",
+        remote_side="Branch.id",
+        backref="child_branches",
+    )
+    fork_message = relationship("BranchMessage", foreign_keys=[fork_message_id])
+    messages = relationship(
+        "BranchMessage",
+        back_populates="branch",
+        foreign_keys="BranchMessage.branch_id",
+        order_by="BranchMessage.created_at",
+    )
+
+
+class BranchMessage(Base):
+    """A message within a branch."""
+
+    __tablename__ = "branch_messages"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    branch_id = Column(String, ForeignKey("branches.id"), nullable=False, index=True)
+    user_id = Column(String, nullable=True)
+    role = Column(String, nullable=False)  # user, assistant, system, tool
+    content = Column(Text, nullable=True)
+    attachments = Column(Text, nullable=True)  # JSON
+    tool_calls = Column(Text, nullable=True)  # JSON
+    created_at = Column(DateTime, default=utcnow)
+
+    __table_args__ = (Index("ix_branch_message_branch_created", "branch_id", "created_at"),)
+
+    branch = relationship("Branch", back_populates="messages", foreign_keys=[branch_id])
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
@@ -808,6 +888,10 @@ __all__ = [
     # Personality evolution
     "PersonalityTrait",
     "PersonalityTraitHistory",
+    # Conversation branching (Web UI)
+    "Conversation",
+    "Branch",
+    "BranchMessage",
     # MCP models
     "MCPServer",
     "MCPOAuthToken",
