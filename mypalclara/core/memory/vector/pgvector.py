@@ -251,6 +251,14 @@ class PGVector(VectorStoreBase):
                     (Json(payload), vector_id),
                 )
 
+    def set_payload(self, vector_id, payload: dict):
+        """Update only the payload for a vector, leaving the embedding intact."""
+        with self._get_cursor(commit=True) as cur:
+            cur.execute(
+                f"UPDATE {self.collection_name} SET payload = %s WHERE id = %s",
+                (Json(payload), vector_id),
+            )
+
     def get(self, vector_id: str) -> OutputData:
         """Retrieve a vector by ID."""
         with self._get_cursor() as cur:

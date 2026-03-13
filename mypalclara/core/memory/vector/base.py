@@ -32,6 +32,18 @@ class VectorStoreBase(ABC):
         pass
 
     @abstractmethod
+    def set_payload(self, vector_id, payload: dict):
+        """Update only the payload for a vector, leaving the embedding intact.
+
+        Unlike ``update()``, this must never modify the stored vector/embedding.
+
+        Args:
+            vector_id: ID of the vector to update.
+            payload: New payload dict (replaces existing payload entirely).
+        """
+        pass
+
+    @abstractmethod
     def get(self, vector_id):
         """Retrieve a vector by ID."""
         pass

@@ -128,6 +128,17 @@ class DualWriteVectorStore:
 
         return result
 
+    def set_payload(self, vector_id, payload: dict):
+        """Update only the payload in store(s), leaving embeddings intact."""
+        if self._should_write_to_primary():
+            self.primary.set_payload(vector_id, payload)
+
+        if self._should_write_to_secondary():
+            try:
+                self.secondary.set_payload(vector_id, payload)
+            except Exception as e:
+                logger.error(f"Secondary set_payload failed: {e}")
+
     def delete(self, vector_id):
         """Delete a vector from store(s)."""
         result = None

@@ -164,6 +164,14 @@ class Qdrant(VectorStoreBase):
         point = PointStruct(id=vector_id, vector=vector, payload=payload)
         self.client.upsert(collection_name=self.collection_name, points=[point])
 
+    def set_payload(self, vector_id, payload: dict):
+        """Update only the payload for a vector, leaving the embedding intact."""
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload=payload,
+            points=[vector_id],
+        )
+
     def get(self, vector_id: int) -> dict:
         """Retrieve a vector by ID."""
         result = self.client.retrieve(collection_name=self.collection_name, ids=[vector_id], with_payload=True)
