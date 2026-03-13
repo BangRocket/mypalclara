@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import jwt as pyjwt
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 
@@ -140,17 +138,17 @@ def _mock_jwks_client(jwks_response):
 
 
 @pytest.mark.asyncio
-async def test_valid_token_returns_claims(rsa_keypair, jwks_response):
+async def test_valid_token_returns_claims(rsa_keypair, jwks_response, monkeypatch):
     """Valid token with mocked JWKS returns decoded claims."""
     private_key, _ = rsa_keypair
     token = _make_token(private_key)
 
     mock_client = _mock_jwks_client(jwks_response)
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://test.clerk.accounts.dev")
 
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://test.clerk.accounts.dev"):
-        with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
-            with patch("httpx.AsyncClient", return_value=mock_client):
-                claims = await verify_clerk_jwt(f"Bearer {token}")
+    with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            claims = await verify_clerk_jwt(f"Bearer {token}")
 
     assert claims["sub"] == "user_clerk_123"
     assert claims["email"] == "test@example.com"
@@ -158,40 +156,40 @@ async def test_valid_token_returns_claims(rsa_keypair, jwks_response):
 
 
 @pytest.mark.asyncio
-async def test_expired_token_raises_401(rsa_keypair, jwks_response):
+async def test_expired_token_raises_401(rsa_keypair, jwks_response, monkeypatch):
     """Expired token raises 401 even with valid signature."""
     private_key, _ = rsa_keypair
     token = _make_token(private_key, claims={"exp": int(time.time()) - 3600})
 
     mock_client = _mock_jwks_client(jwks_response)
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://test.clerk.accounts.dev")
 
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://test.clerk.accounts.dev"):
-        with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
-            with patch("httpx.AsyncClient", return_value=mock_client):
-                with pytest.raises(HTTPException) as exc_info:
-                    await verify_clerk_jwt(f"Bearer {token}")
+    with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_clerk_jwt(f"Bearer {token}")
 
     assert exc_info.value.status_code == 401
     assert "expired" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
-async def test_jwks_fetch_failure_raises_503(rsa_keypair):
+async def test_jwks_fetch_failure_raises_503(rsa_keypair, monkeypatch):
     """JWKS endpoint failure raises 503."""
     private_key, _ = rsa_keypair
     token = _make_token(private_key)
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://test.clerk.accounts.dev")
 
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://test.clerk.accounts.dev"):
-        with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
-            with patch("httpx.AsyncClient") as mock_client_cls:
-                mock_client = AsyncMock()
-                mock_client.get.side_effect = httpx.ConnectError("connection refused")
-                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-                mock_client.__aexit__ = AsyncMock(return_value=False)
-                mock_client_cls.return_value = mock_client
+    with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.side_effect = httpx.ConnectError("connection refused")
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
-                with pytest.raises(HTTPException) as exc_info:
-                    await verify_clerk_jwt(f"Bearer {token}")
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_clerk_jwt(f"Bearer {token}")
 
     assert exc_info.value.status_code == 503
 
@@ -221,87 +219,84 @@ async def test_cache_is_stale_after_ttl():
 # ---------------------------------------------------------------------------
 
 
-def test_configured_issuer_matches():
+def test_configured_issuer_matches(monkeypatch):
     """When CLERK_ISSUER_URL is set, matching issuer is accepted."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev"):
-        result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev")
+    result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
     assert result == "https://myapp.clerk.accounts.dev"
 
 
-def test_configured_issuer_trailing_slash_normalization():
+def test_configured_issuer_trailing_slash_normalization(monkeypatch):
     """Trailing slashes are normalized when comparing issuers."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev/"):
-        result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev/")
+    result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
     assert result == "https://myapp.clerk.accounts.dev"
 
 
-def test_configured_issuer_mismatch_raises_401():
+def test_configured_issuer_mismatch_raises_401(monkeypatch):
     """When CLERK_ISSUER_URL is set, non-matching issuer raises 401."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev"):
-        with pytest.raises(HTTPException) as exc_info:
-            _get_trusted_issuer("https://evil.example.com")
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev")
+    with pytest.raises(HTTPException) as exc_info:
+        _get_trusted_issuer("https://evil.example.com")
     assert exc_info.value.status_code == 401
     assert "issuer mismatch" in exc_info.value.detail
 
 
-def test_configured_issuer_rejects_attacker_domain():
+def test_configured_issuer_rejects_attacker_domain(monkeypatch):
     """Attacker-controlled issuer is rejected even if it ends with .clerk.accounts.dev."""
-    with patch(
-        "mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL",
-        "https://real-app.clerk.accounts.dev",
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            _get_trusted_issuer("https://fake-app.clerk.accounts.dev")
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://real-app.clerk.accounts.dev")
+    with pytest.raises(HTTPException) as exc_info:
+        _get_trusted_issuer("https://fake-app.clerk.accounts.dev")
     assert exc_info.value.status_code == 401
 
 
-def test_fallback_accepts_valid_clerk_domain():
+def test_fallback_accepts_valid_clerk_domain(monkeypatch):
     """Without CLERK_ISSUER_URL, valid .clerk.accounts.dev domain is accepted."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", None):
-        result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
+    monkeypatch.delenv("CLERK_ISSUER_URL", raising=False)
+    result = _get_trusted_issuer("https://myapp.clerk.accounts.dev")
     assert result == "https://myapp.clerk.accounts.dev"
 
 
-def test_fallback_rejects_non_clerk_domain():
+def test_fallback_rejects_non_clerk_domain(monkeypatch):
     """Without CLERK_ISSUER_URL, non-Clerk domain is rejected."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", None):
-        with pytest.raises(HTTPException) as exc_info:
-            _get_trusted_issuer("https://evil.example.com")
+    monkeypatch.delenv("CLERK_ISSUER_URL", raising=False)
+    with pytest.raises(HTTPException) as exc_info:
+        _get_trusted_issuer("https://evil.example.com")
     assert exc_info.value.status_code == 401
     assert "not a trusted Clerk domain" in exc_info.value.detail
 
 
-def test_fallback_rejects_http_issuer():
+def test_fallback_rejects_http_issuer(monkeypatch):
     """Without CLERK_ISSUER_URL, http:// (non-TLS) issuer is rejected."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", None):
-        with pytest.raises(HTTPException) as exc_info:
-            _get_trusted_issuer("http://myapp.clerk.accounts.dev")
+    monkeypatch.delenv("CLERK_ISSUER_URL", raising=False)
+    with pytest.raises(HTTPException) as exc_info:
+        _get_trusted_issuer("http://myapp.clerk.accounts.dev")
     assert exc_info.value.status_code == 401
 
 
-def test_fallback_rejects_subdomain_spoofing():
+def test_fallback_rejects_subdomain_spoofing(monkeypatch):
     """Without CLERK_ISSUER_URL, attacker domain mimicking suffix is rejected."""
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", None):
-        # "evil-clerk.accounts.dev" does NOT end with ".clerk.accounts.dev"
-        with pytest.raises(HTTPException) as exc_info:
-            _get_trusted_issuer("https://evil-clerk.accounts.dev")
+    monkeypatch.delenv("CLERK_ISSUER_URL", raising=False)
+    # "evil-clerk.accounts.dev" does NOT end with ".clerk.accounts.dev"
+    with pytest.raises(HTTPException) as exc_info:
+        _get_trusted_issuer("https://evil-clerk.accounts.dev")
     assert exc_info.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_attacker_issuer_rejected_before_jwks_fetch(rsa_keypair):
+async def test_attacker_issuer_rejected_before_jwks_fetch(rsa_keypair, monkeypatch):
     """Token with attacker-controlled issuer is rejected before any JWKS fetch."""
     private_key, _ = rsa_keypair
     token = _make_token(private_key, claims={"iss": "https://evil.example.com"})
+    monkeypatch.setenv("CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev")
 
-    with patch("mypalclara.gateway.api.clerk_auth._CLERK_ISSUER_URL", "https://myapp.clerk.accounts.dev"):
-        with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()) as cache:
-            with patch("httpx.AsyncClient") as mock_client_cls:
-                with pytest.raises(HTTPException) as exc_info:
-                    await verify_clerk_jwt(f"Bearer {token}")
+    with patch("mypalclara.gateway.api.clerk_auth._cache", new=ClerkJWKSCache()) as cache:
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_clerk_jwt(f"Bearer {token}")
 
-                # JWKS endpoint should never have been called
-                mock_client_cls.assert_not_called()
+            # JWKS endpoint should never have been called
+            mock_client_cls.assert_not_called()
 
     assert exc_info.value.status_code == 401
 

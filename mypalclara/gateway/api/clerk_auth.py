@@ -20,9 +20,6 @@ from fastapi import HTTPException, status
 
 logger = logging.getLogger("gateway.api.clerk_auth")
 
-# Trusted issuer URL from environment (e.g. "https://your-app.clerk.accounts.dev")
-_CLERK_ISSUER_URL: str | None = os.environ.get("CLERK_ISSUER_URL")
-
 _CLERK_DOMAIN_SUFFIX = ".clerk.accounts.dev"
 
 # Cache JWKS keys for 1 hour (Clerk rotates keys infrequently)
@@ -52,10 +49,9 @@ class ClerkJWKSCache:
         """
         if kid not in self._keys or self.is_stale:
             await self._refresh(issuer)
-
-        # After refresh, try one more time for unknown kid
-        if kid not in self._keys:
-            await self._refresh(issuer)
+            if kid not in self._keys:
+                # Key rotation race: one more try
+                await self._refresh(issuer)
 
         key = self._keys.get(kid)
         if key is None:
@@ -105,7 +101,7 @@ def _get_trusted_issuer(token_issuer: str) -> str:
     Raises:
         HTTPException(401): If the token's issuer is not trusted.
     """
-    configured = _CLERK_ISSUER_URL
+    configured = os.environ.get("CLERK_ISSUER_URL")
     if configured:
         # Strip trailing slash for consistent comparison
         configured = configured.rstrip("/")
