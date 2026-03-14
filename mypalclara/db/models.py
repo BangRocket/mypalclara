@@ -795,7 +795,7 @@ class Branch(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
     parent_branch_id = Column(String, ForeignKey("branches.id"), nullable=True)
-    fork_message_id = Column(String, ForeignKey("branch_messages.id"), nullable=True)
+    fork_message_id = Column(String, ForeignKey("branch_messages.id", use_alter=True), nullable=True)
     name = Column(String, nullable=True)
     status = Column(String, default="active")  # active, merged, archived
     created_at = Column(DateTime, default=utcnow)

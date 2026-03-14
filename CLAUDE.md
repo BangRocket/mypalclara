@@ -29,10 +29,7 @@ poetry run python scripts/migrate.py           # Run migrations
 poetry run python scripts/migrate.py status    # Check status
 poetry run python scripts/clear_dbs.py         # Clear memory data
 
-# Web UI (Rails backend)
-cd web-ui/backend && rails s -p 3000   # Start Rails API server
-
-# Web UI (React frontend)
+# Web UI (React frontend — talks directly to gateway)
 cd web-ui/frontend && npm run dev      # Start Vite dev server (port 5173)
 
 # Docker
@@ -326,7 +323,20 @@ CLARA_GATEWAY_HOST=127.0.0.1
 CLARA_GATEWAY_PORT=18789
 CLARA_GATEWAY_SECRET=...          # Optional auth secret
 CLARA_GATEWAY_API_PORT=18790          # Gateway HTTP API port (default: 18790)
-CLARA_GATEWAY_API_URL=http://127.0.0.1:18790  # Gateway HTTP API URL (for Rails proxy)
+CLARA_GATEWAY_API_URL=http://127.0.0.1:18790  # Gateway HTTP API URL
+```
+
+### Clerk Auth (Web UI)
+```bash
+CLERK_ISSUER_URL=https://your-app.clerk.accounts.dev  # Required for production
+CLERK_AUDIENCE=...                # Optional: JWT audience claim validation
+```
+
+### Web UI Frontend (`web-ui/frontend/.env`)
+```bash
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...  # Clerk publishable key (required)
+VITE_GATEWAY_URL=http://localhost:18790  # Gateway HTTP API URL
+VITE_GATEWAY_WS_URL=ws://localhost:18789 # Gateway WebSocket URL
 ```
 
 ### Optional Features

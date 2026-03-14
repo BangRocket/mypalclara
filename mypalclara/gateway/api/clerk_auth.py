@@ -24,6 +24,8 @@ _CLERK_DOMAIN_SUFFIX = ".clerk.accounts.dev"
 
 # Cache JWKS keys for 1 hour (Clerk rotates keys infrequently)
 _JWKS_CACHE_TTL_SECONDS = 3600
+# Minimum interval between JWKS refreshes to prevent abuse via unknown kid values
+_JWKS_MIN_REFRESH_INTERVAL = 30
 
 
 class ClerkJWKSCache:
@@ -41,6 +43,10 @@ class ClerkJWKSCache:
     def is_stale(self) -> bool:
         return (time.monotonic() - self._fetched_at) > _JWKS_CACHE_TTL_SECONDS
 
+    @property
+    def _recently_refreshed(self) -> bool:
+        return (time.monotonic() - self._fetched_at) < _JWKS_MIN_REFRESH_INTERVAL
+
     async def get_key(self, kid: str, issuer: str) -> jwt.PyJWK:
         """Get the public key for the given kid.
 
@@ -48,8 +54,9 @@ class ClerkJWKSCache:
         Raises HTTPException(503) if the JWKS endpoint is unreachable.
         """
         if kid not in self._keys or self.is_stale:
-            await self._refresh(issuer)
-            if kid not in self._keys:
+            if not self._recently_refreshed:
+                await self._refresh(issuer)
+            if kid not in self._keys and not self._recently_refreshed:
                 # Key rotation race: one more try
                 await self._refresh(issuer)
 
@@ -185,13 +192,20 @@ async def verify_clerk_jwt(authorization: str) -> dict:
     # Fetch the signing key using the TRUSTED issuer, not the token's claim
     signing_key = await _cache.get_key(kid, trusted_issuer)
 
-    # Verify signature, expiry, and issuer against the trusted value
+    # Verify signature, expiry, issuer, and audience against trusted values
+    decode_kwargs: dict = {
+        "algorithms": ["RS256"],
+        "issuer": trusted_issuer,
+    }
+    clerk_audience = os.environ.get("CLERK_AUDIENCE")
+    if clerk_audience:
+        decode_kwargs["audience"] = clerk_audience
+
     try:
         claims = jwt.decode(
             token,
             signing_key,
-            algorithms=["RS256"],
-            issuer=trusted_issuer,
+            **decode_kwargs,
         )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
@@ -202,6 +216,11 @@ async def verify_clerk_jwt(authorization: str) -> dict:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="JWT issuer mismatch",
+        ) from exc
+    except jwt.InvalidAudienceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT audience mismatch",
         ) from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(

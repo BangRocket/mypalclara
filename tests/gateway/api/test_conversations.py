@@ -288,8 +288,7 @@ class TestUpdateBranch:
         main_id = conv["branches"][0]["id"]
 
         resp = client.patch(f"/api/v1/branches/{main_id}", json={"status": "merged"})
-        assert resp.status_code == 400
-        assert "active" in resp.json()["detail"]
+        assert resp.status_code == 422  # Pydantic Literal validation
 
     def test_rejects_nonexistent_branch(self, client):
         """PATCH on nonexistent branch returns 404."""
@@ -375,8 +374,7 @@ class TestMergeBranch:
         _, child_id = self._create_child_branch(client)
 
         resp = client.post(f"/api/v1/branches/{child_id}/merge", json={"strategy": "rebase"})
-        assert resp.status_code == 400
-        assert "squash" in resp.json()["detail"]
+        assert resp.status_code == 422  # Pydantic Literal validation
 
 
 # ---------------------------------------------------------------------------

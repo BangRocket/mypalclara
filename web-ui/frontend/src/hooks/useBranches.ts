@@ -34,6 +34,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(body.detail || res.statusText);
   }
+  // 204 No Content — return empty object instead of trying to parse empty body
+  if (res.status === 204) return {} as T;
   return res.json();
 }
 
@@ -41,9 +43,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 interface ConversationResponse {
   id: string;
-  user_id: string;
-  title: string | null;
-  created_at: string;
+  created_at: string | null;
+  updated_at: string | null;
+  branches: BranchInfo[];
 }
 
 interface BranchesResponse {
@@ -189,12 +191,12 @@ export function useBranches() {
   // ── Rename ────────────────────────────────────────────────────────
 
   const renameBranch = useMutation<
-    { ok: boolean },
+    BranchInfo,
     Error,
     { branchId: string; name: string }
   >({
     mutationFn: (vars) =>
-      request<{ ok: boolean }>(`${BASE}/branches/${vars.branchId}`, {
+      request<BranchInfo>(`${BASE}/branches/${vars.branchId}`, {
         method: "PATCH",
         body: JSON.stringify({ name: vars.name }),
       }),
@@ -206,12 +208,12 @@ export function useBranches() {
   // ── Archive ───────────────────────────────────────────────────────
 
   const archiveBranch = useMutation<
-    { ok: boolean },
+    BranchInfo,
     Error,
     { branchId: string }
   >({
     mutationFn: (vars) =>
-      request<{ ok: boolean }>(`${BASE}/branches/${vars.branchId}`, {
+      request<BranchInfo>(`${BASE}/branches/${vars.branchId}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "archived" }),
       }),
@@ -236,12 +238,12 @@ export function useBranches() {
   // ── Delete ────────────────────────────────────────────────────────
 
   const deleteBranch = useMutation<
-    { ok: boolean },
+    void,
     Error,
     { branchId: string }
   >({
     mutationFn: (vars) =>
-      request<{ ok: boolean }>(`${BASE}/branches/${vars.branchId}`, {
+      request<void>(`${BASE}/branches/${vars.branchId}`, {
         method: "DELETE",
       }),
     onSuccess: async (_data, vars) => {

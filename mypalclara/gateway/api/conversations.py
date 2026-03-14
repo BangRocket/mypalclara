@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
 from mypalclara.db.models import Branch, BranchMessage, CanonicalUser, Conversation, utcnow
@@ -25,16 +27,16 @@ router = APIRouter()
 class ForkRequest(BaseModel):
     parent_branch_id: str
     fork_message_id: str | None = None
-    name: str | None = None
+    name: str | None = Field(None, max_length=100)
 
 
 class MergeRequest(BaseModel):
-    strategy: str  # "squash" or "full"
+    strategy: Literal["squash", "full"]
 
 
 class BranchUpdate(BaseModel):
-    name: str | None = None
-    status: str | None = None
+    name: str | None = Field(None, max_length=100)
+    status: Literal["active", "archived"] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -53,12 +55,21 @@ def _get_owned_branch(db: DBSession, branch_id: str, user: CanonicalUser) -> Bra
     return branch
 
 
+_MAX_ANCESTOR_DEPTH = 50
+
+
 def _get_ancestor_messages(db: DBSession, branch: Branch) -> list[BranchMessage]:
     """Walk parent chain, collect messages up to each fork point."""
     messages: list[BranchMessage] = []
     current = branch
+    depth = 0
 
     while current.parent_branch_id is not None:
+        depth += 1
+        if depth > _MAX_ANCESTOR_DEPTH:
+            logger.warning("Ancestor walk exceeded max depth %d for branch %s", _MAX_ANCESTOR_DEPTH, branch.id)
+            break
+
         parent = db.query(Branch).filter(Branch.id == current.parent_branch_id).first()
         if not parent:
             break
@@ -126,18 +137,21 @@ def _message_to_dict(msg: BranchMessage) -> dict:
     }
 
 
-def _promote_branch_memories(db: DBSession, branch_id: str, user_id: str) -> int:
-    """Promote branch-scoped memories to global on merge. Returns count."""
+def _promote_branch_memories(db: DBSession, branch_id: str, user_id: str) -> tuple[int, bool]:
+    """Promote branch-scoped memories to global on merge.
+
+    Returns (count, success) tuple.
+    """
     from mypalclara.core.memory.branch_memory import promote_branch_memories
 
     try:
         count = promote_branch_memories(user_id=user_id, branch_id=branch_id)
         if count:
             logger.info("Promoted %d memories for branch %s", count, branch_id)
-        return count
+        return count, True
     except Exception:
         logger.exception("Failed to promote memories for branch %s", branch_id)
-        return 0
+        return 0, False
 
 
 def _copy_messages_to_parent(db: DBSession, branch: Branch) -> int:
@@ -233,6 +247,12 @@ async def fork_branch(
     # Validate parent exists and belongs to user
     parent = _get_owned_branch(db, body.parent_branch_id, user)
 
+    # Enforce branch count limit
+    max_branches = int(os.environ.get("MAX_BRANCHES_PER_CONVERSATION", "50"))
+    branch_count = db.query(Branch).filter(Branch.conversation_id == parent.conversation_id).count()
+    if branch_count >= max_branches:
+        raise HTTPException(status_code=400, detail=f"Maximum of {max_branches} branches per conversation")
+
     # Validate fork_message_id if provided
     if body.fork_message_id:
         fork_msg = db.query(BranchMessage).filter(BranchMessage.id == body.fork_message_id).first()
@@ -267,8 +287,6 @@ async def update_branch(
         branch.name = body.name
 
     if body.status is not None:
-        if body.status not in ("active", "archived"):
-            raise HTTPException(status_code=400, detail="Status must be 'active' or 'archived'")
         branch.status = body.status
 
     db.commit()
@@ -294,9 +312,6 @@ async def merge_branch(
     if branch.status == "merged":
         raise HTTPException(status_code=400, detail="Branch already merged")
 
-    if body.strategy not in ("squash", "full"):
-        raise HTTPException(status_code=400, detail="Strategy must be 'squash' or 'full'")
-
     appended_messages = 0
     if body.strategy == "full":
         appended_messages = _copy_messages_to_parent(db, branch)
@@ -307,12 +322,17 @@ async def merge_branch(
 
     # Promote branch-scoped memories to global
     merged_memories = 0
+    memory_promotion_failed = False
     conversation = db.query(Conversation).filter(Conversation.id == branch.conversation_id).first()
     if conversation:
-        merged_memories = _promote_branch_memories(db, branch_id, conversation.user_id)
+        merged_memories, success = _promote_branch_memories(db, branch_id, conversation.user_id)
+        memory_promotion_failed = not success
 
     db.commit()
-    return {"ok": True, "merged_memories": merged_memories, "appended_messages": appended_messages}
+    result: dict = {"ok": True, "merged_memories": merged_memories, "appended_messages": appended_messages}
+    if memory_promotion_failed:
+        result["warning"] = "Memory promotion failed — branch memories may not have been promoted to global scope"
+    return result
 
 
 @router.delete("/branches/{branch_id}", status_code=204)
@@ -327,6 +347,11 @@ async def delete_branch(
     # Cannot delete main trunk
     if branch.parent_branch_id is None:
         raise HTTPException(status_code=400, detail="Cannot delete main trunk")
+
+    # Re-parent any child branches to this branch's parent
+    children = db.query(Branch).filter(Branch.parent_branch_id == branch_id).all()
+    for child in children:
+        child.parent_branch_id = branch.parent_branch_id
 
     # Discard branch-scoped memories before deleting messages
     conversation = db.query(Conversation).filter(Conversation.id == branch.conversation_id).first()
@@ -377,4 +402,9 @@ async def get_branch_messages(
     total = len(messages)
     paginated = messages[offset : offset + limit]
 
-    return {"messages": [_message_to_dict(m) for m in paginated]}
+    return {
+        "messages": [_message_to_dict(m) for m in paginated],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
