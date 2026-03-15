@@ -8,12 +8,14 @@ from unittest.mock import patch
 import pytest
 
 from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
+from mypalclara.core.prompt_builder import PromptBuilder
+
+_MOCK_PERSONA = "You are Clara."
+_WORKSPACE_PATCH = patch.object(PromptBuilder, "_load_workspace_persona", return_value=_MOCK_PERSONA)
 
 
 def _make_prompt_builder():
     """Create a PromptBuilder with mocked persona."""
-    from mypalclara.core.prompt_builder import PromptBuilder
-
     return PromptBuilder(agent_id="test-agent")
 
 
@@ -30,8 +32,8 @@ def _make_db_message(role: str, content: str, user_id: str = "user-1", created_a
 class TestThreadSummaryExclusion:
     """Thread summary is accepted in the signature but NOT included in the prompt."""
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_thread_summary_not_in_prompt(self):
+    @_WORKSPACE_PATCH
+    def test_thread_summary_not_in_prompt(self, _mock):
         pb = _make_prompt_builder()
         messages = pb.build_prompt(
             user_mems=[],
@@ -45,8 +47,8 @@ class TestThreadSummaryExclusion:
         assert "THREAD SUMMARY" not in all_content
         assert "This is a summary of the thread" not in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_thread_summary_none_works(self):
+    @_WORKSPACE_PATCH
+    def test_thread_summary_none_works(self, _mock):
         pb = _make_prompt_builder()
         messages = pb.build_prompt(
             user_mems=[],
@@ -64,8 +66,8 @@ class TestThreadSummaryExclusion:
 
 
 class TestChannelContext:
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_channel_context_included(self):
+    @_WORKSPACE_PATCH
+    def test_channel_context_included(self, _mock):
         pb = _make_prompt_builder()
         channel_msgs = [
             _make_db_message("user", "[Alice]: hey everyone"),
@@ -86,8 +88,8 @@ class TestChannelContext:
         assert "Clara: Hello Alice!" in all_content
         assert "[Bob]: what's up" in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_channel_context_none_no_section(self):
+    @_WORKSPACE_PATCH
+    def test_channel_context_none_no_section(self, _mock):
         pb = _make_prompt_builder()
         messages = pb.build_prompt(
             user_mems=[],
@@ -100,8 +102,8 @@ class TestChannelContext:
         all_content = " ".join(m.content for m in messages)
         assert "CHANNEL CONTEXT" not in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_channel_context_empty_list_no_section(self):
+    @_WORKSPACE_PATCH
+    def test_channel_context_empty_list_no_section(self, _mock):
         pb = _make_prompt_builder()
         messages = pb.build_prompt(
             user_mems=[],
@@ -114,8 +116,8 @@ class TestChannelContext:
         all_content = " ".join(m.content for m in messages)
         assert "CHANNEL CONTEXT" not in all_content
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_assistant_messages_prefixed_with_clara(self):
+    @_WORKSPACE_PATCH
+    def test_assistant_messages_prefixed_with_clara(self, _mock):
         pb = _make_prompt_builder()
         channel_msgs = [
             _make_db_message("assistant", "I can help with that!"),
@@ -138,8 +140,8 @@ class TestChannelContext:
 
 
 class TestTokenTrimming:
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_under_budget_no_trimming(self):
+    @_WORKSPACE_PATCH
+    def test_under_budget_no_trimming(self, _mock):
         pb = _make_prompt_builder()
         msgs = [
             _make_db_message("user", "msg1"),
@@ -159,9 +161,9 @@ class TestTokenTrimming:
         # 2 history + 1 current = 3
         assert len(non_system) == 3
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
+    @_WORKSPACE_PATCH
     @patch("mypalclara.core.prompt_builder.get_context_window", return_value=100)
-    def test_over_budget_trims_history(self, mock_ctx):
+    def test_over_budget_trims_history(self, mock_ctx, _mock):
         """With a tiny context window, long messages should get trimmed."""
         pb = _make_prompt_builder()
 
@@ -187,8 +189,8 @@ class TestTokenTrimming:
         # Should have fewer messages than original (system + 4 history + current = 6)
         assert len(messages) < 6
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
-    def test_current_message_never_trimmed(self):
+    @_WORKSPACE_PATCH
+    def test_current_message_never_trimmed(self, _mock):
         """The current user message must always survive trimming."""
         pb = _make_prompt_builder()
         messages = pb.build_prompt(
@@ -201,9 +203,9 @@ class TestTokenTrimming:
         )
         assert messages[-1].content == "important question"
 
-    @patch("mypalclara.core.prompt_builder.PERSONALITY", "You are Clara.")
+    @_WORKSPACE_PATCH
     @patch("mypalclara.core.prompt_builder.get_context_window", return_value=200)
-    def test_channel_context_trimmed_before_history(self, mock_ctx):
+    def test_channel_context_trimmed_before_history(self, mock_ctx, _mock):
         """Channel context should be trimmed before direct history."""
         pb = _make_prompt_builder()
 
