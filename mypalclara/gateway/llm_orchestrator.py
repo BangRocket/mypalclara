@@ -220,6 +220,11 @@ class LLMOrchestrator:
                         content += chunk
                         yield {"type": "chunk", "text": chunk}
 
+                    # Check for NO_REPLY after real streaming completes
+                    if is_no_reply(content):
+                        logger.info(f"[{request_id}] NO_REPLY detected after streaming")
+                        content = ""
+
                     yield {
                         "type": "complete",
                         "text": content,
@@ -236,6 +241,17 @@ class LLMOrchestrator:
                         loop,
                         images=images,
                     )
+
+                # NO_REPLY sentinel — suppress before streaming chunks to client
+                if is_no_reply(content):
+                    logger.info(f"[{request_id}] NO_REPLY sentinel detected, suppressing response")
+                    yield {
+                        "type": "complete",
+                        "text": "",
+                        "tool_count": total_tools_run,
+                        "files": files_to_send,
+                    }
+                    return
 
                 # Check for auto-continue (permission-seeking question)
                 if might_auto_continue and self._should_auto_continue(content):
@@ -369,8 +385,13 @@ class LLMOrchestrator:
 
         final_response = await self._call_main_llm(working_messages, tier, loop)
 
-        async for chunk in self._stream_text(final_response):
-            yield {"type": "chunk", "text": chunk}
+        # NO_REPLY sentinel — suppress before streaming
+        if is_no_reply(final_response):
+            logger.info(f"[{request_id}] NO_REPLY sentinel detected at max iterations")
+            final_response = ""
+        else:
+            async for chunk in self._stream_text(final_response):
+                yield {"type": "chunk", "text": chunk}
 
         yield {
             "type": "complete",
