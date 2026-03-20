@@ -197,6 +197,15 @@ class LLMOrchestrator:
             if not tool_response.has_tool_calls:
                 # No tools - return final response
                 content = tool_response.content or ""
+
+                # Synthesis call: if tools ran but the LLM returned empty content,
+                # make a follow-up call without tools to force a text summary.
+                if not content and total_tools_run > 0:
+                    logger.info(
+                        f"[{request_id}] Empty content after {total_tools_run} tool(s); " "making synthesis call"
+                    )
+                    content = await self._call_main_llm(working_messages, tier, loop)
+
                 messages_for_llm = working_messages
 
                 # Check if auto-continue might be needed
