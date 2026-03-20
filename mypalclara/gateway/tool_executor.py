@@ -515,6 +515,14 @@ class ToolExecutor:
             logger.warning(f"Circuit breaker blocked {tool_name}: {reason}")
             return f"Tool temporarily unavailable: {reason}"
 
+        # Permission check
+        from mypalclara.core.security.tool_permissions import get_permissions
+
+        is_subagent = bool(platform_context and platform_context.get("is_subagent"))
+        if not get_permissions().can_execute(tool_name, user_id, is_subagent=is_subagent):
+            logger.warning(f"Permission denied: {user_id} cannot execute {tool_name}")
+            return f"Error: You don't have permission to use {tool_name}"
+
         start_time = time.time()
         logger.debug(f"Executing {tool_name}")
 
