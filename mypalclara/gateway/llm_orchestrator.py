@@ -57,6 +57,16 @@ MAX_TOOL_RESULT_CHARS = int(os.getenv("GATEWAY_MAX_TOOL_RESULT_CHARS", "50000"))
 #   "xml" - OpenClaw-style system prompt injection (fallback for providers without tool support)
 TOOL_CALL_MODE = os.getenv("TOOL_CALL_MODE", "langchain").lower()
 
+# Sentinel value: when the LLM outputs exactly this, the response is suppressed.
+# Allows Clara to choose silence in group channels after processing begins.
+NO_REPLY_SENTINEL = "NO_REPLY"
+
+
+def is_no_reply(text: str) -> bool:
+    """Return True if text is exactly the NO_REPLY sentinel (whitespace-tolerant)."""
+    return text.strip() == NO_REPLY_SENTINEL
+
+
 # Auto-continue configuration
 AUTO_CONTINUE_ENABLED = os.getenv("AUTO_CONTINUE_ENABLED", "true").lower() == "true"
 AUTO_CONTINUE_MAX = int(os.getenv("AUTO_CONTINUE_MAX", "3"))

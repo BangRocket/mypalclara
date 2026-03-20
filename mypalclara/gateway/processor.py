@@ -23,7 +23,7 @@ from mypalclara.db import SessionLocal
 from mypalclara.db.models import Message
 from mypalclara.db.models import Session as DBSession
 from mypalclara.gateway.channel_summaries import ChannelSummaryManager, get_summary_manager
-from mypalclara.gateway.llm_orchestrator import LLMOrchestrator
+from mypalclara.gateway.llm_orchestrator import LLMOrchestrator, is_no_reply
 from mypalclara.gateway.protocol import (
     MessageRequest,
     ResponseChunk,
@@ -482,6 +482,11 @@ class MessageProcessor:
                     full_text = event["text"]
                     tool_count = event.get("tool_count", 0)
                     files = event.get("files", [])
+
+            # Check for NO_REPLY sentinel — agent chose silence
+            if is_no_reply(full_text):
+                logger.info(f"NO_REPLY sentinel detected for {request.id}, suppressing response")
+                full_text = ""
 
             # Store messages in DB (fast — must complete before response)
             await self._store_messages_db(request, full_text, context)
