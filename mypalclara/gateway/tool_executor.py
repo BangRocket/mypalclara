@@ -456,6 +456,42 @@ class ToolExecutor:
             except Exception as e:
                 logger.warning(f"Failed to get MCP tools: {e}")
 
+        # Add skill tools
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "load_skill",
+                    "description": (
+                        "Load full instructions for a skill by name. " "Use list_skills to see available skills first."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Name of the skill to load",
+                            }
+                        },
+                        "required": ["name"],
+                    },
+                },
+            }
+        )
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_skills",
+                    "description": "List all available skills that can be loaded with load_skill.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                    },
+                },
+            }
+        )
+
         # Add subagent tools
         from mypalclara.core.subagent.tools import make_subagent_tools
 
@@ -575,6 +611,10 @@ class ToolExecutor:
             "send_local_file",
         ):
             self._tool_handlers[name] = self._handle_file_tool
+
+        # Skill tools
+        for name in ("load_skill", "list_skills"):
+            self._tool_handlers[name] = self._handle_skill_tool
 
         # Discord tools
         for name in (
@@ -731,6 +771,36 @@ class ToolExecutor:
             return f"File not found: {filename}"
 
         return f"Unknown file tool: {tool_name}"
+
+    async def _handle_skill_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        user_id: str,
+        channel_id: str | None,
+        files_to_send: list[str],
+        platform_context: dict[str, Any],
+    ) -> str:
+        """Handle skill loading and listing tools."""
+        from mypalclara.core.skills import get_skill_registry
+
+        registry = get_skill_registry()
+
+        if tool_name == "list_skills":
+            names = registry.list_skills()
+            if not names:
+                return "No skills available."
+            return "Available skills:\n" + "\n".join(f"- {name}" for name in names)
+
+        if tool_name == "load_skill":
+            name = arguments.get("name", "")
+            body = registry.load_skill(name)
+            if body is None:
+                available = registry.list_skills()
+                return f"Skill '{name}' not found. Available: {', '.join(available) or 'none'}"
+            return body
+
+        return f"Unknown skill tool: {tool_name}"
 
     async def _handle_discord_tool(
         self,
