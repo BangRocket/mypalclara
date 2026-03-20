@@ -20,7 +20,7 @@ import logging
 import os
 import secrets
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -557,3 +557,141 @@ def get_smithery_server_url(server_name: str) -> str:
         Full server URL
     """
     return f"{SmitheryOAuthClient.SMITHERY_SERVER_BASE}/{server_name}"
+
+
+# --- OAuth 2.1 + PKCE Support for Remote MCP Servers ---
+
+
+@dataclass
+class PKCEChallenge:
+    """PKCE code challenge for OAuth 2.1."""
+
+    verifier: str
+    challenge: str
+    method: str = "S256"
+
+    @classmethod
+    def generate(cls) -> PKCEChallenge:
+        """Generate a new PKCE challenge pair."""
+        verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        return cls(verifier=verifier, challenge=challenge)
+
+
+@dataclass
+class OAuthFlow:
+    """Tracks a pending OAuth authorization flow."""
+
+    server_name: str
+    auth_url: str
+    token_url: str
+    client_id: str
+    redirect_uri: str
+    pkce: PKCEChallenge
+    state: str
+    scopes: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
+
+
+class OAuthManager:
+    """Manages OAuth 2.1 flows for MCP server authentication."""
+
+    def __init__(self, token_dir: Path | None = None) -> None:
+        from mypalclara.core.mcp.models import get_oauth_dir
+
+        self._token_dir = token_dir or get_oauth_dir()
+        self._pending_flows: dict[str, OAuthFlow] = {}
+
+    def start_flow(
+        self,
+        server_name: str,
+        auth_url: str,
+        token_url: str,
+        client_id: str,
+        redirect_uri: str,
+        scopes: list[str] | None = None,
+    ) -> str:
+        """Start an OAuth flow. Returns the state token."""
+        state = secrets.token_urlsafe(32)
+        pkce = PKCEChallenge.generate()
+        flow = OAuthFlow(
+            server_name=server_name,
+            auth_url=auth_url,
+            token_url=token_url,
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            pkce=pkce,
+            state=state,
+            scopes=scopes or [],
+        )
+        self._pending_flows[state] = flow
+        return state
+
+    def get_pending_flow(self, state: str) -> OAuthFlow | None:
+        """Get a pending flow by state token. Returns None if expired."""
+        flow = self._pending_flows.get(state)
+        if flow and datetime.now(timezone.utc) > flow.expires_at:
+            del self._pending_flows[state]
+            return None
+        return flow
+
+    def complete_flow(self, state: str) -> OAuthFlow | None:
+        """Remove and return a pending flow (for token exchange)."""
+        return self._pending_flows.pop(state, None)
+
+    def build_auth_url(self, state: str) -> str | None:
+        """Build the full authorization URL for a pending flow."""
+        flow = self.get_pending_flow(state)
+        if not flow:
+            return None
+        params = {
+            "response_type": "code",
+            "client_id": flow.client_id,
+            "redirect_uri": flow.redirect_uri,
+            "state": state,
+            "code_challenge": flow.pkce.challenge,
+            "code_challenge_method": flow.pkce.method,
+        }
+        if flow.scopes:
+            params["scope"] = " ".join(flow.scopes)
+        return f"{flow.auth_url}?{urlencode(params)}"
+
+    def store_token(self, server_name: str, token_data: dict[str, Any]) -> None:
+        """Store OAuth token data to disk."""
+        self._token_dir.mkdir(parents=True, exist_ok=True)
+        token_path = self._token_dir / f"{server_name}.json"
+        token_data["stored_at"] = datetime.now(timezone.utc).isoformat()
+        with open(token_path, "w") as f:
+            json.dump(token_data, f, indent=2)
+
+    def get_token(self, server_name: str) -> dict[str, Any] | None:
+        """Retrieve stored token data."""
+        token_path = self._token_dir / f"{server_name}.json"
+        if not token_path.exists():
+            return None
+        with open(token_path) as f:
+            return json.load(f)
+
+    def delete_token(self, server_name: str) -> bool:
+        """Delete stored token data."""
+        token_path = self._token_dir / f"{server_name}.json"
+        if token_path.exists():
+            token_path.unlink()
+            return True
+        return False
+
+    def has_valid_token(self, server_name: str) -> bool:
+        """Check if a valid (non-expired) token exists."""
+        token = self.get_token(server_name)
+        if not token:
+            return False
+        expires_at = token.get("expires_at")
+        if expires_at:
+            try:
+                exp = datetime.fromisoformat(expires_at)
+                return datetime.now(timezone.utc) < exp
+            except (ValueError, TypeError):
+                pass
+        # If no expiry info, consider valid
+        return True

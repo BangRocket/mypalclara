@@ -211,9 +211,11 @@ class RemoteServerConfig:
     timeout: int = 30  # Connection timeout in seconds
     retry_count: int = 3  # Number of retries on failure
 
-    # OAuth settings (for Smithery-hosted)
+    # OAuth settings (for Smithery-hosted and OAuth 2.1 remote servers)
     oauth_required: bool = False
     oauth_server_url: str | None = None
+    oauth_client_id: str | None = None
+    oauth_scopes: str | None = None  # Space-separated scopes
 
     # Status tracking
     status: str = "stopped"
@@ -496,6 +498,10 @@ def load_remote_server_config(server_name: str) -> RemoteServerConfig | None:
                     config.oauth_required = metadata["oauth_required"]
                 if metadata.get("oauth_server_url"):
                     config.oauth_server_url = metadata["oauth_server_url"]
+                if metadata.get("oauth_client_id"):
+                    config.oauth_client_id = metadata["oauth_client_id"]
+                if metadata.get("oauth_scopes"):
+                    config.oauth_scopes = metadata["oauth_scopes"]
                 if metadata.get("status"):
                     config.status = metadata["status"]
                 if metadata.get("last_error"):
@@ -555,6 +561,8 @@ def save_remote_server_config(config: RemoteServerConfig, use_standard_format: b
                 "retry_count": config.retry_count,
                 "oauth_required": config.oauth_required,
                 "oauth_server_url": config.oauth_server_url,
+                "oauth_client_id": config.oauth_client_id,
+                "oauth_scopes": config.oauth_scopes,
                 "status": config.status,
                 "last_error": config.last_error,
                 "last_error_at": config.last_error_at,
