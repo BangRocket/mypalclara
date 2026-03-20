@@ -492,6 +492,24 @@ class ToolExecutor:
             }
         )
 
+        # Add prompt scheduler tools
+        try:
+            from mypalclara.services.scheduler.tools import SCHEDULER_TOOLS
+
+            for td in SCHEDULER_TOOLS:
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": td["function"]["name"],
+                            "description": td["function"]["description"],
+                            "parameters": td["function"]["parameters"],
+                        },
+                    }
+                )
+        except Exception as e:
+            logger.debug(f"Could not load scheduler tools: {e}")
+
         # Add subagent tools
         from mypalclara.core.subagent.tools import make_subagent_tools
 
@@ -615,6 +633,10 @@ class ToolExecutor:
         # Skill tools
         for name in ("load_skill", "list_skills"):
             self._tool_handlers[name] = self._handle_skill_tool
+
+        # Scheduler tools
+        for name in ("schedule_task", "schedule_cron", "list_scheduled_tasks", "cancel_scheduled_task"):
+            self._tool_handlers[name] = self._handle_scheduler_tool
 
         # Discord tools
         for name in (
@@ -801,6 +823,27 @@ class ToolExecutor:
             return body
 
         return f"Unknown skill tool: {tool_name}"
+
+    def set_prompt_scheduler(self, scheduler) -> None:
+        """Set the prompt scheduler reference for scheduler tools."""
+        self._prompt_scheduler = scheduler
+
+    async def _handle_scheduler_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        user_id: str,
+        channel_id: str | None,
+        files_to_send: list[str],
+        platform_context: dict[str, Any],
+    ) -> str:
+        """Handle prompt scheduler tools."""
+        from mypalclara.services.scheduler.tools import handle_scheduler_tool
+
+        scheduler = getattr(self, "_prompt_scheduler", None)
+        if not scheduler:
+            return "Error: Prompt scheduler not initialized"
+        return handle_scheduler_tool(tool_name, arguments, scheduler, user_id, channel_id or "internal")
 
     async def _handle_discord_tool(
         self,

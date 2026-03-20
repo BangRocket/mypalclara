@@ -574,6 +574,54 @@ class MessageProcessor:
             logger.exception(f"Error processing {request.id}: {e}")
             raise
 
+    async def process_loopback(self, request: MessageRequest) -> str:
+        """Process a loopback message request without a WebSocket connection.
+
+        Used by the loopback adapter for internal dispatch (scheduler, subagents).
+        Runs the full pipeline but collects the response text instead of streaming.
+
+        Args:
+            request: The incoming message request
+
+        Returns:
+            The full response text.
+        """
+        logger.info(f"Processing loopback message {request.id}: {request.content[:50]}...")
+
+        try:
+            tools = self._tool_executor.get_all_tools() if self._tool_executor else []
+            context = await self._build_context(request, tools=tools)
+
+            images = [att for att in request.attachments if att.type == "image"]
+
+            full_text = ""
+            async for event in self._llm_orchestrator.generate_with_tools(
+                messages=context["messages"],
+                tools=tools,
+                user_id=request.user.id,
+                request_id=request.id,
+                tier=request.tier_override,
+                websocket=None,
+                images=images if images else None,
+            ):
+                event_type = event.get("type")
+                if event_type == "complete":
+                    full_text = event["text"]
+
+            if is_no_reply(full_text):
+                full_text = ""
+
+            await self._store_messages_db(request, full_text, context)
+
+            asyncio.create_task(self._background_memory_ops(request, full_text, context))
+
+            logger.info(f"Loopback response for {request.id}: {len(full_text)} chars")
+            return full_text
+
+        except Exception as e:
+            logger.exception(f"Error processing loopback {request.id}: {e}")
+            return ""
+
     async def _build_context(
         self,
         request: MessageRequest,
@@ -744,6 +792,16 @@ class MessageProcessor:
                     messages.insert(2, SystemMessage(content="\n".join(summary_lines)))
             except Exception as e:
                 logger.debug(f"Could not build tool summaries: {e}")
+
+        # Add skills catalog to system prompt
+        try:
+            from mypalclara.core.skills import get_skill_registry
+
+            skill_catalog = get_skill_registry().format_catalog_for_prompt()
+            if skill_catalog:
+                messages.insert(2, SystemMessage(content=skill_catalog))
+        except Exception as e:
+            logger.debug(f"Could not load skills catalog: {e}")
 
         # Add fired intentions as reminders
         if fired_intentions:
@@ -938,6 +996,10 @@ class MessageProcessor:
             parts.append(
                 "- User messages are prefixed with [DisplayName] for attribution. "
                 "Do NOT mimic this format in your replies."
+            )
+            parts.append(
+                "- In group channels, if the message is not directed at you and doesn't need a response, "
+                "you may output exactly 'NO_REPLY' (nothing else) to stay silent."
             )
 
         # Add attachment info

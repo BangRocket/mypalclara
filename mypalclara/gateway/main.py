@@ -70,8 +70,41 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
     # Initialize processor
     await processor.initialize()
 
+    # Initialize loopback adapter for internal dispatch
+    from mypalclara.gateway.loopback import LoopbackAdapter
+
+    loopback = LoopbackAdapter()
+    loopback.set_processor(lambda req: processor.process_loopback(req))
+
+    # Initialize prompt scheduler (separate from the existing command scheduler)
+    from mypalclara.services.scheduler import Scheduler as PromptScheduler
+
+    async def dispatch_prompt_task(task):
+        """Dispatch a scheduled prompt through the loopback adapter."""
+        await loopback.send(
+            content=task.prompt,
+            user_id=task.user_id,
+            channel_id=task.channel_id,
+            source="scheduler",
+            tier=None,
+        )
+
+    prompt_scheduler = PromptScheduler(dispatch_fn=dispatch_prompt_task)
+    logger.info("Prompt scheduler initialized")
+
+    # Store references for tool access
+    server._loopback = loopback
+    server._prompt_scheduler = prompt_scheduler
+
+    # Wire prompt scheduler into tool executor
+    if processor._tool_executor:
+        processor._tool_executor.set_prompt_scheduler(prompt_scheduler)
+
     # Start scheduler
     await scheduler.start()
+
+    # Start prompt scheduler in background
+    prompt_scheduler_task = asyncio.create_task(prompt_scheduler.run())
 
     # Start server
     await server.start()
@@ -116,6 +149,8 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
 
     # Cleanup
     logger.info("Shutting down gateway...")
+    prompt_scheduler.stop()
+    prompt_scheduler_task.cancel()
     await processor.shutdown()
     await scheduler.stop()
     await server.stop()
