@@ -17,8 +17,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from mypalclara.config.logging import get_logger
-from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
+from mypalclara.core.llm.messages import (
+    AssistantMessage,
+    SystemMessage,
+    ToolResultMessage,
+    UserMessage,
+)
 from mypalclara.core.llm.messages import Message as LLMMessage
+from mypalclara.core.llm.tools.response import ToolCall
 from mypalclara.db import SessionLocal
 from mypalclara.db.models import Message
 from mypalclara.db.models import Session as DBSession
@@ -92,6 +98,51 @@ Key signals:
 - When in doubt and {bot_name} is an active participant, lean toward CLARA
 
 Respond with exactly one word: CLARA or OTHER"""
+
+
+def inject_memory_as_tool_results(
+    messages: list[LLMMessage],
+    memories: list[str],
+    source: str,
+) -> list[LLMMessage]:
+    """Inject memories as synthetic tool-call/tool-result pairs.
+
+    LLMs attend more strongly to tool results than system prompt content.
+    This wraps memories as if they were freshly retrieved by a search_memory
+    tool, improving the model's attention to stored context.
+
+    Args:
+        messages: Current message list (not mutated).
+        memories: List of memory strings (e.g. "User prefers dark mode").
+        source: Label for the memory source (e.g. "user_memories", "proj_memories").
+
+    Returns:
+        New message list with synthetic tool pair inserted before the last message,
+        or the original list unchanged if memories is empty.
+    """
+    if not memories:
+        return messages
+
+    # Build the synthetic pair
+    synthetic_id = f"synthetic_{source}"
+    assistant_msg = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id=synthetic_id,
+                name="search_memory",
+                arguments={"query": "relevant context"},
+            )
+        ],
+    )
+    formatted = f"[{source}]\n" + "\n".join(f"- {m}" for m in memories)
+    tool_result_msg = ToolResultMessage(tool_call_id=synthetic_id, content=formatted)
+
+    # Insert before the last message (which should be the user's current message)
+    result = list(messages)  # shallow copy — don't mutate input
+    result.insert(-1, assistant_msg)
+    result.insert(-1, tool_result_msg)
+    return result
 
 
 def _determine_privacy_scope(channel_type: str) -> str:
@@ -673,6 +724,10 @@ class MessageProcessor:
             privacy_scope=privacy_scope,
             user_id=user_id,
         )
+
+        # Inject memories as synthetic tool results for stronger LLM attention
+        messages = inject_memory_as_tool_results(messages, user_mems, "user_memories")
+        messages = inject_memory_as_tool_results(messages, proj_mems, "project_memories")
 
         # Add gateway context
         last_message_at = recent_msgs[-1].created_at if recent_msgs else None
