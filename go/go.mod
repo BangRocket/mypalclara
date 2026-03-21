@@ -10,5 +10,6 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.8 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
+	github.com/sashabaranov/go-openai v1.41.2 // indirect
 	golang.org/x/sys v0.12.0 // indirect
 )
