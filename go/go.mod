@@ -9,6 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-sqlite3 v1.14.37 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.8 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sashabaranov/go-openai v1.41.2 // indirect
