@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
