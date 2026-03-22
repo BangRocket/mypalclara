@@ -4,16 +4,29 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
 )
 
-// Init loads environment variables from a .env file in the current directory.
-// Missing .env file is silently ignored.
+// Init loads environment variables from .env files.
+// Searches: current directory, executable's directory, and project root.
+// Missing .env files are silently ignored.
 func Init() {
+	// Try current directory first (standard godotenv behavior)
 	_ = godotenv.Load()
+
+	// Also try the executable's directory (for when binary is run from elsewhere)
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		_ = godotenv.Load(filepath.Join(exeDir, ".env"))
+	}
+
+	// Also try common project root locations
+	_ = godotenv.Load("../.env")     // if running from go/ subdir
+	_ = godotenv.Load("../../.env")  // if running from go/bin/
 }
 
 // GetEnv returns the value of the environment variable named by key,
