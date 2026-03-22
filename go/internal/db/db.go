@@ -20,7 +20,7 @@ import (
 func Open() (*sql.DB, error) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "file:clara.db?_journal_mode=WAL&_foreign_keys=1"
+		dsn = "file:clara.db?mode=rwc&_journal_mode=WAL&_foreign_keys=1"
 	}
 
 	db, err := sql.Open("sqlite3", dsn)
