@@ -59,7 +59,7 @@ class TestRetrieverVisibilityFilter:
 
     def _make_retriever(self):
         """Create a MemoryRetriever with mocked dependencies."""
-        from mypalclara.core.memory_retriever import MemoryRetriever
+        from mypalclara.core.memory.retrieval import MemoryRetriever
 
         retriever = MemoryRetriever.__new__(MemoryRetriever)
         retriever.agent_id = "clara"
