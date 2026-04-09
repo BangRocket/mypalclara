@@ -89,10 +89,10 @@ async def get_clara_move(
     # Fetch user memories for context
     user_memories: list[str] = []
     try:
-        from mypalclara.core.memory import ROOK
+        from mypalclara.core.memory import PALACE
 
-        if ROOK:
-            results = ROOK.search(
+        if PALACE:
+            results = PALACE.search(
                 f"playing {request.game_type}",
                 user_id=request.user_id,
                 agent_id="mypalclara",

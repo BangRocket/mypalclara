@@ -11,7 +11,7 @@ def configure_cli_logging() -> Path:
 
     This creates a clean console experience where only conversation
     (You: / Clara:) appears on screen, while all debug/info logs from
-    libraries (mem0, httpx, anthropic, etc.) go to a file.
+    libraries (palace, httpx, anthropic, etc.) go to a file.
 
     Returns:
         Path to the log file (~/.clara/cli.log)
@@ -38,8 +38,8 @@ def configure_cli_logging() -> Path:
         "adapters.cli",
         "config",
         "config.bot",
-        "mem0",
-        "mem0.config",
+        "palace",
+        "palace.config",
         "httpx",
         "anthropic",
         "openai",
