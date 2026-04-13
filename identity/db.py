@@ -84,6 +84,33 @@ class OAuthToken(Base):
     canonical_user = relationship("CanonicalUser", back_populates="oauth_tokens")
 
 
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    code = Column(String, nullable=False, unique=True, index=True)
+    created_by = Column(String, ForeignKey("canonical_users.id"), nullable=True)
+    used_by = Column(String, ForeignKey("canonical_users.id"), nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    canonical_user_id = Column(String, ForeignKey("canonical_users.id"), nullable=False)
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    key_prefix = Column(String, nullable=False)  # First 8 chars for display (e.g., "clara_ab12...")
+    name = Column(String, nullable=False, default="default")
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    canonical_user = relationship("CanonicalUser")
+
+
 _db_url = DATABASE_URL
 if _db_url and _db_url.startswith("postgres://"):
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)

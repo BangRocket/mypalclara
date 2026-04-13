@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clara Account</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f1a;
+  --surface: #1a1a2e;
+  --border: #2a2a4a;
+  --text: #e0e0e0;
+  --muted: #888;
+  --accent: #6a8aba;
+  --accent-hover: #7ea0d0;
+  --green: #2d6a4f;
+  --green-text: #95d5b2;
+  --red: #8b0000;
+  --red-text: #f08080;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.container {
+  width: 100%;
+  max-width: 480px;
+  padding: 40px 20px;
+}
+
+h1 { font-size: 24px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+.subtitle { text-align: center; color: var(--muted); margin-bottom: 32px; font-size: 14px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.label-hint { color: var(--muted); font-weight: 400; }
+
+input[type="text"], input[type="password"] {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 16px;
+  outline: none;
+}
+
+input:focus { border-color: var(--accent); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { background: rgba(255,255,255,0.05); }
+.btn-discord { background: #5865F2; color: white; }
+.btn-discord:hover { background: #4752C4; }
+.btn-google { background: #4285F4; color: white; }
+.btn-google:hover { background: #3367D6; }
+.btn-danger { background: var(--red); color: var(--red-text); }
+.btn-sm { width: auto; padding: 6px 14px; font-size: 13px; }
+
+.btn + .btn { margin-top: 8px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+.msg-error { background: rgba(139,0,0,0.15); border: 1px solid rgba(139,0,0,0.3); color: var(--red-text); }
+.msg-success { background: rgba(45,106,79,0.15); border: 1px solid rgba(45,106,79,0.3); color: var(--green-text); }
+
+.api-key-display {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+
+.api-key-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.api-key-item:last-child { border-bottom: none; }
+.api-key-prefix { font-family: monospace; color: var(--accent); }
+
+.platform-links { display: flex; flex-direction: column; gap: 8px; }
+.platform-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.platform-name { font-weight: 500; }
+.platform-id { color: var(--muted); font-family: monospace; font-size: 12px; }
+
+.hidden { display: none; }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.text-center { text-align: center; }
+.text-muted { color: var(--muted); font-size: 13px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Clara</h1>
+  <p class="subtitle">Your AI companion</p>
+
+  <!-- Register View -->
+  <div id="view-register">
+    <div class="card">
+      <h2>Create Account</h2>
+      <div id="register-error" class="msg msg-error hidden"></div>
+      <label for="invite-code">Invite Code</label>
+      <input type="text" id="invite-code" placeholder="Enter your invite code">
+      <label for="display-name">Display Name</label>
+      <input type="text" id="display-name" placeholder="What should Clara call you?">
+      <button class="btn btn-primary" onclick="register()">Create Account</button>
+      <p class="text-center text-muted mt-4">
+        Already have an account? <a href="#" onclick="showLogin()">Sign in</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Login View -->
+  <div id="view-login" class="hidden">
+    <div class="card">
+      <h2>Sign In</h2>
+      <div id="login-error" class="msg msg-error hidden"></div>
+      <button class="btn btn-discord" onclick="oauthLogin('discord')">Sign in with Discord</button>
+      <button class="btn btn-google" onclick="oauthLogin('google')">Sign in with Google</button>
+      <p class="text-center text-muted mt-4">
+        Need an account? <a href="#" onclick="showRegister()">Register</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Dashboard View -->
+  <div id="view-dashboard" class="hidden">
+    <div class="card">
+      <h2>Welcome, <span id="user-name"></span></h2>
+      <p class="text-muted">Manage your Clara account</p>
+    </div>
+
+    <div class="card">
+      <h2>Linked Platforms</h2>
+      <div id="platform-links" class="platform-links"></div>
+      <div class="mt-2">
+        <button class="btn btn-discord btn-sm" onclick="oauthLink('discord')">Link Discord</button>
+        <button class="btn btn-google btn-sm" onclick="oauthLink('google')">Link Google</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>API Keys</h2>
+      <p class="text-muted" style="margin-bottom:12px">Use API keys to connect Jan or other apps to Clara.</p>
+      <div id="new-key-display" class="hidden">
+        <div class="msg msg-success">New key created! Copy it now — you won't see it again.</div>
+        <div class="api-key-display" id="new-key-value"></div>
+        <button class="btn btn-outline btn-sm" onclick="copyKey()">Copy to Clipboard</button>
+      </div>
+      <div id="api-keys-list"></div>
+      <div class="mt-2">
+        <label for="key-name">Key Name <span class="label-hint">(optional)</span></label>
+        <input type="text" id="key-name" placeholder="e.g., Jan Desktop">
+        <button class="btn btn-primary" onclick="createApiKey()">Generate New Key</button>
+      </div>
+    </div>
+
+    <div class="mt-4 text-center">
+      <a href="#" onclick="logout()">Sign out</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let token = localStorage.getItem('clara_token');
+
+// --- Navigation ---
+function showRegister() {
+  document.getElementById('view-register').classList.remove('hidden');
+  document.getElementById('view-login').classList.add('hidden');
+  document.getElementById('view-dashboard').classList.add('hidden');
+}
+
+function showLogin() {
+  document.getElementById('view-register').classList.add('hidden');
+  document.getElementById('view-login').classList.remove('hidden');
+  document.getElementById('view-dashboard').classList.add('hidden');
+}
+
+function showDashboard() {
+  document.getElementById('view-register').classList.add('hidden');
+  document.getElementById('view-login').classList.add('hidden');
+  document.getElementById('view-dashboard').classList.remove('hidden');
+  loadDashboard();
+}
+
+// --- Auth ---
+async function register() {
+  const code = document.getElementById('invite-code').value.trim();
+  const name = document.getElementById('display-name').value.trim();
+  const errEl = document.getElementById('register-error');
+  errEl.classList.add('hidden');
+
+  if (!code || !name) {
+    errEl.textContent = 'Please fill in both fields';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invite_code: code, display_name: name }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.detail || 'Registration failed';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    token = data.token;
+    localStorage.setItem('clara_token', token);
+    showDashboard();
+  } catch (e) {
+    errEl.textContent = 'Connection failed';
+    errEl.classList.remove('hidden');
+  }
+}
+
+async function oauthLogin(provider) {
+  try {
+    const res = await fetch(`${API}/oauth/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      // Store state for callback
+      localStorage.setItem('clara_oauth_action', 'login');
+      window.location.href = data.url;
+    }
+  } catch (e) {
+    console.error('OAuth failed:', e);
+  }
+}
+
+async function oauthLink(provider) {
+  try {
+    const res = await fetch(`${API}/oauth/authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      localStorage.setItem('clara_oauth_action', 'link');
+      window.location.href = data.url;
+    }
+  } catch (e) {
+    console.error('OAuth link failed:', e);
+  }
+}
+
+function logout() {
+  token = null;
+  localStorage.removeItem('clara_token');
+  showLogin();
+}
+
+// --- Dashboard ---
+async function loadDashboard() {
+  if (!token) return showLogin();
+
+  try {
+    const res = await fetch(`${API}/users/me`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) { logout(); return; }
+    const data = await res.json();
+
+    document.getElementById('user-name').textContent = data.display_name;
+
+    // Platform links
+    const linksEl = document.getElementById('platform-links');
+    if (data.links && data.links.length > 0) {
+      linksEl.innerHTML = data.links.map(l => `
+        <div class="platform-link">
+          <span class="platform-name">${l.platform}</span>
+          <span class="platform-id">${l.display_name || l.platform_user_id}</span>
+        </div>
+      `).join('');
+    } else {
+      linksEl.innerHTML = '<p class="text-muted">No platforms linked yet</p>';
+    }
+
+    // API keys
+    await loadApiKeys();
+  } catch (e) {
+    console.error('Dashboard load failed:', e);
+    logout();
+  }
+}
+
+async function loadApiKeys() {
+  try {
+    const res = await fetch(`${API}/api-keys`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const keys = await res.json();
+
+    const listEl = document.getElementById('api-keys-list');
+    if (keys.length > 0) {
+      listEl.innerHTML = keys.map(k => `
+        <div class="api-key-item">
+          <div>
+            <span class="api-key-prefix">${k.prefix}...</span>
+            <span class="text-muted"> ${k.name}</span>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button>
+        </div>
+      `).join('');
+    } else {
+      listEl.innerHTML = '<p class="text-muted" style="margin-bottom:12px">No API keys yet</p>';
+    }
+  } catch (e) {
+    console.error('Failed to load API keys:', e);
+  }
+}
+
+async function createApiKey() {
+  const name = document.getElementById('key-name').value.trim() || 'default';
+  try {
+    const res = await fetch(`${API}/api-keys`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.key) {
+      document.getElementById('new-key-value').textContent = data.key;
+      document.getElementById('new-key-display').classList.remove('hidden');
+      document.getElementById('key-name').value = '';
+      await loadApiKeys();
+    }
+  } catch (e) {
+    console.error('Failed to create key:', e);
+  }
+}
+
+async function revokeKey(keyId) {
+  if (!confirm('Revoke this API key? Apps using it will stop working.')) return;
+  try {
+    await fetch(`${API}/api-keys/${keyId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    document.getElementById('new-key-display').classList.add('hidden');
+    await loadApiKeys();
+  } catch (e) {
+    console.error('Failed to revoke key:', e);
+  }
+}
+
+function copyKey() {
+  const key = document.getElementById('new-key-value').textContent;
+  navigator.clipboard.writeText(key);
+}
+
+// --- OAuth callback handling ---
+function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const provider = params.get('provider') || localStorage.getItem('clara_oauth_provider') || 'discord';
+
+  if (!code) return false;
+
+  // Exchange code for token
+  fetch(`${API}/oauth/callback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, code }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('clara_token', token);
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+        showDashboard();
+      }
+    })
+    .catch(console.error);
+
+  return true;
+}
+
+// --- Init ---
+if (!handleOAuthCallback()) {
+  if (token) {
+    showDashboard();
+  } else {
+    showRegister();
+  }
+}
+</script>
+</body>
+</html>

@@ -6,15 +6,21 @@ import json
 import logging
 import os
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
 from identity import jwt_service, oauth
 from identity.config import PROVIDERS, SERVICE_SECRET, available_providers
 from identity.db import (
+    ApiKey,
     CanonicalUser,
+    InviteCode,
     OAuthToken,
     PlatformLink,
     gen_uuid,
@@ -42,6 +48,19 @@ class EnsureLinkRequest(BaseModel):
     provider: str
     platform_user_id: str
     display_name: str = "User"
+
+
+class RegisterRequest(BaseModel):
+    invite_code: str
+    display_name: str
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: str = "default"
+
+
+class CreateInviteRequest(BaseModel):
+    expires_days: int | None = 30
 
 
 class UserResponse(BaseModel):
@@ -323,5 +342,212 @@ def create_app() -> FastAPI:
             "dev_mode": os.environ.get("WEB_DEV_MODE") == "true",
             "providers": {p: p in providers for p in PROVIDERS},
         }
+
+    # --- Registration (invite code) ---
+
+    @app.post("/register")
+    async def register(body: RegisterRequest, db: DBSession = Depends(get_db)):
+        """Register a new account using an invite code."""
+
+        invite = db.query(InviteCode).filter(InviteCode.code == body.invite_code).first()
+        if not invite:
+            raise HTTPException(status_code=400, detail="Invalid invite code")
+        if invite.used_by:
+            raise HTTPException(status_code=400, detail="Invite code already used")
+        if invite.expires_at and utcnow() > invite.expires_at:
+            raise HTTPException(status_code=400, detail="Invite code expired")
+
+        user = CanonicalUser(
+            id=gen_uuid(),
+            display_name=body.display_name,
+        )
+        db.add(user)
+        db.flush()
+
+        invite.used_by = user.id
+        invite.used_at = utcnow()
+
+        db.commit()
+        db.refresh(user)
+
+        token = jwt_service.encode(user.id, name=user.display_name)
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "display_name": user.display_name,
+            },
+        }
+
+    # --- API Keys ---
+
+    @app.post("/api-keys")
+    async def create_api_key(
+        body: CreateApiKeyRequest,
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        """Generate a new API key for the authenticated user."""
+        import hashlib
+        import secrets
+
+        raw_key = f"clara_{secrets.token_urlsafe(32)}"
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        key_prefix = raw_key[:12]
+
+        api_key = ApiKey(
+            id=gen_uuid(),
+            canonical_user_id=user.id,
+            key_hash=key_hash,
+            key_prefix=key_prefix,
+            name=body.name,
+        )
+        db.add(api_key)
+        db.commit()
+
+        # Return the raw key ONCE — it's hashed in DB and can't be retrieved
+        return {
+            "key": raw_key,
+            "prefix": key_prefix,
+            "name": body.name,
+            "id": api_key.id,
+        }
+
+    @app.get("/api-keys")
+    async def list_api_keys(
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        """List API keys for the authenticated user (prefixes only)."""
+        keys = (
+            db.query(ApiKey)
+            .filter(ApiKey.canonical_user_id == user.id, ApiKey.is_active == True)  # noqa: E712
+            .order_by(ApiKey.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": k.id,
+                "prefix": k.key_prefix,
+                "name": k.name,
+                "created_at": k.created_at.isoformat() if k.created_at else None,
+                "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            }
+            for k in keys
+        ]
+
+    @app.delete("/api-keys/{key_id}")
+    async def revoke_api_key(
+        key_id: str,
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        """Revoke an API key."""
+        key = (
+            db.query(ApiKey)
+            .filter(ApiKey.id == key_id, ApiKey.canonical_user_id == user.id)
+            .first()
+        )
+        if not key:
+            raise HTTPException(status_code=404, detail="API key not found")
+        key.is_active = False
+        db.commit()
+        return {"ok": True}
+
+    # --- API Key validation (for gateway) ---
+
+    @app.get("/api-keys/validate/{raw_key}")
+    async def validate_api_key(
+        raw_key: str,
+        db: DBSession = Depends(get_db),
+        _=Depends(require_service_secret),
+    ):
+        """Validate an API key and return the user. Called by the gateway."""
+        import hashlib
+
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        api_key = (
+            db.query(ApiKey)
+            .filter(ApiKey.key_hash == key_hash, ApiKey.is_active == True)  # noqa: E712
+            .first()
+        )
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        api_key.last_used_at = utcnow()
+        user = db.query(CanonicalUser).filter(CanonicalUser.id == api_key.canonical_user_id).first()
+        db.commit()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        # Return user + all platform links
+        links = db.query(PlatformLink).filter(PlatformLink.canonical_user_id == user.id).all()
+        return {
+            "user_id": user.id,
+            "display_name": user.display_name,
+            "platform_ids": [link.prefixed_user_id for link in links],
+        }
+
+    # --- Admin: Invite codes ---
+
+    @app.post("/admin/invites")
+    async def create_invite(
+        body: CreateInviteRequest,
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        """Create an invite code (admin only)."""
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+        import secrets
+        from datetime import timedelta
+
+        code = secrets.token_urlsafe(8)
+        expires = None
+        if body.expires_days:
+            expires = utcnow() + timedelta(days=body.expires_days)
+
+        invite = InviteCode(
+            id=gen_uuid(),
+            code=code,
+            created_by=user.id,
+            expires_at=expires,
+        )
+        db.add(invite)
+        db.commit()
+
+        return {"code": code, "expires_at": expires.isoformat() if expires else None}
+
+    @app.get("/admin/invites")
+    async def list_invites(
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        """List all invite codes (admin only)."""
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+        invites = db.query(InviteCode).order_by(InviteCode.created_at.desc()).limit(50).all()
+        return [
+            {
+                "code": i.code,
+                "used_by": i.used_by,
+                "used_at": i.used_at.isoformat() if i.used_at else None,
+                "expires_at": i.expires_at.isoformat() if i.expires_at else None,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+            }
+            for i in invites
+        ]
+
+    # Serve the account frontend
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.is_dir():
+        @app.get("/")
+        async def serve_frontend():
+            return FileResponse(static_dir / "index.html")
+
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     return app
