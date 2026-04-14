@@ -217,6 +217,12 @@ async def root_redirect():
     return RedirectResponse(url="/client/")
 
 
+@app.post("/start")
+async def start():
+    """Bot start endpoint — prebuilt UI calls this first, then connects to /api/offer."""
+    return {"webrtcUrl": "/api/offer"}
+
+
 @app.post("/api/offer")
 async def offer(request: dict, background_tasks: BackgroundTasks):
     """WebRTC offer endpoint — browser calls this to start a voice session."""
