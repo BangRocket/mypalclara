@@ -1,41 +1,52 @@
-# Memory System
+# Memory System (Palace)
 
-Clara uses [mem0](https://github.com/mem0ai/mem0) for persistent semantic memory with vector search and optional graph relationship tracking.
+Clara uses her Memory Palace for persistent semantic memory with layered retrieval, vector search, and optional graph relationship tracking.
 
 ## Overview
 
 The memory system provides:
-- **User Memories** - Personal facts, preferences, and context
-- **Project Memories** - Topic-specific knowledge
-- **Key Memories** - Important facts always included
-- **Graph Relations** - Entity relationships (optional)
+- **Episodes** - Verbatim conversation chunks stored in Qdrant (`clara_episodes`) with topics, emotional tone, significance
+- **Semantic Memories** - Extracted facts and preferences in Qdrant (`clara_memories`)
+- **Knowledge Graph** - Typed entities (person/project/place/concept/event) with temporal relationships in FalkorDB
+- **Narrative Arcs** - Periodic synthesis connecting episodes into ongoing stories
 - **Emotional Context** - Recent conversation patterns
 
 ## Architecture
 
 ### Vector Store
 
-For semantic similarity search:
+Episodes and semantic memories stored via vector similarity search:
 - **Production**: PostgreSQL with pgvector extension
-- **Development**: Qdrant (embedded)
+- **Development**: Qdrant (embedded, collections: `clara_episodes`, `clara_memories`)
 
 ### Graph Store (Optional)
 
 For entity relationship tracking:
 - **FalkorDB** - Redis-compatible graph database with native vector indexing
 
+### Layered Retrieval
+
+Memory retrieval follows a layered approach:
+- **L0 Identity** - Clara's core persona and identity
+- **L1 User Profile** - Stored user facts and preferences
+- **L2 Relevant Context** - Episodes + semantic memories + graph relationships matched to current conversation
+
 ### Configuration
 
 ```bash
-# Required for embeddings
-OPENAI_API_KEY=your-key
+# Embeddings — HuggingFace is the default provider
+HF_TOKEN=your-token  # Required for HuggingFace embeddings
+EMBEDDING_PROVIDER=huggingface  # "huggingface" (default) or "openai"
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5  # Default model (1024 dims)
+EMBEDDING_MODEL_DIMS=1024
+# For OpenAI embeddings: set EMBEDDING_PROVIDER=openai and OPENAI_API_KEY
 
-# Memory extraction LLM
-MEM0_PROVIDER=openrouter  # or anthropic, nanogpt, openai
-MEM0_MODEL=openai/gpt-4o-mini
+# Palace memory extraction LLM
+PALACE_PROVIDER=openrouter  # or anthropic, nanogpt, openai
+PALACE_MODEL=openai/gpt-4o-mini
 
 # Vector store (production)
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
+PALACE_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 # Graph store (optional)
 ENABLE_GRAPH_MEMORY=true
@@ -48,13 +59,20 @@ FALKORDB_GRAPH_NAME=clara
 
 ## Memory Types
 
-### User Memories
+### Episodes
 
-Persistent facts about users:
+Verbatim conversation chunks stored in Qdrant (`clara_episodes`):
+- Tagged with topics, emotional tone, and significance
+- Preserve conversational context for later retrieval
+- Connected into narrative arcs over time
+
+### Semantic Memories
+
+Extracted facts and preferences stored in Qdrant (`clara_memories`):
 - Personal information (name, location, preferences)
 - Work context (job, projects, colleagues)
 - Communication style preferences
-- Historical interactions
+- Tagged with `project_id` for scoped retrieval
 
 Example:
 ```
@@ -63,26 +81,9 @@ Josh works at Anthropic as a software engineer.
 Josh is building a Discord bot called Clara.
 ```
 
-### Project Memories
+### Knowledge Graph Entities
 
-Topic-specific knowledge:
-- Design decisions and constraints
-- Architecture choices
-- Terminology and conventions
-- World-building details (for creative projects)
-
-Tagged with `project_id` for scoped retrieval.
-
-### Key Memories
-
-High-priority facts always included in context:
-- Marked with `is_key: true` metadata
-- Limited to 15 per user
-- Examples: name, critical preferences
-
-### Graph Relations
-
-Entity relationships extracted from conversations:
+Typed entities (person, project, place, concept, event) with temporal relationships in FalkorDB:
 - People and their connections
 - Organizations and members
 - Projects and contributors
@@ -94,9 +95,15 @@ Clara → created by → Josh
 Anthropic → builds → Claude
 ```
 
+### Narrative Arcs
+
+Periodic synthesis connecting episodes into ongoing stories:
+- Links related episodes across sessions
+- Tracks evolving topics and relationships over time
+
 ### Emotional Context
 
-Recent conversation patterns stored as memories:
+Recent conversation patterns:
 - Emotional arc (stable, improving, declining)
 - Energy level (stressed, focused, casual)
 - Conversation endings
@@ -106,20 +113,20 @@ Recent conversation patterns stored as memories:
 
 ### Retrieval
 
-Memories are retrieved during message processing:
+Memories are retrieved via layered retrieval during message processing:
 
-1. **Key memories** - Always fetched (up to 15)
-2. **Semantic search** - Vector similarity on user message
-3. **Participant search** - Memories about mentioned people
-4. **Graph relations** - Related entity connections
+1. **L0 Identity** - Clara's core persona
+2. **L1 User profile** - Stored facts and preferences (up to 15 key memories)
+3. **L2 Context** - Semantic search (vector similarity), episode search, and graph relations matched to current message
 
-### Extraction
+### Extraction & Reflection
 
-After each conversation exchange:
-1. Recent messages sent to mem0
-2. LLM extracts relevant facts
-3. Deduplication with existing memories
-4. Storage with metadata
+At session end, the reflection system:
+1. Extracts episodes from recent conversation
+2. Identifies entities and updates the knowledge graph
+3. Records self-awareness notes
+4. Deduplicates with existing memories
+5. Stores with metadata
 
 ### Memory Limits
 
@@ -152,50 +159,23 @@ from mypalclara.core.memory import MemoryManager
 # Initialize
 manager = MemoryManager.initialize(llm_callable=my_llm)
 
-# Fetch memories
-user_mems, proj_mems, graph_rels = manager.fetch_mem0_context(
+# Build layered prompt context
+context = manager.build_prompt_layered(
     user_id="discord-123",
     project_id="project-uuid",
     user_message="Tell me about Josh"
 )
-
-# Add memories from conversation
-manager.add_to_mem0(
-    user_id="discord-123",
-    project_id="project-uuid",
-    recent_msgs=messages,
-    user_message="I prefer Python over JavaScript",
-    assistant_reply="Noted! I'll prioritize Python examples."
-)
 ```
 
-### Direct mem0 Access
-
-```python
-from mypalclara.config.mem0 import MEM0
-
-# Search memories
-results = MEM0.search(
-    "Josh's work",
-    user_id="discord-123",
-    agent_id="clara"
-)
-
-# Add memory
-MEM0.add(
-    [{"role": "user", "content": "My name is Josh"}],
-    user_id="discord-123",
-    agent_id="clara"
-)
-
-# Get all memories
-all_mems = MEM0.get_all(user_id="discord-123")
-```
+> **Note:** The older `fetch_mem0_context()` and `add_to_mem0()` methods, and the
+> direct `from mypalclara.config.mem0 import MEM0` access pattern, are outdated.
+> Current code uses `build_prompt_layered()` for retrieval and session-end
+> reflection for memory extraction.
 
 ## Best Practices
 
 ### Memory Quality
-- Use high-quality LLM for extraction (gpt-4o-mini minimum)
+- Use high-quality LLM for Palace extraction (gpt-4o-mini minimum)
 - Review bootstrap profile for accuracy
 - Periodically audit key memories
 

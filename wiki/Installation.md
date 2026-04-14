@@ -78,8 +78,8 @@ Edit `.env` with your API keys:
 # Discord bot token (from Discord Developer Portal)
 DISCORD_BOT_TOKEN=your-bot-token
 
-# OpenAI API key (required for mem0 embeddings)
-OPENAI_API_KEY=sk-your-key
+# HF_TOKEN required for HuggingFace embeddings (default provider)
+HF_TOKEN=your-huggingface-token
 
 # Choose LLM provider
 LLM_PROVIDER=anthropic
@@ -177,9 +177,9 @@ python -m mypalclara.adapters.discord
 3. Check bot has permissions in the channel
 4. Review logs for errors
 
-### Memory Errors (mem0)
+### Memory Errors (Palace)
 
-1. Ensure OPENAI_API_KEY is set
+1. Ensure HF_TOKEN is set (for HuggingFace embeddings, default provider)
 2. Check vector store is running (if using Qdrant)
 3. Verify pgvector extension (if using PostgreSQL)
 

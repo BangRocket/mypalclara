@@ -7,8 +7,8 @@ Complete reference for all environment variables and configuration options.
 | Variable | Description |
 |----------|-------------|
 | `DISCORD_BOT_TOKEN` | Discord bot token |
-| `OPENAI_API_KEY` | Required for mem0 embeddings |
-| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai` |
+| `HF_TOKEN` | Required for HuggingFace embeddings (default provider) |
+| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai`, `bedrock`, `azure` |
 
 ## LLM Providers
 
@@ -50,6 +50,28 @@ CUSTOM_OPENAI_BASE_URL=https://api.openai.com/v1
 CUSTOM_OPENAI_MODEL=gpt-4o
 ```
 
+### Amazon Bedrock
+
+```bash
+LLM_PROVIDER=bedrock
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+BEDROCK_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0
+```
+
+Supports IAM role authentication when running on AWS (EC2, Lambda, ECS).
+
+### Azure OpenAI
+
+```bash
+LLM_PROVIDER=azure
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-key
+AZURE_DEPLOYMENT_NAME=your-deployment
+AZURE_API_VERSION=2024-02-15-preview
+```
+
 ## Model Tiers
 
 ### Tier-Specific Models
@@ -83,15 +105,25 @@ AUTO_TIER_SELECTION=true  # Enable automatic tier selection
 MODEL_TIER=mid  # Default tier when not specified
 ```
 
-## Memory System
+## Memory System (Palace)
 
-### mem0 Provider
+### Embedding Provider
 
 ```bash
-MEM0_PROVIDER=openrouter  # or anthropic, nanogpt, openai
-MEM0_MODEL=openai/gpt-4o-mini
-MEM0_API_KEY=override-key  # Optional override
-MEM0_BASE_URL=override-url  # Optional override
+EMBEDDING_PROVIDER=huggingface  # "huggingface" (default) or "openai"
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5  # Default HuggingFace model
+EMBEDDING_MODEL_DIMS=1024  # Must match model output dimensions
+HF_TOKEN=your-token  # Required for HuggingFace embeddings (default)
+# For OpenAI embeddings: set EMBEDDING_PROVIDER=openai and OPENAI_API_KEY
+```
+
+### Palace Provider
+
+```bash
+PALACE_PROVIDER=openrouter  # or anthropic, nanogpt, openai
+PALACE_MODEL=openai/gpt-4o-mini
+PALACE_API_KEY=override-key  # Optional override
+PALACE_BASE_URL=override-url  # Optional override
 ```
 
 ### Graph Memory
@@ -109,7 +141,7 @@ FALKORDB_GRAPH_NAME=clara
 
 ```bash
 # PostgreSQL with pgvector (production)
-MEM0_DATABASE_URL=postgresql://user:pass@host:5432/vectors
+PALACE_DATABASE_URL=postgresql://user:pass@host:5432/vectors
 
 # Qdrant (development) - uses local directory
 # No config needed, uses ./qdrant_data
@@ -292,7 +324,7 @@ CLARA_MAX_FILE_SIZE=52428800  # 50MB
 ```bash
 USER_ID=demo-user  # Single-user identifier
 DEFAULT_PROJECT="Default Project"
-SKIP_PROFILE_LOAD=true  # Skip initial mem0 profile
+SKIP_PROFILE_LOAD=true  # Skip initial Palace profile load
 DEFAULT_TIMEZONE=America/New_York
 ```
 

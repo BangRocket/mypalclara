@@ -12,7 +12,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 ### Architecture
 - [[Architecture]] - System design and components
 - [[Gateway]] - Central WebSocket message hub
-- [[Memory-System]] - Persistent memory with mem0
+- [[Memory-System]] - Persistent memory with Palace
 
 ### Platform Adapters
 - [[Discord-Features]] - Discord bot features and commands
@@ -38,8 +38,8 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Platform | Discord, Teams, CLI adapters |
-| Persistent Memory | mem0 with vector + graph storage |
+| Multi-Platform | Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, CLI, Voice, Web UI |
+| Persistent Memory | Palace with vector + graph storage |
 | MCP Plugins | Install tools from Smithery, npm, GitHub |
 | Code Execution | Docker, Incus containers/VMs |
 | Integrations | GitHub, Google Workspace, Email |
@@ -73,7 +73,7 @@ Welcome to the MyPalClara wiki! Clara is a personal AI assistant with persistent
 | [[Configuration]] | Environment variables reference |
 | [[Architecture]] | System design overview |
 | [[Gateway]] | WebSocket hub, hooks, scheduler |
-| [[Memory-System]] | mem0, vectors, graph store |
+| [[Memory-System]] | Palace, vectors, graph store |
 | [[Discord-Features]] | Discord bot guide |
 | [[Teams-Adapter]] | Microsoft Teams setup |
 | [[CLI-Adapter]] | Terminal interface |

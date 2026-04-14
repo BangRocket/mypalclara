@@ -25,10 +25,14 @@ MyPalClara uses a modular architecture with a central gateway for message proces
 │ Discord Adapter │                      │   MCP Servers       │
 │  (py-cord)      │                      │  (stdio/HTTP)       │
 └─────────────────┘                      └─────────────────────┘
-┌─────────────────┐
-│  Teams Adapter  │
-│  (Bot Framework)│
-└─────────────────┘
+┌─────────────────┐  ┌─────────────────┐
+│  Teams Adapter  │  │  Clara Voice    │
+│  (Bot Framework)│  │  (Pipecat/WebRTC│
+└─────────────────┘  └─────────────────┘
+┌─────────────────┐  ┌─────────────────┐
+│  Slack/Telegram │  │    Web UI       │
+│  Matrix/Signal  │  │  (Rails+React)  │
+└─────────────────┘  └─────────────────┘
 ```
 
 ## Core Components
@@ -61,9 +65,21 @@ Adapters connect platform-specific APIs to the gateway:
 - Adaptive Cards for rich responses
 - Azure Bot Service authentication
 
+**Additional Adapters** (`mypalclara/adapters/`):
+- Slack, Telegram, Matrix, Signal, WhatsApp adapters
+- CLI adapter for terminal interface
+
+**Clara Voice** (`mypalclara/adapters/voice/`):
+- Pi-style browser voice chat via Pipecat + WebRTC
+- Real-time speech-to-text and text-to-speech
+
+**Web UI** (`web-ui/`):
+- Rails API-only backend (BFF, game logic, gateway proxy)
+- React SPA frontend (Vite, TypeScript, TailwindCSS)
+
 ### Memory System
 
-Clara's memory uses mem0 with multiple layers:
+Clara's memory uses Palace with multiple layers:
 - **Vector Store** - pgvector (production) or Qdrant (development)
 - **Graph Store** - FalkorDB for relationship tracking
 - **Session Store** - SQLAlchemy with SQLite or PostgreSQL

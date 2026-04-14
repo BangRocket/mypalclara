@@ -7,7 +7,7 @@ Get Clara running in 5 minutes.
 - Python 3.11+
 - Poetry
 - Discord bot token
-- OpenAI API key (for embeddings)
+- HuggingFace token (for embeddings)
 - LLM provider API key (Anthropic, OpenRouter, etc.)
 
 ## 1. Clone and Install
@@ -31,7 +31,7 @@ Edit `.env` with minimum required settings:
 DISCORD_BOT_TOKEN=your-discord-bot-token
 
 # Embeddings (required for memory)
-OPENAI_API_KEY=sk-your-openai-key
+HF_TOKEN=your-huggingface-token
 
 # LLM Provider (choose one)
 LLM_PROVIDER=anthropic
@@ -73,7 +73,7 @@ poetry run python -m mypalclara.adapters.discord --daemon
 - Verify bot has channel permissions
 
 **Memory errors?**
-- Ensure `OPENAI_API_KEY` is set (required for embeddings)
+- Ensure `HF_TOKEN` is set (required for HuggingFace embeddings, default provider)
 
 **Import errors?**
 ```bash

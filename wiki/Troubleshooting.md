@@ -122,25 +122,26 @@ poetry run python -m mypalclara.adapters.discord --daemon
 
 ## Memory System Issues
 
-### mem0 Initialization Errors
+### Palace Initialization Errors
 
-**Symptom:** `Error initializing mem0` or embedding errors
+**Symptom:** `Error initializing Palace` or embedding errors
 
 **Checklist:**
-1. Verify `OPENAI_API_KEY` is set (required for embeddings)
-2. Check API key has embedding permissions
+1. Verify `HF_TOKEN` is set (required for HuggingFace embeddings, default provider)
+2. Check API token has inference permissions
 3. Verify vector store is accessible
 
 **Debug:**
 ```python
-# Test embeddings
-import openai
-client = openai.OpenAI()
-response = client.embeddings.create(
-    model="text-embedding-3-small",
-    input="test"
+# Test HuggingFace embeddings
+import requests
+HF_TOKEN = "your-token"
+response = requests.post(
+    "https://api-inference.huggingface.co/pipeline/feature-extraction/BAAI/bge-large-en-v1.5",
+    headers={"Authorization": f"Bearer {HF_TOKEN}"},
+    json={"inputs": "test"}
 )
-print(response.data[0].embedding[:5])
+print(response.json()[0][:5])
 ```
 
 ### Qdrant Connection Issues (Development)
@@ -165,7 +166,7 @@ poetry run python -m mypalclara.adapters.discord
 **Solution:**
 ```sql
 -- Connect to database
-psql $MEM0_DATABASE_URL
+psql $PALACE_DATABASE_URL
 
 -- Enable extension
 CREATE EXTENSION IF NOT EXISTS vector;
