@@ -223,9 +223,9 @@ async def start():
     return {"webrtcUrl": "/api/offer"}
 
 
-@app.post("/api/offer")
+@app.api_route("/api/offer", methods=["POST", "PATCH"])
 async def offer(request: dict, background_tasks: BackgroundTasks):
-    """WebRTC offer endpoint — browser calls this to start a voice session."""
+    """WebRTC offer endpoint — POST for new sessions, PATCH for renegotiation."""
     pc_id = request.get("pc_id")
 
     if pc_id and pc_id in pcs_map:
