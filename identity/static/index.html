@@ -284,8 +284,8 @@ async function oauthLogin(provider) {
     });
     const data = await res.json();
     if (data.url) {
-      // Store state for callback
       localStorage.setItem('clara_oauth_action', 'login');
+      localStorage.setItem('clara_oauth_provider', provider);
       window.location.href = data.url;
     }
   } catch (e) {
@@ -303,6 +303,7 @@ async function oauthLink(provider) {
     const data = await res.json();
     if (data.url) {
       localStorage.setItem('clara_oauth_action', 'link');
+      localStorage.setItem('clara_oauth_provider', provider);
       window.location.href = data.url;
     }
   } catch (e) {

@@ -544,10 +544,12 @@ def create_app() -> FastAPI:
     # Serve the account frontend
     static_dir = Path(__file__).parent / "static"
     if static_dir.is_dir():
-        @app.get("/")
-        async def serve_frontend():
-            return FileResponse(static_dir / "index.html")
-
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        # Catch-all: serve index.html for any unmatched GET path
+        # (handles OAuth redirects to /oauth/callback, direct navigation, etc.)
+        @app.get("/{path:path}")
+        async def serve_frontend(path: str = ""):
+            return FileResponse(static_dir / "index.html")
 
     return app
