@@ -75,7 +75,7 @@ services:
   backup:
     build:
       context: .
-      dockerfile: mypalclara/services/backup/Dockerfile
+      dockerfile: services/backup/Dockerfile
     container_name: mypalclara-backup
     environment:
       # PostgreSQL (main database)
@@ -110,7 +110,7 @@ services:
     image: ${REGISTRY:-}mypalclara-gateway:latest
     build:
       context: .
-      dockerfile: Dockerfile.gateway
+      dockerfile: services/gateway/Dockerfile
     container_name: mypalclara-gateway
     profiles:
       - gateway
@@ -188,7 +188,7 @@ services:
     image: ${REGISTRY:-}mypalclara-discord:latest
     build:
       context: .
-      dockerfile: Dockerfile.discord
+      dockerfile: services/discord/Dockerfile
     container_name: mypalclara-discord
     profiles:
       - discord
@@ -316,7 +316,7 @@ services:
     image: ${REGISTRY:-}mypalclara-discord:latest
     build:
       context: .
-      dockerfile: Dockerfile.discord
+      dockerfile: services/discord/Dockerfile
     container_name: mypalclara-discord-adapter
     profiles:
       - adapters
@@ -342,7 +342,8 @@ services:
     image: ${REGISTRY:-}mypalclara-teams:latest
     build:
       context: .
-      dockerfile: Dockerfile.teams
+      dockerfile: services/gateway/Dockerfile
+    command: ["python", "-m", "mypalclara.adapters.teams"]
     container_name: mypalclara-teams-adapter
     profiles:
       - teams
