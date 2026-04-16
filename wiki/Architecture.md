@@ -73,7 +73,7 @@ Adapters connect platform-specific APIs to the gateway:
 - Pi-style browser voice chat via Pipecat + WebRTC
 - Real-time speech-to-text and text-to-speech
 
-**Web UI** (`web-ui/`):
+**Web UI** (`services/web-ui/`):
 - Rails API-only backend (BFF, game logic, gateway proxy)
 - React SPA frontend (Vite, TypeScript, TailwindCSS)
 
