@@ -25,7 +25,7 @@ __all__ = [
 # Startup warning for missing encryption key
 if not is_encryption_configured():
     print(
-        "[email] WARNING: EMAIL_ENCRYPTION_KEY not set. "
+        "[email] WARNING: CREDENTIAL_ENCRYPTION_KEY / EMAIL_ENCRYPTION_KEY not set. "
         "IMAP email accounts cannot be connected. "
         'Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )

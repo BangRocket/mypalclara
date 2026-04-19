@@ -13,6 +13,7 @@ from mypalclara.gateway.api.game import router as game_router
 from mypalclara.gateway.api.graph import router as graph_router
 from mypalclara.gateway.api.intentions import router as intentions_router
 from mypalclara.gateway.api.memories import router as memories_router
+from mypalclara.gateway.api.obsidian import router as obsidian_router
 from mypalclara.gateway.api.sessions import router as sessions_router
 from mypalclara.gateway.api.users import router as users_router
 
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
     app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(game_router, prefix="/api/v1/game", tags=["game"])
+    app.include_router(obsidian_router, prefix="/api/v1/obsidian", tags=["obsidian"])
 
     @app.get("/api/v1/health")
     async def health():

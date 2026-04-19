@@ -320,6 +320,43 @@ export const games = {
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+// ── Obsidian ──────────────────────────────────────────────────────────────
+
+export interface ObsidianSettings {
+  configured: boolean;
+  base_url: string | null;
+  port: number | null;
+  verify_tls: boolean;
+  enabled: boolean;
+  verified_at: string | null;
+  last_error: string | null;
+}
+
+export interface ObsidianUpdate {
+  base_url: string;
+  port?: number | null;
+  api_token?: string;
+  verify_tls?: boolean;
+  enabled?: boolean;
+}
+
+export interface ObsidianTestResult {
+  ok: boolean;
+  detail: string;
+  server?: Record<string, unknown> | null;
+}
+
+export const obsidian = {
+  get: () => request<ObsidianSettings>(`${BASE}/obsidian`),
+  update: (body: ObsidianUpdate) =>
+    request<ObsidianSettings>(`${BASE}/obsidian`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  remove: () => request<{ ok: boolean; removed: boolean }>(`${BASE}/obsidian`, { method: "DELETE" }),
+  test: () => request<ObsidianTestResult>(`${BASE}/obsidian/test`, { method: "POST" }),
+};
+
 // ── Unified API namespace ────────────────────────────────────────────
 
 export const api = {
@@ -331,4 +368,5 @@ export const api = {
   intentions,
   admin,
   games,
+  obsidian,
 };

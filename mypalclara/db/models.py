@@ -781,6 +781,39 @@ class PersonalityTraitHistory(Base):
 
 
 # =============================================================================
+# Obsidian Integration Models
+# =============================================================================
+
+
+class ObsidianAccount(Base):
+    """Per-user Obsidian Local REST API connection.
+
+    Stores the base URL, optional port, and Fernet-encrypted API token
+    used by Clara's Obsidian tool set to talk to a user's vault.
+    """
+
+    __tablename__ = "obsidian_accounts"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, unique=True, index=True)
+
+    base_url = Column(String, nullable=False)
+    port = Column(Integer, nullable=True)
+    api_token = Column(Text, nullable=False)  # Fernet-encrypted
+    verify_tls = Column(Boolean, default=True, nullable=False)
+
+    enabled = Column(Boolean, default=True, nullable=False)
+    verified_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ObsidianAccount user={self.user_id} enabled={self.enabled}>"
+
+
+# =============================================================================
 # MCP (Model Context Protocol) Models
 # =============================================================================
 
@@ -816,6 +849,8 @@ __all__ = [
     "GuildConfig",
     # Per-user VMs
     "UserVM",
+    # Obsidian integration
+    "ObsidianAccount",
     # Memory dynamics (FSRS-6 + Intentions)
     "MemoryDynamics",
     "MemoryAccessLog",

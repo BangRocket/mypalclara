@@ -1,5 +1,6 @@
 import { useAuth } from "@/auth/AuthProvider";
 import { AdapterLinking } from "@/components/settings/AdapterLinking";
+import { ObsidianSettings } from "@/components/settings/ObsidianSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
@@ -35,6 +36,13 @@ export function SettingsPage() {
       <Card>
         <CardContent className="pt-6">
           <AdapterLinking />
+        </CardContent>
+      </Card>
+
+      {/* Obsidian */}
+      <Card>
+        <CardContent className="pt-6">
+          <ObsidianSettings />
         </CardContent>
       </Card>
     </div>

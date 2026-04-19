@@ -56,6 +56,11 @@ Rails.application.routes.draw do
       put "users/me", to: "users#update_me"
       get "users/me/links", to: "users#links"
 
+      get "obsidian", to: "obsidian#show"
+      put "obsidian", to: "obsidian#update"
+      delete "obsidian", to: "obsidian#destroy"
+      post "obsidian/test", to: "obsidian#test"
+
       get "admin/users", to: "admin#users"
       post "admin/users/:id/approve", to: "admin#approve"
       post "admin/users/:id/suspend", to: "admin#suspend"

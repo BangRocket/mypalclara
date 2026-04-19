@@ -17,6 +17,58 @@ from mypalclara.config.logging import get_logger
 logger = get_logger("gateway.tools")
 
 
+# Tool groups that are only exposed to users with a matching per-user config.
+# Each gate maps a tool-name prefix to a sync predicate `user_id -> bool`.
+_USER_GATED_PREFIXES: tuple[tuple[str, Any], ...] = ()
+
+
+def _get_user_gates() -> tuple[tuple[str, Any], ...]:
+    """Lazy-build the gate list so imports stay cheap."""
+    global _USER_GATED_PREFIXES
+    if _USER_GATED_PREFIXES:
+        return _USER_GATED_PREFIXES
+    try:
+        from mypalclara.core.obsidian import has_account as _has_obsidian
+
+        _USER_GATED_PREFIXES = (("obsidian_", _has_obsidian),)
+    except Exception as e:
+        logger.debug(f"Obsidian gate unavailable: {e}")
+        _USER_GATED_PREFIXES = tuple()
+    return _USER_GATED_PREFIXES
+
+
+def _apply_user_gates(tools: list[dict[str, Any]], user_id: str | None) -> list[dict[str, Any]]:
+    """Drop user-gated tools when the user doesn't qualify (or user_id is missing).
+
+    Gates are permissive-by-default: if a predicate raises, we drop the gated tools
+    rather than exposing them, and we log at debug level.
+    """
+    gates = _get_user_gates()
+    if not gates:
+        return tools
+
+    # Evaluate each gate once per user_id.
+    allowed_prefixes: dict[str, bool] = {}
+    for prefix, predicate in gates:
+        if user_id is None:
+            allowed_prefixes[prefix] = False
+            continue
+        try:
+            allowed_prefixes[prefix] = bool(predicate(user_id))
+        except Exception as e:
+            logger.debug(f"User gate {prefix} errored for {user_id}: {e}")
+            allowed_prefixes[prefix] = False
+
+    def keep(tool: dict[str, Any]) -> bool:
+        name = tool.get("function", {}).get("name", "")
+        for prefix, allowed in allowed_prefixes.items():
+            if name.startswith(prefix) and not allowed:
+                return False
+        return True
+
+    return [t for t in tools if keep(t)]
+
+
 class ToolExecutor:
     """Executes tools from various sources.
 
@@ -407,12 +459,15 @@ class ToolExecutor:
         self,
         include_docker: bool = True,
         adapter_capabilities: list[str] | None = None,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get all available tools in OpenAI format.
 
         Args:
             include_docker: Whether to include Docker sandbox tools
             adapter_capabilities: Optional list of adapter capabilities to filter Discord tools
+            user_id: Optional user identifier for per-user tool gating (e.g., Obsidian).
+                If omitted, user-gated tool groups are excluded.
 
         Returns:
             List of tool definitions
@@ -472,6 +527,9 @@ class ToolExecutor:
                     },
                 }
             )
+
+        # Per-user gating (e.g., Obsidian): strip tools for users without an account
+        tools = _apply_user_gates(tools, user_id)
 
         # Deduplicate
         seen = set()

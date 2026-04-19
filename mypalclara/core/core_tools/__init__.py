@@ -109,6 +109,7 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         files_tool,
         mcp_management,
         memory_visibility_tool,
+        obsidian_tool,
         process_tool,
         system_logs,
         terminal_tool,
@@ -223,6 +224,18 @@ async def register_core_tools(registry: "ToolRegistry") -> int:
         logger.info(f"[core_tools] Registered {len(blog_tool.TOOLS)} blog tools")
     except Exception as e:
         logger.warning(f"[core_tools] Failed to register blog_tool: {e}")
+
+    # Initialize and register obsidian_tool
+    try:
+        await obsidian_tool.initialize()
+        for tool_def in obsidian_tool.TOOLS:
+            registry.register(tool_def, source_module=obsidian_tool.MODULE_NAME)
+            count += 1
+        if obsidian_tool.SYSTEM_PROMPT:
+            registry.register_system_prompt(obsidian_tool.MODULE_NAME, obsidian_tool.SYSTEM_PROMPT)
+        logger.info(f"[core_tools] Registered {len(obsidian_tool.TOOLS)} obsidian tools")
+    except Exception as e:
+        logger.warning(f"[core_tools] Failed to register obsidian_tool: {e}")
 
     return count
 
