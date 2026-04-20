@@ -168,3 +168,52 @@ class TestDeleteObsidianConfig:
     def test_unauthenticated_returns_401(self, client):
         resp = client.delete("/users/me/obsidian-config")
         assert resp.status_code == 401
+
+
+class TestUsersMeObsidianStatus:
+    def test_unconfigured_user_shows_defaults(self, client, authed_headers):
+        resp = client.get("/users/me", headers=authed_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["obsidian_configured"] is False
+        assert body["obsidian_api_host"] is None
+        assert body["obsidian_verify_tls"] is True  # default
+
+    def test_configured_user_shows_host_and_verify_flag(self, client, authed_headers):
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "s", "api_host": "example.com", "verify_tls": False},
+        )
+        resp = client.get("/users/me", headers=authed_headers)
+        body = resp.json()
+        assert body["obsidian_configured"] is True
+        assert body["obsidian_api_host"] == "example.com"
+        assert body["obsidian_verify_tls"] is False
+
+    def test_response_never_includes_token(self, client, authed_headers):
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "super-secret-token-value"},
+        )
+        resp = client.get("/users/me", headers=authed_headers)
+        body = resp.json()
+        # Neither key nor value should leak the token
+        forbidden_keys = {
+            "obsidian_token", "api_token", "encrypted_obsidian_token", "token",
+        }
+        assert forbidden_keys.isdisjoint(body.keys()), \
+            f"Token-bearing key leaked: {forbidden_keys & body.keys()}"
+        # Also check no value contains the secret string
+        raw = resp.text
+        assert "super-secret-token-value" not in raw
+
+    def test_after_delete_shows_unconfigured(self, client, authed_headers):
+        client.put("/users/me/obsidian-config", headers=authed_headers,
+                   json={"api_token": "x"})
+        client.delete("/users/me/obsidian-config", headers=authed_headers)
+        resp = client.get("/users/me", headers=authed_headers)
+        body = resp.json()
+        assert body["obsidian_configured"] is False
+        assert body["obsidian_api_host"] is None

@@ -265,6 +265,9 @@ def create_app() -> FastAPI:
             "email": user.primary_email,
             "status": user.status,
             "is_admin": user.is_admin,
+            "obsidian_configured": user.encrypted_obsidian_token is not None,
+            "obsidian_api_host": user.obsidian_api_host,
+            "obsidian_verify_tls": bool(user.obsidian_verify_tls),
             "links": [
                 {
                     "platform": link.platform,
