@@ -1,9 +1,11 @@
+"""Fernet symmetric encryption for per-user secrets at rest."""
+
 from __future__ import annotations
 
 import os
 from functools import lru_cache
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 
 @lru_cache(maxsize=1)
@@ -19,4 +21,7 @@ def encrypt_secret(plaintext: str) -> bytes:
 
 
 def decrypt_secret(ciphertext: bytes) -> str:
-    return get_fernet().decrypt(ciphertext).decode("utf-8")
+    try:
+        return get_fernet().decrypt(ciphertext).decode("utf-8")
+    except InvalidToken as exc:
+        raise ValueError("Decryption failed — ciphertext tampered or key mismatch") from exc

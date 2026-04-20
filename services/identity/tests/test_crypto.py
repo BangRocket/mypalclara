@@ -19,3 +19,11 @@ def test_missing_key_raises(monkeypatch):
     get_fernet.cache_clear()
     with pytest.raises(RuntimeError, match="SECRETS_ENCRYPTION_KEY"):
         encrypt_secret("x")
+
+
+def test_tampered_ciphertext_raises(monkeypatch):
+    key = Fernet.generate_key().decode()
+    monkeypatch.setenv("SECRETS_ENCRYPTION_KEY", key)
+    get_fernet.cache_clear()
+    with pytest.raises(ValueError, match="Decryption failed"):
+        decrypt_secret(b"not-a-valid-ciphertext")
