@@ -1,6 +1,5 @@
 """Tests for the idempotent Obsidian columns migration helper."""
 
-import pytest
 from sqlalchemy import create_engine, inspect, text
 
 from identity.db import Base
