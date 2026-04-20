@@ -293,6 +293,18 @@ def create_app() -> FastAPI:
             "verify_tls": user.obsidian_verify_tls,
         }
 
+    @app.delete("/users/me/obsidian-config")
+    def delete_obsidian_config(
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        user.encrypted_obsidian_token = None
+        user.obsidian_api_host = None
+        user.obsidian_verify_tls = True
+        user.obsidian_updated_at = utcnow()
+        db.commit()
+        return {"configured": False}
+
     @app.get("/users/by-platform/{provider}/{platform_user_id}")
     async def get_user_by_platform(
         provider: str,

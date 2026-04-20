@@ -135,3 +135,36 @@ class TestPutObsidianConfig:
             json={"api_token": "x"},
         )
         assert resp.status_code == 401
+
+
+class TestDeleteObsidianConfig:
+    def test_clears_all_obsidian_fields(self, client, authed_headers, user, db_session):
+        # First configure
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "x", "api_host": "h.example", "verify_tls": False},
+        )
+        # Now delete
+        resp = client.delete(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"configured": False}
+
+        db_session.refresh(user)
+        assert user.encrypted_obsidian_token is None
+        assert user.obsidian_api_host is None
+        assert user.obsidian_verify_tls is True  # reset to default
+        assert user.obsidian_updated_at is not None  # touched
+
+    def test_delete_when_not_configured_is_noop(self, client, authed_headers, user, db_session):
+        # User has never configured Obsidian
+        resp = client.delete("/users/me/obsidian-config", headers=authed_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"configured": False}
+
+    def test_unauthenticated_returns_401(self, client):
+        resp = client.delete("/users/me/obsidian-config")
+        assert resp.status_code == 401
