@@ -217,3 +217,73 @@ class TestUsersMeObsidianStatus:
         body = resp.json()
         assert body["obsidian_configured"] is False
         assert body["obsidian_api_host"] is None
+
+
+class TestServiceAuthObsidianToken:
+    def test_returns_decrypted_token_for_configured_user(
+        self, client, authed_headers, user
+    ):
+        # User configures via browser-auth
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "the-real-token", "api_host": "h.example",
+                  "verify_tls": False},
+        )
+        # Gateway fetches via service-auth
+        resp = client.get(f"/users/{user.id}/obsidian-token")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "api_token": "the-real-token",
+            "api_host": "h.example",
+            "verify_tls": False,
+        }
+
+    def test_returns_default_host_when_host_unset(
+        self, client, authed_headers, user
+    ):
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "x"},  # no api_host, no verify_tls
+        )
+        resp = client.get(f"/users/{user.id}/obsidian-token")
+        body = resp.json()
+        assert body["api_host"] == "obsidian.shmp.app"
+        assert body["verify_tls"] is True
+
+    def test_returns_404_when_not_configured(self, client, user):
+        resp = client.get(f"/users/{user.id}/obsidian-token")
+        assert resp.status_code == 404
+
+    def test_returns_404_for_unknown_user(self, client):
+        resp = client.get("/users/nonexistent-id-xxx/obsidian-token")
+        assert resp.status_code == 404
+
+    def test_rejects_wrong_service_secret_when_enforced(
+        self, client, authed_headers, user, monkeypatch
+    ):
+        # Configure first
+        client.put(
+            "/users/me/obsidian-config",
+            headers=authed_headers,
+            json={"api_token": "x"},
+        )
+        # Enforce a service secret — monkeypatch at the app module level
+        # (require_service_secret reads identity.config.SERVICE_SECRET)
+        import identity.app as app_mod
+        monkeypatch.setattr(app_mod, "SERVICE_SECRET", "correct-secret")
+
+        # Wrong secret → 401
+        resp = client.get(
+            f"/users/{user.id}/obsidian-token",
+            headers={"X-Service-Secret": "wrong"},
+        )
+        assert resp.status_code == 401
+
+        # Correct secret → 200
+        resp = client.get(
+            f"/users/{user.id}/obsidian-token",
+            headers={"X-Service-Secret": "correct-secret"},
+        )
+        assert resp.status_code == 200

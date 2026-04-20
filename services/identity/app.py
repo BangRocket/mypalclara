@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from identity import jwt_service, oauth
 from identity.config import PROVIDERS, SERVICE_SECRET, available_providers
-from identity.crypto import encrypt_secret
+from identity.crypto import decrypt_secret, encrypt_secret
 from identity.db import (
     ApiKey,
     CanonicalUser,
@@ -331,6 +331,21 @@ def create_app() -> FastAPI:
             "display_name": user.display_name,
             "avatar_url": user.avatar_url,
             "email": user.primary_email,
+        }
+
+    @app.get("/users/{canonical_user_id}/obsidian-token")
+    def get_obsidian_token_internal(
+        canonical_user_id: str,
+        _=Depends(require_service_secret),
+        db: DBSession = Depends(get_db),
+    ):
+        user = db.query(CanonicalUser).filter_by(id=canonical_user_id).first()
+        if not user or user.encrypted_obsidian_token is None:
+            raise HTTPException(status_code=404, detail="Obsidian not configured")
+        return {
+            "api_token": decrypt_secret(user.encrypted_obsidian_token),
+            "api_host": user.obsidian_api_host or "obsidian.shmp.app",
+            "verify_tls": bool(user.obsidian_verify_tls),
         }
 
     @app.post("/users/ensure-link")
