@@ -190,6 +190,24 @@ def find_or_create_user(
 
 
 def create_app() -> FastAPI:
+    # Ensure schema + Obsidian column migration have run. Safe to call on every
+    # boot: init_db is idempotent, and migrate_obsidian ALTER TABLEs are guarded
+    # by column-existence checks. Running here (instead of only in main.main)
+    # covers uvicorn --factory and any other non-main entry point. Failures are
+    # logged but never fatal — tests that use an in-memory engine via
+    # dependency overrides would otherwise try to hit a real DB here.
+    try:
+        from identity.db import engine as _identity_engine
+        from identity.db import init_db as _init_db
+        from identity.scripts.migrate_obsidian_columns import migrate as _migrate_obsidian
+
+        _init_db()
+        _migrate_obsidian(_identity_engine)
+    except Exception as e:
+        logging.getLogger("identity.app").warning(
+            "Identity schema init/migration skipped at app startup: %s", e
+        )
+
     app = FastAPI(
         title="Clara Identity Service",
         description="OAuth and user identity management",
