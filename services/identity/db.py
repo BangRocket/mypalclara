@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    LargeBinary,
     String,
     Text,
     create_engine,
@@ -40,6 +41,10 @@ class CanonicalUser(Base):
     avatar_url = Column(String, nullable=True)
     status = Column(String, default="active", server_default="active", nullable=False)
     is_admin = Column(Boolean, default=False, server_default="0", nullable=False)
+    encrypted_obsidian_token = Column(LargeBinary, nullable=True)
+    obsidian_api_host = Column(Text, nullable=True)
+    obsidian_verify_tls = Column(Boolean, default=True, server_default="1", nullable=False)
+    obsidian_updated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
