@@ -12,11 +12,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
 from identity import jwt_service, oauth
 from identity.config import PROVIDERS, SERVICE_SECRET, available_providers
+from identity.crypto import encrypt_secret
 from identity.db import (
     ApiKey,
     CanonicalUser,
@@ -61,6 +62,12 @@ class CreateApiKeyRequest(BaseModel):
 
 class CreateInviteRequest(BaseModel):
     expires_days: int | None = 30
+
+
+class ObsidianConfigIn(BaseModel):
+    api_token: str = Field(..., min_length=1)
+    api_host: str | None = None
+    verify_tls: bool = True
 
 
 class UserResponse(BaseModel):
@@ -267,6 +274,23 @@ def create_app() -> FastAPI:
                 }
                 for link in links
             ],
+        }
+
+    @app.put("/users/me/obsidian-config")
+    def put_obsidian_config(
+        payload: ObsidianConfigIn,
+        user: CanonicalUser = Depends(get_current_user_from_jwt),
+        db: DBSession = Depends(get_db),
+    ):
+        user.encrypted_obsidian_token = encrypt_secret(payload.api_token)
+        user.obsidian_api_host = payload.api_host or "obsidian.shmp.app"
+        user.obsidian_verify_tls = payload.verify_tls
+        user.obsidian_updated_at = utcnow()
+        db.commit()
+        return {
+            "configured": True,
+            "api_host": user.obsidian_api_host,
+            "verify_tls": user.obsidian_verify_tls,
         }
 
     @app.get("/users/by-platform/{provider}/{platform_user_id}")
