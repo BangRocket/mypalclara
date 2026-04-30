@@ -8,7 +8,7 @@ Complete reference for all environment variables and configuration options.
 |----------|-------------|
 | `DISCORD_BOT_TOKEN` | Discord bot token |
 | `HF_TOKEN` | Required for HuggingFace embeddings (default provider) |
-| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai`, `bedrock`, `azure` |
+| `LLM_PROVIDER` | LLM provider: `openrouter`, `nanogpt`, `anthropic`, `openai`, `kimi`, `bedrock`, `azure` |
 
 ## LLM Providers
 
@@ -48,6 +48,15 @@ LLM_PROVIDER=openai
 CUSTOM_OPENAI_API_KEY=your-key
 CUSTOM_OPENAI_BASE_URL=https://api.openai.com/v1
 CUSTOM_OPENAI_MODEL=gpt-4o
+```
+
+### Kimi / Moonshot
+
+```bash
+LLM_PROVIDER=kimi
+KIMI_API_KEY=your-key  # or MOONSHOT_API_KEY
+KIMI_MODEL=kimi-k2.6
+KIMI_BASE_URL=https://api.moonshot.ai/v1  # Optional
 ```
 
 ### Amazon Bedrock
@@ -96,6 +105,11 @@ NANOGPT_MODEL_LOW=anthropic/claude-3-5-haiku
 CUSTOM_OPENAI_MODEL_HIGH=gpt-4-turbo
 CUSTOM_OPENAI_MODEL_MID=gpt-4o
 CUSTOM_OPENAI_MODEL_LOW=gpt-4o-mini
+
+# Kimi
+KIMI_MODEL_HIGH=kimi-k2.6
+KIMI_MODEL_MID=kimi-k2.6
+KIMI_MODEL_LOW=kimi-k2.6
 ```
 
 ### Auto-Tier Selection

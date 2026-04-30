@@ -139,6 +139,10 @@ services:
       - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
       - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-https://api.openai.com/v1}
       - CUSTOM_OPENAI_MODEL=${CUSTOM_OPENAI_MODEL:-gpt-4o}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - KIMI_BASE_URL=${KIMI_BASE_URL:-https://api.moonshot.ai/v1}
+      - KIMI_MODEL=${KIMI_MODEL:-kimi-k2.6}
       # OpenAI (for embeddings)
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # PostgreSQL
@@ -234,6 +238,14 @@ services:
       - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
       - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-https://api.openai.com/v1}
       - CUSTOM_OPENAI_MODEL=${CUSTOM_OPENAI_MODEL:-gpt-4o}
+      # Kimi / Moonshot (when LLM_PROVIDER=kimi)
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - KIMI_BASE_URL=${KIMI_BASE_URL:-https://api.moonshot.ai/v1}
+      - KIMI_MODEL=${KIMI_MODEL:-kimi-k2.6}
+      - KIMI_MODEL_HIGH=${KIMI_MODEL_HIGH:-kimi-k2.6}
+      - KIMI_MODEL_MID=${KIMI_MODEL_MID:-kimi-k2.6}
+      - KIMI_MODEL_LOW=${KIMI_MODEL_LOW:-kimi-k2.6}
       # Tool calling overrides (optional)
       - TOOL_API_KEY=${TOOL_API_KEY:-}
       - TOOL_BASE_URL=${TOOL_BASE_URL:-}
