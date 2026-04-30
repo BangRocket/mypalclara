@@ -18,13 +18,15 @@ from mypalclara.core.llm import (
     make_llm,
     make_llm_streaming,
 )
-from mypalclara.core.llm.messages import SystemMessage, UserMessage
+from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, ToolResultMessage, UserMessage
 from mypalclara.core.llm.providers import (
     DirectAnthropicProvider,
+    DirectKimiProvider,
     DirectOpenAIProvider,
     LangChainProvider,
     ProviderRegistry,
 )
+from mypalclara.core.llm.tools.formats import messages_to_kimi
 
 
 class TestModelTier:
@@ -112,6 +114,22 @@ class TestLLMConfig:
         assert config.extra_headers is not None
         assert "HTTP-Referer" in config.extra_headers
 
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "kimi",
+            "KIMI_API_KEY": "kimi-key",
+            "KIMI_MODEL": "kimi-k2.6",
+        },
+    )
+    def test_config_from_env_kimi(self):
+        """Test loading config from environment for Kimi."""
+        config = LLMConfig.from_env()
+        assert config.provider == "kimi"
+        assert config.api_key == "kimi-key"
+        assert config.base_url == "https://api.moonshot.ai/v1"
+        assert config.model == "kimi-k2.6"
+
     def test_with_tier(self):
         """Test creating config with different tier."""
         config = LLMConfig(provider="anthropic", model="claude-sonnet-4-5")
@@ -172,6 +190,11 @@ class TestProviderRegistry:
         """Test getting direct OpenAI provider."""
         provider = get_provider("direct_openai")
         assert isinstance(provider, DirectOpenAIProvider)
+
+    def test_get_direct_kimi_provider(self):
+        """Test getting direct Kimi provider."""
+        provider = get_provider("direct_kimi")
+        assert isinstance(provider, DirectKimiProvider)
 
     def test_provider_caching(self):
         """Test providers are cached."""
@@ -260,6 +283,32 @@ class TestToolCall:
         assert call.arguments == {"query": "test"}
 
 
+class TestKimiFormatting:
+    """Tests for Kimi-specific message formatting."""
+
+    def test_tool_result_includes_tool_name(self):
+        """Kimi tool result messages include name reconstructed from prior call."""
+        messages = [
+            UserMessage(content="Search"),
+            AssistantMessage(
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        name="web_search",
+                        arguments={"query": "test"},
+                    )
+                ]
+            ),
+            ToolResultMessage(tool_call_id="call_123", content="result"),
+        ]
+
+        converted = messages_to_kimi(messages)
+
+        assert converted[2]["role"] == "tool"
+        assert converted[2]["tool_call_id"] == "call_123"
+        assert converted[2]["name"] == "web_search"
+
+
 class TestTierFunctions:
     """Tests for tier-related functions."""
 
@@ -328,6 +377,21 @@ class TestTierFunctions:
         assert get_model_for_tier("high", "azure") == "gpt-4-turbo"
         assert get_model_for_tier("mid", "azure") == "gpt-4o"
         assert get_model_for_tier("low", "azure") == "gpt-4o-mini"
+
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "kimi",
+            "KIMI_MODEL_HIGH": "kimi-k2.6",
+            "KIMI_MODEL_MID": "kimi-k2.6",
+            "KIMI_MODEL_LOW": "kimi-k2.6",
+        },
+    )
+    def test_get_model_for_tier_kimi(self):
+        """Test getting model for Kimi provider tiers."""
+        assert get_model_for_tier("high", "kimi") == "kimi-k2.6"
+        assert get_model_for_tier("mid", "kimi") == "kimi-k2.6"
+        assert get_model_for_tier("low", "kimi") == "kimi-k2.6"
 
 
 class TestCompatFunctions:
@@ -406,6 +470,7 @@ class TestUnifiedToolCalling:
             mock_response.tool_calls = None
 
             mock_bound_model.invoke.return_value = mock_response
+            mock_model.invoke.return_value = mock_response
             mock_model.bind_tools.return_value = mock_bound_model
             mock_chat_openai.return_value = mock_model
 
@@ -716,7 +781,7 @@ class TestDirectAnthropicProvider:
 
         # Test - need fresh provider to pick up mock
         provider = DirectAnthropicProvider()
-        provider._client = None  # Reset cached client
+        provider._clients.clear()  # Reset cached clients
         config = LLMConfig(
             provider="anthropic",
             model="claude-sonnet-4-5",
@@ -743,7 +808,7 @@ class TestDirectAnthropicProvider:
         mock_anthropic.return_value = mock_client
 
         provider = DirectAnthropicProvider()
-        provider._client = None
+        provider._clients.clear()
         config = LLMConfig(
             provider="anthropic",
             model="claude-sonnet-4-5",
@@ -775,7 +840,7 @@ class TestDirectAnthropicProvider:
         mock_anthropic.return_value = mock_client
 
         provider = DirectAnthropicProvider()
-        provider._client = None
+        provider._clients.clear()
         config = LLMConfig(
             provider="anthropic",
             model="claude-sonnet-4-5",
@@ -816,7 +881,7 @@ class TestDirectAnthropicProvider:
         mock_anthropic.return_value = mock_client
 
         provider = DirectAnthropicProvider()
-        provider._client = None
+        provider._clients.clear()
         config = LLMConfig(
             provider="anthropic",
             model="claude-sonnet-4-5",
