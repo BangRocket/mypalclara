@@ -77,10 +77,17 @@ class TestLLMConfig:
     def test_config_defaults(self):
         """Test config default values."""
         config = LLMConfig(provider="openrouter", model="gpt-4")
-        assert config.max_tokens == 4096
+        # Default raised from 4096 → 16384 to give Claude room to finish
+        # responses without truncation; below the 16K streaming threshold.
+        assert config.max_tokens == 16384
         assert config.temperature == 0.0
         assert config.tier is None
         assert config.extra_headers is None
+        # New Anthropic-targeted fields default off / on as appropriate.
+        assert config.thinking is None
+        assert config.effort is None
+        assert config.drop_sampling_params is False
+        assert config.cache_system is True
 
     @patch.dict(
         "os.environ",
@@ -452,8 +459,14 @@ class TestUnifiedToolCalling:
         llm = make_llm_with_tools_unified(tier=ModelTier.HIGH)
         assert callable(llm)
 
+    @patch.dict("os.environ", {"LLM_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "test"})
     def test_unified_returns_tool_response(self):
-        """Test unified function returns ToolResponse object."""
+        """Test unified function returns ToolResponse object.
+
+        Pinned to openrouter so the call routes through LangChain (the
+        path being mocked); when LLM_PROVIDER=anthropic, requests now
+        bypass LangChain in favor of DirectAnthropicProvider.
+        """
         langchain_openai = pytest.importorskip("langchain_openai")
         from mypalclara.core.llm import make_llm_with_tools_unified
         from mypalclara.core.llm.providers import langchain
@@ -483,8 +496,12 @@ class TestUnifiedToolCalling:
             assert response.content == "Test response"
             assert not response.has_tool_calls
 
+    @patch.dict("os.environ", {"LLM_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "test"})
     def test_unified_handles_tool_calls(self):
-        """Test unified function handles tool calls correctly."""
+        """Test unified function handles tool calls correctly.
+
+        Pinned to openrouter — see ``test_unified_returns_tool_response``.
+        """
         langchain_openai = pytest.importorskip("langchain_openai")
         from mypalclara.core.llm import make_llm_with_tools_unified
         from mypalclara.core.llm.providers import langchain
@@ -770,10 +787,12 @@ class TestDirectAnthropicProvider:
     @patch("anthropic.Anthropic")
     def test_complete(self, mock_anthropic):
         """Test complete() with direct Anthropic SDK."""
-        # Setup mock
+        # Setup mock — content blocks must have type="text" because the
+        # provider now filters by block type (matches real SDK shape).
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_content_block = MagicMock()
+        mock_content_block.type = "text"
         mock_content_block.text = "Hello from Claude direct!"
         mock_response.content = [mock_content_block]
         mock_client.messages.create.return_value = mock_response
@@ -798,10 +817,11 @@ class TestDirectAnthropicProvider:
 
     @patch("anthropic.Anthropic")
     def test_complete_with_system_message(self, mock_anthropic):
-        """Test complete() extracts system messages correctly."""
+        """Test complete() extracts system messages as cache-eligible blocks."""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_content_block = MagicMock()
+        mock_content_block.type = "text"
         mock_content_block.text = "Response"
         mock_response.content = [mock_content_block]
         mock_client.messages.create.return_value = mock_response
@@ -823,9 +843,16 @@ class TestDirectAnthropicProvider:
             config,
         )
 
-        # Verify system was passed separately
+        # System is now passed as a list of typed blocks so the persona
+        # block can carry cache_control. The first (and only) block here
+        # should match the system message text and be cache-marked.
         call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs.get("system") == "You are helpful"
+        system_blocks = call_kwargs.get("system")
+        assert isinstance(system_blocks, list)
+        assert len(system_blocks) == 1
+        assert system_blocks[0]["type"] == "text"
+        assert system_blocks[0]["text"] == "You are helpful"
+        assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
         # Messages should not contain system
         assert all(m.get("role") != "system" for m in call_kwargs["messages"])
 
