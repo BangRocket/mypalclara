@@ -17,7 +17,7 @@ class TestFetchWithPrivacyScope:
 
     def _make_memory_manager(self):
         """Create a MemoryManager with a mocked _memory_retriever."""
-        from mypalclara.core.memory_manager import MemoryManager
+        from mypalclara.core.memory.routed import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
         mm._memory_retriever = MagicMock()

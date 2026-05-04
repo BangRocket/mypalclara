@@ -89,7 +89,7 @@ async def get_clara_move(
     # Fetch user memories for context
     user_memories: list[str] = []
     try:
-        from mypalclara.core.memory import PALACE
+        from mypalclara.core.memory.routed import PALACE
 
         if PALACE:
             results = PALACE.search(
