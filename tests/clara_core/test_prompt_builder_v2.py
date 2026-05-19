@@ -34,6 +34,11 @@ class TestPromptModes:
         assert messages[-1].content == "hi"
 
     def test_none_mode_system_message_has_bot_name(self):
+        # The bot name is workspace/env-dependent (BOT_NAME resolves from the
+        # persona file or the BOT_NAME env var), so assert against the actual
+        # resolved name rather than hard-coding it.
+        from mypalclara.config.bot import BOT_NAME
+
         builder = self._make_builder()
         messages = builder.build_prompt(
             user_mems=[],
@@ -45,7 +50,7 @@ class TestPromptModes:
         )
         # System message should mention the bot name
         assert isinstance(messages[0], SystemMessage)
-        assert "Clara" in messages[0].content
+        assert BOT_NAME in messages[0].content
 
     def test_none_mode_ignores_memories(self):
         builder = self._make_builder()
