@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from mypalclara.core.platform import PlatformAdapter, PlatformContext, PlatformMessage
+from mypalclara.client_common.platform import PlatformAdapter, PlatformContext, PlatformMessage
 
 if TYPE_CHECKING:
     import discord

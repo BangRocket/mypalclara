@@ -122,3 +122,42 @@ def test_client_does_not_import_gateway_internals():
     importers = _client_gateway_importers()
     unexpected = importers - KNOWN_CLIENT_GATEWAY_IMPORTS
     assert not unexpected, f"Client modules importing gateway internals: {sorted(unexpected)}"
+
+
+# --- Client must not import shared code relocated to client_common (Phase 2c, sub-plan 1) ---
+
+# Client-side directories (under mypalclara/) scanned for relocated-shared-code imports.
+CLIENT_SHARED_DIRS = ["adapters", "web", "services/voice"]
+
+# Engine modules whose client-used symbols now live in mypalclara.client_common.
+FORBIDDEN_SHARED_MODULES = {"mypalclara.core.platform", "mypalclara.tools._base"}
+# Engine module → names the client must no longer import from it (the rest are Sub-plan 3).
+FORBIDDEN_SHARED_NAMES = {"mypalclara.db.models": {"gen_uuid"}}
+
+
+def _iter_client_shared_files():
+    for pkg in CLIENT_SHARED_DIRS:
+        base = PKG_ROOT / pkg
+        if not base.exists():
+            continue
+        yield from base.rglob("*.py")
+
+
+def test_client_does_not_import_relocated_shared_code():
+    violations: list[str] = []
+    for path in _iter_client_shared_files():
+        rel = path.relative_to(PKG_ROOT).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in FORBIDDEN_SHARED_MODULES:
+                    violations.append(f"{rel}: imports {node.module}")
+                bad = FORBIDDEN_SHARED_NAMES.get(node.module, set())
+                for alias in node.names:
+                    if alias.name in bad:
+                        violations.append(f"{rel}: imports {alias.name} from {node.module}")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_SHARED_MODULES:
+                        violations.append(f"{rel}: imports {alias.name}")
+    assert not violations, "Client imports relocated shared code from engine:\n" + "\n".join(violations)

@@ -20,7 +20,7 @@ from mypalclara.adapters.cli.shell_executor import (
     classify_command,
     execute_shell,
 )
-from mypalclara.tools._base import ToolContext, ToolDef
+from mypalclara.client_common.toolspec import ToolContext, ToolDef
 
 MODULE_NAME = "cli_tools"
 MODULE_VERSION = "0.2.0"

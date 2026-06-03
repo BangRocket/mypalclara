@@ -508,7 +508,7 @@ class CommandDispatcher:
                     canonical_user_id = target_link.canonical_user_id
                 else:
                     # Create new canonical user and link for target
-                    from mypalclara.db.models import gen_uuid
+                    from mypalclara.client_common.ids import gen_uuid
 
                     canonical_user_id = gen_uuid()
                     canonical_user = CanonicalUser(
