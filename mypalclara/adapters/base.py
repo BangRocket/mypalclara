@@ -238,6 +238,7 @@ class GatewayClient(ABC):
 
         self.node_id = f"{platform}-{uuid.uuid4().hex[:8]}"
         self.session_id: str | None = None
+        self.adapter_token: str | None = None
 
         # Reconnection settings
         self.auto_reconnect = auto_reconnect
@@ -257,6 +258,15 @@ class GatewayClient(ABC):
         # MCP request tracking
         self._pending_mcp_requests: dict[str, asyncio.Future[GatewayMessage]] = {}
 
+    def _build_register_message(self) -> RegisterMessage:
+        """Build the registration message, including the shared gateway secret."""
+        return RegisterMessage(
+            node_id=self.node_id,
+            platform=self.platform,
+            capabilities=self.capabilities,
+            secret=os.getenv("CLARA_GATEWAY_SECRET", ""),
+        )
+
     async def connect(self) -> bool:
         """Connect to the gateway.
 
@@ -271,11 +281,7 @@ class GatewayClient(ABC):
             )
 
             # Register with gateway
-            register = RegisterMessage(
-                node_id=self.node_id,
-                platform=self.platform,
-                capabilities=self.capabilities,
-            )
+            register = self._build_register_message()
             await self._ws.send(register.model_dump_json())
 
             # Wait for registration response
@@ -284,6 +290,7 @@ class GatewayClient(ABC):
 
             if data.get("type") == MessageType.REGISTERED:
                 self.session_id = data.get("session_id")
+                self.adapter_token = data.get("adapter_token")
                 self._connected = True
                 logger.info(f"Registered as {self.node_id} with session {self.session_id}")
                 return True
