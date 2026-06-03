@@ -18,7 +18,7 @@ from .embeds import (
     create_success_embed,
 )
 
-logger = get_logger("mypalclara.core.discord.views")
+logger = get_logger("mypalclara.adapters.discord.ui.views")
 
 
 class ConfirmView(discord.ui.View):

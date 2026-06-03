@@ -406,7 +406,7 @@ class DiscordGatewayClient(GatewayClient):
         """
         import discord
 
-        from mypalclara.core.discord.embeds import (
+        from mypalclara.adapters.discord.ui.embeds import (
             EMBED_COLOR_ERROR,
             EMBED_COLOR_INFO,
             EMBED_COLOR_PRIMARY,
@@ -465,7 +465,7 @@ class DiscordGatewayClient(GatewayClient):
         Returns:
             Discord View with buttons
         """
-        from mypalclara.core.discord.views import GatewayButtonView
+        from mypalclara.adapters.discord.ui.views import GatewayButtonView
 
         return GatewayButtonView(buttons)
 
