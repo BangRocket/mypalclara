@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from mypalclara.config.logging import get_logger
 from mypal_protocol import ChannelInfo, UserInfo
+from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
     from rich.console import Console

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from mypal_protocol import ChannelInfo, UserInfo
 from mypalclara.adapters.base import GatewayClient
 from mypalclara.adapters.discord.attachment_handler import extract_attachments
 from mypalclara.adapters.discord.message_builder import (
@@ -21,7 +22,6 @@ from mypalclara.adapters.discord.message_builder import (
 )
 from mypalclara.adapters.manifest import AdapterManifest, adapter
 from mypalclara.config.logging import get_logger
-from mypal_protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     import discord

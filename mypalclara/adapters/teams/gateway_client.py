@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, Any
 from botbuilder.core import TurnContext
 from botbuilder.schema import Activity, ActivityTypes, Attachment
 
+from mypal_protocol import ChannelInfo, UserInfo
 from mypalclara.adapters.base import GatewayClient
 from mypalclara.adapters.manifest import AdapterManifest, adapter
 from mypalclara.adapters.teams.graph_client import GraphClient, get_graph_client
 from mypalclara.adapters.teams.message_builder import AdaptiveCardBuilder
 from mypalclara.config.logging import get_logger
-from mypal_protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     from mypalclara.adapters.teams.bot import TeamsBot

@@ -19,8 +19,6 @@ from typing import Any, Callable
 import websockets
 from websockets.client import WebSocketClientProtocol
 
-from mypalclara.adapters.protocols import CAPABILITY_PROTOCOLS
-from mypalclara.config.logging import get_logger
 from mypal_protocol import (
     AttachmentInfo,
     CancelMessage,
@@ -45,6 +43,8 @@ from mypal_protocol import (
     UserInfo,
     parse_gateway_message,
 )
+from mypalclara.adapters.protocols import CAPABILITY_PROTOCOLS
+from mypalclara.config.logging import get_logger
 
 logger = get_logger("adapters.base")
 
