@@ -13,11 +13,14 @@ MyPalClara is a personal AI assistant (Clara) with session management, persisten
 poetry install                    # Install dependencies
 poetry run ruff check . && poetry run ruff format .  # Lint + format
 
-# Run gateway with all adapters
-poetry run python -m mypalclara.gateway start
+# Run the gateway/engine (CLARA_GATEWAY_SECRET is REQUIRED — server.start() raises without it)
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway start   # gateway only; adapters connect as external clients
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway         # same, in foreground (dev)
 
-# Run specific adapter only
-poetry run python -m mypalclara.gateway start --adapter discord
+# Adapters are separate processes now (the gateway no longer auto-spawns them)
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.discord                  # one adapter as its own process (prod model)
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.cli.launch_adapters discord teams  # dev: launch several locally
+poetry run python -m mypalclara.gateway start --adapter discord          # dev shortcut: spawn an adapter in-process with the gateway
 
 # Gateway daemon management
 poetry run python -m mypalclara.gateway status
@@ -111,10 +114,10 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 - **Embeddings**: HuggingFace (BAAI/bge-large-en-v1.5) via Inference API, or OpenAI (configurable)
 
 ### Gateway System
-WebSocket server for platform adapters with streaming support. Gateway now serves both WebSocket (port 18789) and HTTP API (port 18790).
+WebSocket server for platform adapters with streaming support. Gateway now serves both WebSocket (port 18789) and HTTP API (port 18790). Adapters are external WS clients — the gateway no longer spawns them in-process (except via the `--adapter` dev shortcut). All adapters must present `CLARA_GATEWAY_SECRET` to register; the gateway refuses to start without it.
 
 ```bash
-poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
 ```
 
 | Platform | Streaming | Notes |
