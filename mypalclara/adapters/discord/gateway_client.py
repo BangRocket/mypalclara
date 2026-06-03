@@ -21,7 +21,7 @@ from mypalclara.adapters.discord.message_builder import (
 )
 from mypalclara.adapters.manifest import AdapterManifest, adapter
 from mypalclara.config.logging import get_logger
-from mypalclara.gateway.protocol import ChannelInfo, UserInfo
+from mypal_protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     import discord

@@ -17,7 +17,7 @@ from mypalclara.adapters.discord.voice.player import AudioPlayer
 from mypalclara.adapters.discord.voice.synthesizer import synthesize
 from mypalclara.adapters.discord.voice.transcriber import STTProvider, get_transcriber
 from mypalclara.config.logging import get_logger
-from mypalclara.gateway.protocol import ChannelInfo, UserInfo
+from mypal_protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     from mypalclara.adapters.discord.gateway_client import DiscordGatewayClient

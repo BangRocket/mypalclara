@@ -21,7 +21,7 @@ from websockets.client import WebSocketClientProtocol
 
 from mypalclara.adapters.protocols import CAPABILITY_PROTOCOLS
 from mypalclara.config.logging import get_logger
-from mypalclara.gateway.protocol import (
+from mypal_protocol import (
     AttachmentInfo,
     CancelMessage,
     ChannelInfo,
