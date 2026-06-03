@@ -130,7 +130,7 @@ services:
       # Gateway
       - CLARA_GATEWAY_HOST=0.0.0.0
       - CLARA_GATEWAY_PORT=18789
-      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
+      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:?CLARA_GATEWAY_SECRET must be set (shared with all adapters)}
       # LLM Provider (same as discord-bot)
       - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -309,6 +309,7 @@ services:
       # Gateway (optional - routes through Clara Gateway)
       - USE_GATEWAY=${USE_GATEWAY:-false}
       - CLARA_GATEWAY_URL=${CLARA_GATEWAY_URL:-ws://gateway:18789}
+      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
       # General
       - SKIP_PROFILE_LOAD=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -342,6 +343,7 @@ services:
       - DISCORD_ALLOWED_ROLES=${DISCORD_ALLOWED_ROLES:-}
       - DISCORD_MAX_MESSAGES=${DISCORD_MAX_MESSAGES:-25}
       - CLARA_GATEWAY_URL=ws://gateway:18789
+      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
       - USE_GATEWAY=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # PostgreSQL (for channel modes)
@@ -368,6 +370,7 @@ services:
       - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD}
       - TEAMS_PORT=3978
       - CLARA_GATEWAY_URL=ws://gateway:18789
+      - CLARA_GATEWAY_SECRET=${CLARA_GATEWAY_SECRET:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       gateway:
