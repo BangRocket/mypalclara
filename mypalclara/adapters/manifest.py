@@ -304,7 +304,6 @@ def discover_adapters() -> None:
         "mypalclara.adapters.whatsapp.gateway_client",
         "mypalclara.adapters.signal.gateway_client",
         "mypalclara.adapters.matrix.gateway_client",
-        "mypalclara.adapters.game",
     ]
 
     for module_name in adapter_modules:

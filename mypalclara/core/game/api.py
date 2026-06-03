@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header
 
-from mypalclara.adapters.game.engine import (
+from mypalclara.core.game.engine import (
     GameMoveRequest,
     GameMoveResponse,
     _load_personality_text,
