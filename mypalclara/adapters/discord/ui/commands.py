@@ -1210,15 +1210,11 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            # Get memory stats from Palace
-            from mypalclara.core.memory import ClaraMemory
-
-            m = ClaraMemory()
             user_id = str(ctx.author.id)
 
-            # Count memories
-            memories = m.get_all(user_id=user_id)
-            memory_count = len(memories) if memories else 0
+            # Count memories via the engine API
+            data = await EngineApiClient().memory_count(user_id)
+            memory_count = data.get("count", 0)
 
             fields = [
                 ("Your Memories", str(memory_count), True),
@@ -1240,12 +1236,10 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.memory import ClaraMemory
-
-            m = ClaraMemory()
             user_id = str(ctx.author.id)
 
-            results = m.search(query, user_id=user_id, limit=10)
+            data = await EngineApiClient().memory_search(user_id, query, limit=10)
+            results = data.get("results") or []
 
             if not results:
                 await ctx.respond(embed=create_info_embed("No Results", f"No memories found matching '{query}'."))
@@ -1286,12 +1280,9 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.memory import ClaraMemory
-
-            m = ClaraMemory()
             user_id = str(ctx.author.id)
 
-            m.delete_all(user_id=user_id)
+            await EngineApiClient().memory_delete_all(user_id)
 
             if view.interaction:
                 await view.interaction.response.edit_message(

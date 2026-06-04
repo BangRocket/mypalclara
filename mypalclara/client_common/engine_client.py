@@ -89,6 +89,18 @@ class EngineApiClient:
     async def list_email_accounts(self, user_id: str) -> Any:
         return await self._request("GET", "/api/v1/email-accounts", params={"user_id": user_id})
 
+    # --- memory (internal, by explicit user_id) ---
+    async def memory_count(self, user_id: str) -> Any:
+        return await self._request("GET", "/api/v1/memory/count", params={"user_id": user_id})
+
+    async def memory_search(self, user_id: str, query: str, limit: int = 10) -> Any:
+        return await self._request(
+            "GET", "/api/v1/memory/search", params={"user_id": user_id, "query": query, "limit": limit}
+        )
+
+    async def memory_delete_all(self, user_id: str) -> Any:
+        return await self._request("DELETE", "/api/v1/memory", params={"user_id": user_id})
+
     # --- identity links ---
     async def resolve_link(self, prefixed_user_id: str) -> Any:
         return await self._request("GET", f"/api/v1/users/links/{prefixed_user_id}")

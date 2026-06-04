@@ -169,6 +169,7 @@ CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
     "mypalclara.core.services.backup",
     "mypalclara.sandbox",
     "mypalclara.db",
+    "mypalclara.core.memory",
 }
 REWIRE_ALLOWLIST: dict[str, set[str]] = {}
 
