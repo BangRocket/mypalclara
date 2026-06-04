@@ -316,3 +316,35 @@ All 7 groups exist as routers registered in `app.py`, gated by the right auth, e
 `TestClient` tests, in `mypal-engine`. No business logic moved except the small `guild_config`
 helper extraction. The client is NOT rewired here (Sub-plan 3). After this lands, re-sync is N/A —
 the engine repo is canonical and already holds it.
+
+---
+
+## BUILD STATUS — 2026-06-03 (branch `feat/engine-api-gapfill` in mypal-engine)
+
+**Built + committed, all with passing tests (45 in `tests/gateway/api`, 159 across gateway+arch):**
+
+| Group | Router | Endpoints | Test |
+|---|---|---|---|
+| Foundation | `auth.py` | `require_gateway_secret` | test_auth_gateway_secret (3) |
+| backup | `backup.py` | POST /backup/run, GET /backup/status | test_backup_api (3) |
+| sandbox | `sandbox.py` | GET /sandbox/status | test_sandbox_api (2) |
+| channels | `channels.py` | GET/PUT /channels/{id}/mode, GET /guilds/{id}/channels | test_channels_api (5) |
+| guild-config | `guilds.py` + `db/guild_config.py` | GET/PUT /guilds/{id}/config | test_guilds_api (3) |
+| email-accounts | `email_accounts.py` | GET /email-accounts?user_id= | test_email_accounts_api (3) |
+| users/links | `users.py` (extended) | GET/POST/DELETE /users/links… | test_users_links_api (7) |
+| MCP (core) | `mcp.py` | servers/status/tools/lifecycle/reload/search/install/uninstall | test_mcp_api (10) |
+
+**DEFERRED — MCP interactive OAuth flow.** `start_oauth_flow` / `exchange_code` /
+`set_tokens_manually` / `load_oauth_state` (Smithery-hosted server auth, ~8 client sites in
+`discord/ui/commands.py:680–902`) are NOT exposed. They are stateful (redirect URIs, code exchange)
+and need their own design. The non-OAuth MCP commands can rewire (Sub-plan 3) now; the OAuth Discord
+commands stay on direct calls until this follow-up lands (must close before the Sub-plan 4 cut, or
+those commands break). Tracked as a follow-up task.
+
+**Design notes carried into Sub-plan 3 (client rewire):**
+- email-accounts uses an explicit `user_id` query param + gateway-secret (not canonical-id auth) —
+  `EmailAccount.user_id` may be platform-prefixed, so canonical scoping could silently return [].
+- sandbox endpoint synthesizes `{available, stats}`; the client's broken `manager.get_status()` call
+  gets replaced with a GET to `/sandbox/status`.
+- guild-config helpers were created fresh in `db/guild_config.py` (the originals were inline in the
+  Discord adapter, which doesn't exist in the engine repo).
