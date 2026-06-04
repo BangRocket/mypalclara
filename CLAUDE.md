@@ -4,7 +4,7 @@ Guidance for Claude Code working with this repository.
 
 ## Project Overview
 
-MyPalClara is a personal AI assistant (Clara) with session management, persistent memory (Palace), and multi-platform support. Uses a gateway architecture with platform adapters for Discord, Teams, Slack, Telegram, Matrix, Signal, and WhatsApp.
+MyPalClara is now the **client repo** for Clara: the platform adapters (Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, CLI) plus the shared `client_common` helpers and the `mypal_protocol` wire contract. The **engine** (gateway, runtime, memory/Palace, LLM, tools, MCP, sandbox, database) lives in the separate **`mypal-engine`** repo (`github.com/BangRocket/mypal-engine`). Adapters talk to a running engine over WebSocket (:18789) + HTTP API (:18790); they import **no** engine internals — only `mypal_protocol`, `mypalclara.client_common` (incl. `EngineApiClient`), and `mypalclara.config.logging`.
 
 ## Quick Reference
 
@@ -12,25 +12,19 @@ MyPalClara is a personal AI assistant (Clara) with session management, persisten
 # Development
 poetry install                    # Install dependencies
 poetry run ruff check . && poetry run ruff format .  # Lint + format
+poetry run pytest tests/          # Client test suite
 
-# Run the gateway/engine (CLARA_GATEWAY_SECRET is REQUIRED — server.start() raises without it)
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway start   # gateway only; adapters connect as external clients
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway         # same, in foreground (dev)
+# Run adapters (they connect to a RUNNING mypal-engine; start that separately from the mypal-engine repo)
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.discord                  # one adapter, its own process
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.cli.launch_adapters discord teams  # dev: launch several
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara               # default entry → adapter launcher (all adapters)
 
-# Adapters are separate processes now (the gateway no longer auto-spawns them)
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.discord                  # one adapter as its own process (prod model)
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.cli.launch_adapters discord teams  # dev: launch several locally
-poetry run python -m mypalclara.gateway start --adapter discord          # dev shortcut: spawn an adapter in-process with the gateway
+# Engine config the client needs
+#   CLARA_GATEWAY_SECRET   shared secret (must match the engine)
+#   CLARA_GATEWAY_API_URL  engine HTTP API base (default http://127.0.0.1:18790)
+#   CLARA_GATEWAY_HOST/PORT engine WebSocket (default 127.0.0.1:18789)
 
-# Gateway daemon management
-poetry run python -m mypalclara.gateway status
-poetry run python -m mypalclara.gateway stop
-poetry run python -m mypalclara.gateway restart
-
-# Database
-poetry run python scripts/migrate.py           # Run migrations
-poetry run python scripts/migrate.py status    # Check status
-poetry run python scripts/clear_dbs.py         # Clear memory data
+# NOTE: the gateway/engine, DB migrations (scripts/migrate.py), and memory live in the mypal-engine repo now.
 
 # Web UI (Rails backend)
 cd services/web-ui/backend && rails s -p 3000   # Start Rails API server
@@ -66,6 +60,8 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 ```
 
 ## Architecture
+
+> **NOTE (post-cut):** The sections below describe the **engine** (`core/`, `db/`, `gateway/`, memory/Palace, LLM, MCP, sandbox), which now lives in the **`mypal-engine`** repo — those directories no longer exist in this client repo. They are kept here as a reference for how the engine the adapters talk to is structured. This repo contains only `mypalclara/adapters/`, `mypalclara/client_common/`, `mypalclara/config/` (logging), `mypalclara/web/`, `mypalclara/services/voice/`, and `mypal_protocol/`.
 
 ### Core Structure
 - `mypalclara/core/memory_manager.py` - Core orchestrator: session handling, Palace integration, prompt building with Clara's persona
