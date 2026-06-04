@@ -168,7 +168,7 @@ def test_client_does_not_import_relocated_shared_code():
 CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
     "mypalclara.core.services.backup",
     "mypalclara.sandbox",
-    "mypalclara.db.channel_config",
+    "mypalclara.db",
 }
 REWIRE_ALLOWLIST: dict[str, set[str]] = {}
 

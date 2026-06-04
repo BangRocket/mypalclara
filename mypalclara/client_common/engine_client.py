@@ -93,6 +93,15 @@ class EngineApiClient:
     async def resolve_link(self, prefixed_user_id: str) -> Any:
         return await self._request("GET", f"/api/v1/users/links/{prefixed_user_id}")
 
+    async def resolve_link_optional(self, prefixed_user_id: str) -> Any | None:
+        """Resolve a link, returning None if it does not exist (404)."""
+        async with self._client() as client:
+            resp = await client.get(f"/api/v1/users/links/{prefixed_user_id}")
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+
     async def list_user_links(self, canonical_id: str) -> Any:
         return await self._request("GET", f"/api/v1/users/{canonical_id}/links")
 
