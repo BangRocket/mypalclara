@@ -28,11 +28,6 @@ import threading
 import traceback
 from datetime import datetime, timezone
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session as DBSession
-
 # MCP SAFETY FLAG
 # When True, all logging handlers use stderr, never stdout.
 # This is critical for MCP stdio transport where stdout carries JSON-RPC.
