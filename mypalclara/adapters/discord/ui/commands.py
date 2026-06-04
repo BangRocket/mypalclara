@@ -6,14 +6,13 @@ Uses Pycord's application commands system.
 
 import logging
 import os
-from typing import Optional
+from types import SimpleNamespace
 
 import discord
 from discord import option
 from discord.ext import commands
 
-from mypalclara.db import SessionLocal
-from mypalclara.db.models import GuildConfig
+from mypalclara.client_common.engine_client import EngineApiClient
 
 from .embeds import (
     EMBED_COLOR_PRIMARY,
@@ -53,39 +52,23 @@ async def safe_defer(ctx: discord.ApplicationContext) -> bool:
         return False
 
 
-def get_guild_config(guild_id: str) -> Optional[GuildConfig]:
-    """Get guild configuration from database."""
-    with SessionLocal() as session:
-        config = session.query(GuildConfig).filter(GuildConfig.guild_id == guild_id).first()
-        if config:
-            session.expunge(config)
-        return config
+async def get_guild_config(guild_id: str) -> SimpleNamespace:
+    """Get guild configuration via the engine API (as a mutable namespace)."""
+    data = await EngineApiClient().get_guild_config(guild_id)
+    return SimpleNamespace(**data)
 
 
-def save_guild_config(config: GuildConfig) -> None:
-    """Save guild configuration to database."""
-    with SessionLocal() as session:
-        existing = session.query(GuildConfig).filter(GuildConfig.guild_id == config.guild_id).first()
-        if existing:
-            # Update existing
-            existing.default_tier = config.default_tier
-            existing.auto_tier_enabled = config.auto_tier_enabled
-            existing.ors_enabled = config.ors_enabled
-            existing.ors_channel_id = config.ors_channel_id
-            existing.ors_quiet_start = config.ors_quiet_start
-            existing.ors_quiet_end = config.ors_quiet_end
-            existing.sandbox_mode = config.sandbox_mode
-        else:
-            session.add(config)
-        session.commit()
+async def save_guild_config(config: SimpleNamespace) -> None:
+    """Persist a guild configuration namespace via the engine API."""
+    data = vars(config)
+    guild_id = data.get("guild_id")
+    fields = {k: v for k, v in data.items() if k != "guild_id"}
+    await EngineApiClient().update_guild_config(guild_id, **fields)
 
 
-def get_or_create_guild_config(guild_id: str) -> GuildConfig:
-    """Get or create guild configuration."""
-    config = get_guild_config(guild_id)
-    if not config:
-        config = GuildConfig(guild_id=guild_id)
-    return config
+async def get_or_create_guild_config(guild_id: str) -> SimpleNamespace:
+    """Get or create guild configuration (engine endpoint creates a default row)."""
+    return await get_guild_config(guild_id)
 
 
 class ClaraCommands(commands.Cog):
@@ -940,7 +923,7 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            config = get_guild_config(str(ctx.guild_id)) if ctx.guild_id else None
+            config = (await get_guild_config(str(ctx.guild_id))) if ctx.guild_id else None
 
             # Get current settings
             default_tier = config.default_tier if config else None
@@ -978,9 +961,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.default_tier = tier if tier != "default" else None
-            save_guild_config(config)
+            await save_guild_config(config)
 
             if tier == "default":
                 await ctx.respond(embed=create_success_embed("Tier Reset", "Server will use environment default tier."))
@@ -1006,9 +989,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.auto_tier_enabled = "true" if enabled == "on" else "false"
-            save_guild_config(config)
+            await save_guild_config(config)
 
             status = "enabled" if enabled == "on" else "disabled"
             await ctx.respond(
@@ -1032,7 +1015,7 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            config = get_guild_config(str(ctx.guild_id)) if ctx.guild_id else None
+            config = (await get_guild_config(str(ctx.guild_id))) if ctx.guild_id else None
 
             ors_enabled = config.ors_enabled == "true" if config else False
             channel_id = config.ors_channel_id if config else None
@@ -1069,9 +1052,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.ors_enabled = "true"
-            save_guild_config(config)
+            await save_guild_config(config)
 
             await ctx.respond(embed=create_success_embed("ORS Enabled", "Proactive messaging is now enabled."))
 
@@ -1091,9 +1074,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.ors_enabled = "false"
-            save_guild_config(config)
+            await save_guild_config(config)
 
             await ctx.respond(embed=create_success_embed("ORS Disabled", "Proactive messaging is now disabled."))
 
@@ -1114,9 +1097,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.ors_channel_id = str(channel.id)
-            save_guild_config(config)
+            await save_guild_config(config)
 
             await ctx.respond(
                 embed=create_success_embed("ORS Channel Set", f"Proactive messages will be sent to {channel.mention}.")
@@ -1150,10 +1133,10 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.ors_quiet_start = start
             config.ors_quiet_end = end
-            save_guild_config(config)
+            await save_guild_config(config)
 
             msg = f"No proactive messages between **{start}** and **{end}**."
             await ctx.respond(embed=create_success_embed("Quiet Hours Set", msg))
@@ -1204,9 +1187,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server."))
                 return
 
-            config = get_or_create_guild_config(str(ctx.guild_id))
+            config = await get_or_create_guild_config(str(ctx.guild_id))
             config.sandbox_mode = mode
-            save_guild_config(config)
+            await save_guild_config(config)
 
             await ctx.respond(embed=create_success_embed("Sandbox Mode Set", f"Sandbox mode set to **{mode}**."))
 
@@ -1337,12 +1320,9 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.db.models import EmailAccount
-
             user_id = str(ctx.author.id)
 
-            with SessionLocal() as session:
-                accounts = session.query(EmailAccount).filter(EmailAccount.user_id == user_id).all()
+            accounts = await EngineApiClient().list_email_accounts(user_id)
 
             if not accounts:
                 await ctx.respond(
@@ -1352,8 +1332,8 @@ class ClaraCommands(commands.Cog):
 
             lines = []
             for acc in accounts:
-                status_emoji = "\u2705" if acc.enabled == "true" else "\u26ab"
-                lines.append(f"{status_emoji} **{acc.email_address}** ({acc.provider_type})")
+                status_emoji = "\u2705" if acc.get("enabled") == "true" else "\u26ab"
+                lines.append(f"{status_emoji} **{acc['email_address']}** ({acc['provider_type']})")
 
             embed = create_list_embed(f"Email Accounts ({len(accounts)})", lines)
             await ctx.respond(embed=embed)

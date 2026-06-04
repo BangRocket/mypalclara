@@ -143,7 +143,7 @@ class GatewayDiscordBot(discord_commands.Bot):
 
         # Get channel mode
         channel_id = str(message.channel.id)
-        channel_mode = get_channel_mode(channel_id)
+        channel_mode = await get_channel_mode(channel_id)
 
         # Check for stop phrase
         content_lower = message.content.lower().strip()
