@@ -4,7 +4,15 @@ Guidance for Claude Code working with this repository.
 
 ## Project Overview
 
-MyPalClara is now the **client repo** for Clara: the platform adapters (Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, CLI) plus the shared `client_common` helpers and the `mypal_protocol` wire contract. The **engine** (gateway, runtime, memory/Palace, LLM, tools, MCP, sandbox, database) lives in the separate **`mypal-engine`** repo (`github.com/BangRocket/mypal-engine`). Adapters talk to a running engine over WebSocket (:18789) + HTTP API (:18790); they import **no** engine internals — only `mypal_protocol`, `mypalclara.client_common` (incl. `EngineApiClient`), and `mypalclara.config.logging`.
+MyPalClara is the **client repo** for Clara — the platform adapters (Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, CLI) people use to talk to Clara. The **engine** (gateway, runtime, memory/Palace, LLM, tools, MCP, sandbox, database) lives in the separate **`mypal-engine`** repo (`github.com/BangRocket/mypal-engine`).
+
+Adapters connect to a **running engine** over WebSocket (`:18789`) and HTTP API (`:18790`). They import **no** engine internals — only:
+
+- **`mypal_protocol`** — the shared Pydantic wire contract (vendored top-level package)
+- **`mypalclara.client_common`** — client helpers, incl. `EngineApiClient` (HTTP client for the engine API), plus relocated `platform`/`toolspec`/`ids` contracts
+- **`mypalclara.config.logging`** — client-retained console + Discord log handlers
+
+This boundary is enforced by `tests/architecture/test_engine_boundary.py` (it fails if any adapter imports an engine package).
 
 ## Quick Reference
 
@@ -14,37 +22,14 @@ poetry install                    # Install dependencies
 poetry run ruff check . && poetry run ruff format .  # Lint + format
 poetry run pytest tests/          # Client test suite
 
-# Run adapters (they connect to a RUNNING mypal-engine; start that separately from the mypal-engine repo)
+# Run adapters (they connect to a RUNNING mypal-engine; start that from the mypal-engine repo)
 CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.discord                  # one adapter, its own process
 CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.adapters.cli.launch_adapters discord teams  # dev: launch several
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara               # default entry → adapter launcher (all adapters)
+CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara               # default entry → adapter launcher
 
-# Engine config the client needs
-#   CLARA_GATEWAY_SECRET   shared secret (must match the engine)
-#   CLARA_GATEWAY_API_URL  engine HTTP API base (default http://127.0.0.1:18790)
-#   CLARA_GATEWAY_HOST/PORT engine WebSocket (default 127.0.0.1:18789)
-
-# NOTE: the gateway/engine, DB migrations (scripts/migrate.py), and memory live in the mypal-engine repo now.
-
-# Web UI (Rails backend)
-cd services/web-ui/backend && rails s -p 3000   # Start Rails API server
-
-# Web UI (React frontend)
-cd services/web-ui/frontend && npm run dev      # Start Vite dev server (port 5173)
-
-# Docker
-docker-compose --profile discord up
-docker-compose --profile discord --profile postgres up
-
-# Docker (base image — required before building Python services)
-docker build -f services/base/Dockerfile -t ghcr.io/bangrocket/clara-base:latest .
-
-# Docker (individual services)
-docker build -f services/discord/Dockerfile -t clara-discord .
-docker build -f services/gateway/Dockerfile -t clara-gateway .
-docker build -f services/backup/Dockerfile -t clara-backup .
-docker build -t clara-web services/web-ui/         # Web UI
-docker build -t clara-identity services/identity/  # Identity
+# Docker (client adapters → external engine)
+CLARA_GATEWAY_SECRET=... docker compose --profile discord up
+CLARA_GATEWAY_SECRET=... docker compose --profile teams up
 ```
 
 ## Versioning
@@ -59,375 +44,64 @@ CalVer: `YYYY.WW.N` (Year.Week.Build). Auto-bumped via git hook for significant 
 git config core.hooksPath .githooks  # Enable hooks (run once)
 ```
 
-## Architecture
+## Architecture (client)
 
-> **NOTE (post-cut):** The sections below describe the **engine** (`core/`, `db/`, `gateway/`, memory/Palace, LLM, MCP, sandbox), which now lives in the **`mypal-engine`** repo — those directories no longer exist in this client repo. They are kept here as a reference for how the engine the adapters talk to is structured. This repo contains only `mypalclara/adapters/`, `mypalclara/client_common/`, `mypalclara/config/` (logging), `mypalclara/web/`, `mypalclara/services/voice/`, and `mypal_protocol/`.
+| Path | Purpose |
+|------|---------|
+| `mypalclara/adapters/` | Platform adapters (discord, teams, cli, slack, telegram, matrix, signal, whatsapp) |
+| `mypalclara/adapters/base.py` | `GatewayClient` base — the WebSocket connection to the engine |
+| `mypalclara/adapters/cli/launch_adapters.py` | Dev launcher: run several adapters locally |
+| `mypalclara/client_common/engine_client.py` | `EngineApiClient` — typed async HTTP client for the engine `/api/v1` surface |
+| `mypalclara/client_common/{platform,toolspec,ids}.py` | Contracts vendored out of the engine |
+| `mypalclara/config/logging.py` | Console + Discord log handlers (no DB handler — that's engine-side) |
+| `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC) |
+| `mypalclara/web/` | Legacy web module |
+| `mypal_protocol/` | Shared wire contract (Pydantic messages); installable as `mypal-protocol` |
+| `services/{discord,base,web-ui}/` | Docker build contexts (client) |
 
-### Core Structure
-- `mypalclara/core/memory_manager.py` - Core orchestrator: session handling, Palace integration, prompt building with Clara's persona
-- `mypalclara/core/llm/` - Unified LLM provider architecture (modular, supports OpenRouter, NanoGPT, OpenAI, Anthropic)
-- `mypalclara/core/memory/` - Memory system: episodes, layered retrieval, reflection, knowledge graph (HuggingFace embeddings)
-- `mypalclara/db/models.py` - SQLAlchemy models: Project, Session, Message, ChannelSummary
-- `mypalclara/db/db.py` - Database setup (SQLite for dev, PostgreSQL for production)
-- `mypalclara/core/email/` - Email monitoring and auto-response system
-- `mypalclara/adapters/discord/` - Discord bot with multi-user support, reply chains, and streaming responses
+### How adapters reach the engine
 
-### Directory Structure
-| Directory | Purpose |
-|-----------|---------|
-| `mypalclara/` | Top-level Python package (all code lives here) |
-| `mypalclara/gateway/` | WebSocket gateway for platform adapters |
-| `mypalclara/gateway/api/` | HTTP API endpoints (moved from web module) |
-| `mypalclara/adapters/` | Platform adapters (Discord, Teams, Slack, etc.) |
-| `mypalclara/core/memory/` | Memory system: episodes, layered retrieval, reflection, knowledge graph |
-| `mypalclara/core/mcp/` | MCP plugin system (servers, tools, OAuth) |
-| `mypalclara/core/email/` | Email monitoring and alerts |
-| `mypalclara/core/core_tools/` | Tool implementations including MCP management |
-| `mypalclara/db/` | Database models, migrations, connection |
-| `mypalclara/sandbox/` | Code execution (Docker containers) |
-| `mypalclara/tools/` | Tool loader infrastructure |
-| `mypalclara/config/` | Configuration modules |
-| `mypalclara/services/email/` | Email monitoring service |
-| `mypalclara/services/backup/` | Backup service code |
-| `mypalclara/services/proactive/` | Proactive messaging engine |
-| `services/base/` | Shared base Docker image for Python services |
-| `services/discord/` | Discord bot Railway service |
-| `services/gateway/` | Gateway Railway service |
-| `services/backup/` | Backup Railway service |
-| `services/web-ui/` | Web UI (Rails + React) Railway service |
-| `services/identity/` | Identity Railway service |
-| `services/qdrant/` | Qdrant vector DB Railway service |
-| `services/falkordb/` | FalkorDB graph DB Railway service |
+- **WebSocket** (`GatewayClient`, `adapters/base.py`): chat in/out + streaming, MCP ops, proactive/heartbeat delivery. Registers with `CLARA_GATEWAY_SECRET`; the engine returns an `adapter_token`.
+- **HTTP API** (`EngineApiClient`, `client_common/engine_client.py`): everything that used to be an in-process engine call — backup, sandbox status, channel/guild config, email accounts, identity links, MCP management + Smithery OAuth, memory stats. Sends `X-Gateway-Secret`.
 
-### Memory System (Clara's Memory Palace)
-- **Episodes**: Verbatim conversation chunks stored in Qdrant (`clara_episodes`) with topics, emotional tone, significance
-- **Semantic memories**: Extracted facts/preferences in Qdrant (`clara_memories`)
-- **Knowledge graph**: Typed entities (person/project/place/concept/event) with temporal relationships in FalkorDB
-- **Layered retrieval**: L0 identity → L1 user profile → L2 relevant context (episodes + memories + graph)
-- **Reflection**: Session-end extraction of episodes, entities, and self-awareness notes
-- **Narrative arcs**: Periodic synthesis connecting episodes into ongoing stories
-- **Entity resolver**: Maps platform IDs (discord-123) to human names (Josh)
-- **Embeddings**: HuggingFace (BAAI/bge-large-en-v1.5) via Inference API, or OpenAI (configurable)
+**Rule:** if an adapter needs engine data or services, call `EngineApiClient` (HTTP) or use the `GatewayClient` WS path — never import an engine package. The architecture test enforces this.
 
-### Gateway System
-WebSocket server for platform adapters with streaming support. Gateway now serves both WebSocket (port 18789) and HTTP API (port 18790). Adapters are external WS clients — the gateway no longer spawns them in-process (except via the `--adapter` dev shortcut). All adapters must present `CLARA_GATEWAY_SECRET` to register; the gateway refuses to start without it.
+### Model tiers (Discord)
 
-```bash
-CLARA_GATEWAY_SECRET=... poetry run python -m mypalclara.gateway --host 127.0.0.1 --port 18789
-```
+Message prefixes select the engine model tier per-message: `!high`/`!opus` (high), `!mid`/`!sonnet` (mid, default), `!low`/`!haiku`/`!fast` (low).
 
-| Platform | Streaming | Notes |
-|----------|-----------|-------|
-| Discord | Yes | Message edits |
-| Teams/Slack/Telegram/Matrix | Yes | 1s cooldown / rate limits |
-| Signal/WhatsApp | No | APIs don't support editing |
-
-### Web UI
-Web UI uses Rails as BFF (backend-for-frontend). Rails handles game logic directly (own PostgreSQL) and proxies all other API requests to the Python gateway HTTP API (port 18790).
-
-## Environment Variables
+## Environment Variables (client)
 
 ### Required
-```bash
-LLM_PROVIDER=anthropic      # openrouter, nanogpt, openai, kimi, or anthropic
-HF_TOKEN=...                # Required for HuggingFace embeddings (default provider)
-```
+- `CLARA_GATEWAY_SECRET` — shared secret; **must match the engine**.
 
-### Embedding Provider
-```bash
-EMBEDDING_PROVIDER=huggingface  # "huggingface" (default) or "openai"
-EMBEDDING_MODEL=BAAI/bge-large-en-v1.5  # Default HuggingFace model (1024 dims)
-EMBEDDING_MODEL_DIMS=1024      # Must match model output dimensions
-# For OpenAI embeddings: set EMBEDDING_PROVIDER=openai and OPENAI_API_KEY
-```
+### Engine connection
+- `CLARA_GATEWAY_URL` / `CLARA_GATEWAY_HOST` / `CLARA_GATEWAY_PORT` — engine WebSocket (default `127.0.0.1:18789`)
+- `CLARA_GATEWAY_API_URL` — engine HTTP API base (default `http://127.0.0.1:18790`)
 
-### Chat LLM Providers
+### Discord
+- `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`
+- `DISCORD_ALLOWED_SERVERS`, `DISCORD_ALLOWED_CHANNELS`, `DISCORD_ALLOWED_ROLES` (comma-separated)
+- `DISCORD_MAX_MESSAGES` (default 25), `DISCORD_STOP_PHRASES`
 
-**OpenRouter** (`LLM_PROVIDER=openrouter`):
-- `OPENROUTER_API_KEY` - API key
-- `OPENROUTER_MODEL` - Chat model (default: anthropic/claude-sonnet-4)
-- `OPENROUTER_SITE` / `OPENROUTER_TITLE` - Optional headers
+### Teams
+- `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `TEAMS_PORT` (default 3978)
 
-**NanoGPT** (`LLM_PROVIDER=nanogpt`):
-- `NANOGPT_API_KEY` - API key
-- `NANOGPT_MODEL` - Chat model (default: moonshotai/Kimi-K2-Instruct-0905)
+### Logging
+- `LOG_LEVEL` (default INFO)
 
-**Custom OpenAI** (`LLM_PROVIDER=openai`):
-- `CUSTOM_OPENAI_API_KEY` - API key for LLM (separate from embeddings)
-- `CUSTOM_OPENAI_BASE_URL` - Base URL (default: https://api.openai.com/v1)
-- `CUSTOM_OPENAI_MODEL` - Chat model (default: gpt-4o)
+> Engine-side config — LLM providers, embeddings, Palace/memory, database, MCP servers, sandbox, backup, heartbeat — lives in the **`mypal-engine`** repo; see its CLAUDE.md.
 
-**Kimi / Moonshot** (`LLM_PROVIDER=kimi`):
-- `KIMI_API_KEY` or `MOONSHOT_API_KEY` - API key
-- `KIMI_BASE_URL` - Base URL (default: https://api.moonshot.ai/v1)
-- `KIMI_MODEL` - Chat model (default: kimi-k2.6)
+## Web UI
 
-Uses a separate direct provider so Kimi-specific tool result message formatting does not affect the generic OpenAI route.
-
-**Anthropic** (`LLM_PROVIDER=anthropic`):
-- `ANTHROPIC_API_KEY` - Anthropic API key
-- `ANTHROPIC_BASE_URL` - Custom base URL for proxies like clewdr (optional)
-- `ANTHROPIC_MODEL` - Chat model (default: claude-sonnet-4-5)
-
-Uses native Anthropic SDK with native tool calling. Recommended for Claude proxies like clewdr.
-
-**Amazon Bedrock** (`LLM_PROVIDER=bedrock`):
-- `AWS_REGION` - AWS region (default: us-east-1)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - AWS credentials (or use IAM role)
-- `BEDROCK_MODEL` - Bedrock model ID (default: anthropic.claude-3-5-sonnet-20241022-v2:0)
-- `BEDROCK_MODEL_{HIGH,MID,LOW}` - Tier-specific model overrides
-
-Uses Claude models via Amazon Bedrock. Requires `langchain-aws` package: `pip install langchain-aws`.
-Supports IAM role authentication when running on AWS (EC2, Lambda, ECS).
-
-**Azure OpenAI** (`LLM_PROVIDER=azure`):
-- `AZURE_OPENAI_ENDPOINT` - Azure OpenAI endpoint URL (required)
-- `AZURE_OPENAI_API_KEY` - Azure API key (required)
-- `AZURE_DEPLOYMENT_NAME` - Deployment name in Azure (required)
-- `AZURE_API_VERSION` - API version (default: 2024-02-15-preview)
-- `AZURE_MODEL` - Model reference (default: gpt-4o)
-- `AZURE_MODEL_{HIGH,MID,LOW}` - Tier-specific model overrides
-
-Uses Azure OpenAI Service. Deployment names map to models configured in Azure Portal.
-
-### Model Tiers (Discord Bot)
-The Discord bot supports dynamic model selection via message prefixes:
-- `!high` or `!opus` → High tier (Opus-class, most capable)
-- `!mid` or `!sonnet` → Mid tier (Sonnet-class, balanced) - default
-- `!low`, `!haiku`, or `!fast` → Low tier (Haiku-class, fast/cheap)
-
-Optional tier-specific model overrides:
-- `OPENROUTER_MODEL_HIGH`, `OPENROUTER_MODEL_MID`, `OPENROUTER_MODEL_LOW`
-- `NANOGPT_MODEL_HIGH`, `NANOGPT_MODEL_MID`, `NANOGPT_MODEL_LOW`
-- `CUSTOM_OPENAI_MODEL_HIGH`, `CUSTOM_OPENAI_MODEL_MID`, `CUSTOM_OPENAI_MODEL_LOW`
-- `ANTHROPIC_MODEL_HIGH`, `ANTHROPIC_MODEL_MID`, `ANTHROPIC_MODEL_LOW`
-- `MODEL_TIER` - Default tier when not specified. If not set, uses the base model (e.g., `ANTHROPIC_MODEL`). Set to "high", "mid", or "low" to enable tier-based defaults.
-- `AUTO_TIER_SELECTION` - Enable automatic tier selection based on message complexity (default: false)
-
-**Auto Tier Selection:**
-When `AUTO_TIER_SELECTION=true`, Clara uses the fast/low model to classify message complexity and automatically selects the appropriate tier:
-- LOW = Simple greetings, quick facts, basic questions, casual chat
-- MID = Moderate tasks, explanations, summaries, most coding questions
-- HIGH = Complex reasoning, long-form writing, difficult coding, multi-step analysis
-
-The classifier considers recent conversation history (up to 4 messages) when making its decision. This prevents short replies like "yes" or "ok" from dropping to a lower tier when they're part of a complex ongoing discussion.
-
-Example usage in Discord: `!high What is quantum entanglement?`
-
-### Cloudflare Access (for endpoints behind cloudflared)
-For custom OpenAI endpoints behind Cloudflare Access (like cloudflared tunnels):
-- `CF_ACCESS_CLIENT_ID` - Cloudflare Access Service Token client ID
-- `CF_ACCESS_CLIENT_SECRET` - Cloudflare Access Service Token client secret
-
-### Palace Provider (independent from chat LLM)
-Environment variables use `PALACE_*` prefix with `removed` fallback for backward compatibility.
-
-- `PALACE_PROVIDER` - Provider for memory extraction: "openrouter" (default), "nanogpt", "openai", or "anthropic"
-- `PALACE_MODEL` - Model for memory extraction (default: openai/gpt-4o-mini)
-- `PALACE_API_KEY` - Optional: override the provider's default API key
-- `PALACE_BASE_URL` - Optional: override the provider's default base URL
-
-Note: For `PALACE_PROVIDER=anthropic`, uses native Anthropic SDK with `anthropic_base_url` support for proxies.
-
-### Optional
-- `USER_ID` - Single-user identifier (default: "demo-user")
-- `DEFAULT_PROJECT` - Default project name (default: "Default Project")
-- `SKIP_PROFILE_LOAD` - Skip initial Palace profile loading (default: true)
-- `ENABLE_GRAPH_MEMORY` - Enable graph memory for relationship tracking (default: false)
-- `GRAPH_STORE_PROVIDER` - Graph store provider: "falkordb" (default)
-- `FALKORDB_HOST` - FalkorDB host (default: localhost)
-- `FALKORDB_PORT` - FalkorDB port (default: 6379)
-- `FALKORDB_PASSWORD` - FalkorDB password (optional)
-- `FALKORDB_GRAPH_NAME` - Graph name (default: clara)
-
-### PostgreSQL (Production)
-For production, use managed PostgreSQL instead of SQLite/Qdrant:
-- `DATABASE_URL` - PostgreSQL connection for SQLAlchemy (default: uses SQLite)
-- `PALACE_DATABASE_URL` - PostgreSQL+pgvector connection for Palace vectors (default: uses Qdrant)
-
-Example (Railway):
-```bash
-ANTHROPIC_API_KEY=...
-ANTHROPIC_BASE_URL=...      # Optional: for proxies like clewdr
-ANTHROPIC_MODEL=claude-sonnet-4-5
-```
-
-**OpenRouter**:
-```bash
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=anthropic/claude-sonnet-4
-```
-
-**Custom OpenAI**:
-```bash
-CUSTOM_OPENAI_API_KEY=...
-CUSTOM_OPENAI_BASE_URL=https://api.openai.com/v1
-CUSTOM_OPENAI_MODEL=gpt-4o
-```
-
-### Model Tiers
-Discord supports `!high`, `!mid`, `!low` prefixes for model selection. Configure with:
-```bash
-ANTHROPIC_MODEL_HIGH=claude-opus-4-5
-ANTHROPIC_MODEL_MID=claude-sonnet-4-5
-ANTHROPIC_MODEL_LOW=claude-haiku-4-5
-MODEL_TIER=mid                    # Default tier
-AUTO_TIER_SELECTION=false         # Auto-select based on complexity
-```
-
-### Database
-```bash
-DATABASE_URL=postgresql://...     # Main database (default: SQLite)
-PALACE_DATABASE_URL=postgresql://...  # Vector store (default: Qdrant)
-```
-
-### Discord Bot
-```bash
-DISCORD_BOT_TOKEN=...
-DISCORD_ALLOWED_SERVERS=...       # Comma-separated server IDs
-DISCORD_ALLOWED_CHANNELS=...      # Comma-separated channel IDs
-DISCORD_MAX_MESSAGES=25           # Max conversation chain length
-DISCORD_STOP_PHRASES="clara stop,stop clara,nevermind"
-```
-
-### Palace Memory Provider
-```bash
-PALACE_PROVIDER=openrouter          # Memory extraction LLM
-PALACE_MODEL=openai/gpt-4o-mini
-```
-
-**For Claude proxies (like clewdr)**: Use `LLM_PROVIDER=anthropic` with `ANTHROPIC_BASE_URL` for native Anthropic SDK support. This uses native Claude tool calling without format conversion.
-
-**Tool Communication Mode:**
-- `TOOL_CALL_MODE` - How tools are communicated to the LLM:
-  - `langchain` (default): Uses LangChain's `bind_tools()` for unified tool calling across all providers
-  - `native`: Uses API-native tool calling (OpenAI/Anthropic format) directly
-  - `xml`: OpenClaw-style system prompt injection (works with any LLM, no native tool support needed)
-
-When using `TOOL_CALL_MODE=xml`:
-- Tools are serialized to XML and injected into the system prompt
-- Works with any LLM provider (doesn't require native tool support)
-- Function calls are parsed from the LLM response text using XML tags
-- Format: `<function_calls><invoke name="tool_name"><parameter name="arg">value</parameter></invoke></function_calls>`
-
-**Unified Tool Calling (Recommended for New Code):**
-The `make_llm_with_tools_unified()` function provides a standardized interface for all providers:
-
-```python
-from mypalclara.core import make_llm_with_tools_unified, ToolResponse
-
-# Create unified tool-calling LLM
-llm = make_llm_with_tools_unified(tools, tier="mid")
-
-# Call returns standardized ToolResponse
-response: ToolResponse = llm(messages)
-
-if response.has_tool_calls:
-    for call in response.tool_calls:
-        print(f"Tool: {call.name}, Args: {call.arguments}")
-else:
-    print(response.content)
-
-# Convert to OpenAI dict format if needed
-openai_dict = response.to_openai_dict()
-```
-
-Benefits:
-- Works with all providers (OpenRouter, NanoGPT, OpenAI, Anthropic)
-- Returns standardized `ToolResponse` object (not provider-specific types)
-- No provider-specific branching in calling code
-- Handles format conversion internally
-
-To enable Docker sandbox + web search:
-```bash
-DOCKER_SANDBOX_IMAGE=python:3.12-slim
-DOCKER_SANDBOX_TIMEOUT=900
-```
-
-### MCP Plugins
-```bash
-MCP_SERVERS_DIR=.mcp_servers
-SMITHERY_API_KEY=...              # For Smithery registry access
-```
-
-### Gateway
-```bash
-CLARA_GATEWAY_HOST=127.0.0.1
-CLARA_GATEWAY_PORT=18789
-CLARA_GATEWAY_SECRET=...          # REQUIRED: shared secret for WS registration; all adapters must set the same value
-CLARA_GATEWAY_API_PORT=18790          # Gateway HTTP API port (default: 18790)
-CLARA_GATEWAY_API_URL=http://127.0.0.1:18790  # Gateway HTTP API URL (for Rails proxy)
-```
-
-### Heartbeat (OpenClaw-inspired)
-```bash
-HEARTBEAT_ENABLED=false           # Enable periodic heartbeat checks
-HEARTBEAT_INTERVAL_MINUTES=30     # Minutes between checks (default: 30)
-HEARTBEAT_ACK_MAX_CHARS=300       # Max chars to suppress with HEARTBEAT_OK
-```
-
-Edit `mypalclara/workspace/HEARTBEAT.md` to customize what Clara checks each cycle.
-
-### Optional Features
-```bash
-ENABLE_GRAPH_MEMORY=false         # FalkorDB relationship tracking
-GITHUB_TOKEN=...                  # GitHub integration
-EMAIL_MONITORING_ENABLED=false    # Email alerts
-TAVILY_API_KEY=...                # Web search in sandbox
-```
-
-### Per-User Containers
-```bash
-USER_VM_ENABLED=false             # Enable persistent per-user Docker containers
-USER_VM_IMAGE=debian:12-slim      # Docker image for user containers
-```
-
-### Qdrant Resilience
-```bash
-QDRANT_TIMEOUT=15                 # Request timeout in seconds for QdrantClient
-QDRANT_CB_THRESHOLD=3             # Consecutive failures before circuit breaker opens
-QDRANT_CB_COOLDOWN=30             # Seconds to skip Qdrant calls after circuit opens
-MEMORY_FETCH_TIMEOUT=10           # Seconds before memory fetch times out (returns empty)
-```
-
-Each user can get a persistent Docker container with personal workspace files and filesystem access. Containers are provisioned on demand and restarted when the user returns.
-
-**Privacy model:** Memories default to `private`. Users can mark memories as `public` for group channel visibility. Clara respects the boundary automatically based on channel type (DM = full access, group = public only).
-
-## Key Patterns
-
-- Discord bot uses global `MemoryManager` instance initialized at startup with LLM callable
-- **Unified LLM architecture** in `mypalclara/core/llm/`:
-  - `LLMConfig` dataclass for configuration (supports tiers, env loading)
-  - `LLMProvider` abstract interface with `LangChainProvider`, `DirectAnthropicProvider`, `DirectOpenAIProvider`
-  - `ProviderRegistry` for provider caching and factory pattern
-  - `ToolCall`/`ToolResponse` dataclasses for standardized tool handling
-  - Backward compatibility via `make_llm()`, `make_llm_streaming()`, etc.
-- `LLM_PROVIDER=anthropic` uses native Anthropic SDK with native tool calling (recommended for clewdr)
-- Sandbox system uses Docker containers for code execution
-- Memory system in `mypalclara/core/memory/`: episodes, layered retrieval, reflection, graph
-- `memory_manager.py` is thin facade; retrieval uses `build_prompt_layered()` not old `fetch_context()`
-
-## Production Deployment
+`services/web-ui/` is a Rails BFF + React frontend. Rails handles its own game logic (own PostgreSQL) and proxies other API requests to the engine's HTTP API (`CLARA_GATEWAY_API_URL`).
 
 ```bash
-# PostgreSQL setup
-DATABASE_URL=postgresql://user:pass@host:5432/clara_main
-PALACE_DATABASE_URL=postgresql://user:pass@host:5432/clara_vectors
-
-# Enable pgvector
-CREATE EXTENSION IF NOT EXISTS vector;
-
-# Migrate existing data
-poetry run python scripts/migrate_to_postgres.py --all
+cd services/web-ui/backend && rails s -p 3000    # Rails API
+cd services/web-ui/frontend && npm run dev       # Vite dev server (port 5173)
 ```
 
-### Backup Service
-Automated PostgreSQL backups to S3 (Wasabi). Code in `mypalclara/services/backup/`, Railway config in `services/backup/`.
+## Notes
 
-```bash
-S3_BUCKET=clara-backups
-S3_ENDPOINT_URL=https://s3.wasabisys.com
-S3_ACCESS_KEY=...
-S3_SECRET_KEY=...
-```
+- Poetry runs in `package-mode = false` (code runs from the repo root on `sys.path`); `mypal_protocol/` is a vendored top-level package.
+- The deploy topology is two repos: run `mypal-engine` (engine + its infra: postgres/qdrant/redis/falkordb), then point these adapters at it via `CLARA_GATEWAY_*`.
