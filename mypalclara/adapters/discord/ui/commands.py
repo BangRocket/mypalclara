@@ -290,34 +290,26 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
+            all_tools = await EngineApiClient().mcp_list_tools()
 
             if server:
-                client = manager.get_client(server)
-                if not client:
-                    await ctx.respond(embed=create_error_embed("Not Connected", f"Server '{server}' is not connected."))
-                    return
-
-                tools = client.get_tools()
-                if not tools:
+                server_tools = [t for t in all_tools if t.get("server") == server]
+                if not server_tools:
                     await ctx.respond(embed=create_info_embed("No Tools", f"No tools available from '{server}'."))
                     return
 
-                lines = [f"**{t.name}**: {t.description[:60]}..." for t in tools]
-                embed = create_list_embed(f"Tools from {server} ({len(tools)})", lines)
+                lines = [f"**{t.get('name')}**: {(t.get('description') or '')[:60]}..." for t in server_tools]
+                embed = create_list_embed(f"Tools from {server} ({len(server_tools)})", lines)
                 await ctx.respond(embed=embed)
             else:
-                # All tools
-                all_tools = manager.get_all_tools()
                 if not all_tools:
                     await ctx.respond(embed=create_info_embed("No Tools", "No MCP tools available."))
                     return
 
                 # Group by server
                 by_server: dict[str, int] = {}
-                for srv_name, _ in all_tools:
+                for t in all_tools:
+                    srv_name = t.get("server", "unknown")
                     by_server[srv_name] = by_server.get(srv_name, 0) + 1
 
                 lines = [f"**{srv}**: {count} tools" for srv, count in by_server.items()]
@@ -336,33 +328,34 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp.installer import SmitheryClient
+            data = await EngineApiClient().mcp_search(query, page_size=10)
+            result = data.get("result") or {}
 
-            client = SmitheryClient()
-            result = await client.search(query, page_size=10)
-
-            if result.error:
-                await ctx.respond(embed=create_error_embed("Search Failed", result.error))
+            if result.get("error"):
+                await ctx.respond(embed=create_error_embed("Search Failed", result["error"]))
                 return
 
-            if not result.servers:
+            servers = result.get("servers") or []
+            if not servers:
                 await ctx.respond(embed=create_info_embed("No Results", f"No servers found for '{query}'."))
                 return
 
             # Build response
             lines = []
-            for server in result.servers[:10]:
-                verified = " \u2713" if server.verified else ""
-                uses = f" ({server.use_count} uses)" if server.use_count > 0 else ""
-                desc = server.description[:60] + "..." if len(server.description) > 60 else server.description
-                lines.append(f"**{server.qualified_name}**{verified}{uses}\n{desc}")
+            for server in servers[:10]:
+                verified = " \u2713" if server.get("verified") else ""
+                uses = f" ({server.get('use_count', 0)} uses)" if (server.get("use_count") or 0) > 0 else ""
+                desc_full = server.get("description") or ""
+                desc = desc_full[:60] + "..." if len(desc_full) > 60 else desc_full
+                lines.append(f"**{server.get('qualified_name')}**{verified}{uses}\n{desc}")
 
             embed = discord.Embed(
                 title=f"Smithery Search: {query}",
                 description="\n\n".join(lines),
                 color=EMBED_COLOR_PRIMARY,
             )
-            embed.set_footer(text=f"Found {result.total} results | Install with: /mcp install smithery:<name>")
+            total = result.get("total", len(servers))
+            embed.set_footer(text=f"Found {total} results | Install with: /mcp install smithery:<name>")
             await ctx.respond(embed=embed)
 
         except Exception as e:

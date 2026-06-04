@@ -319,18 +319,9 @@ class CommandDispatcher:
 
         name = args[0]
         try:
-            from mypalclara.core.mcp import get_mcp_manager
+            all_tools = await EngineApiClient().mcp_list_tools()
+            tools = [t for t in all_tools if t.get("server") == name]
 
-            manager = get_mcp_manager()
-
-            # Try local server first, then remote
-            server = manager._local.get_server(name)
-            if not server:
-                server = manager._remote.get_connection(name)
-            if not server:
-                return CommandResult(handled=True, error=f"Server not found: {name}")
-
-            tools = server.get_tools()
             if not tools:
                 return CommandResult(handled=True, output=Text(f"No tools registered for {name}.", style="dim"))
 
@@ -339,14 +330,10 @@ class CommandDispatcher:
             table.add_column("Description")
 
             for tool in tools:
-                tool_name = tool.name if hasattr(tool, "name") else str(tool)
-                tool_desc = tool.description if hasattr(tool, "description") else ""
-                table.add_row(tool_name, tool_desc[:80])
+                table.add_row(tool.get("name") or "", (tool.get("description") or "")[:80])
 
             return CommandResult(handled=True, output=table)
 
-        except ImportError:
-            return CommandResult(handled=True, error="MCP manager not available in this environment")
         except Exception as e:
             return CommandResult(handled=True, error=f"Failed to list tools: {e}")
 
@@ -357,15 +344,14 @@ class CommandDispatcher:
 
         query = " ".join(args)
         try:
-            from mypalclara.core.mcp import SmitheryClient
+            data = await EngineApiClient().mcp_search(query)
+            result = data.get("result") or {}
 
-            client = SmitheryClient()
-            result = await client.search(query)
+            if result.get("error"):
+                return CommandResult(handled=True, error=f"Search failed: {result['error']}")
 
-            if result.error:
-                return CommandResult(handled=True, error=f"Search failed: {result.error}")
-
-            if not result.servers:
+            servers = result.get("servers") or []
+            if not servers:
                 return CommandResult(handled=True, output=Text(f"No results for '{query}'.", style="dim"))
 
             table = Table(title=f"Smithery: {query}", show_header=True, header_style="bold cyan")
@@ -373,17 +359,17 @@ class CommandDispatcher:
             table.add_column("Description")
             table.add_column("Source", style="dim")
 
-            for s in result.servers[:10]:
+            for s in servers[:10]:
                 table.add_row(
-                    s.display_name,
-                    (s.description or "")[:60],
-                    s.qualified_name,
+                    s.get("display_name") or s.get("qualified_name") or "",
+                    (s.get("description") or "")[:60],
+                    s.get("qualified_name") or "",
                 )
 
             return CommandResult(handled=True, output=table)
 
-        except ImportError:
-            return CommandResult(handled=True, error="Smithery client not available in this environment")
+        except Exception as e:
+            return CommandResult(handled=True, error=f"Search failed: {e}")
 
     async def _mcp_install(self, args: list[str]) -> CommandResult:
         """Install an MCP server with confirmation."""
