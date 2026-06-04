@@ -1425,26 +1425,25 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.services.backup import get_backup_service
+            from mypalclara.client_common.engine_client import EngineApiClient
 
-            service = get_backup_service()
             databases = [database] if database else None
-            result = await service.backup_now(databases=databases)
+            result = await EngineApiClient().backup_run(databases=databases)
 
-            if result.success:
+            if result["success"]:
                 embed = create_success_embed(
                     "Backup Complete",
-                    f"{result.message}\n\nDatabases: {', '.join(result.databases_backed_up)}",
+                    f"{result['message']}\n\nDatabases: {', '.join(result['databases_backed_up'])}",
                 )
-            elif result.databases_backed_up:
+            elif result["databases_backed_up"]:
                 # Partial success
                 embed = create_info_embed(
                     "Partial Backup",
-                    f"{result.message}\n\nSucceeded: {', '.join(result.databases_backed_up)}\n"
-                    f"Failed: {', '.join(result.databases_failed)}",
+                    f"{result['message']}\n\nSucceeded: {', '.join(result['databases_backed_up'])}\n"
+                    f"Failed: {', '.join(result['databases_failed'])}",
                 )
             else:
-                embed = create_error_embed("Backup Failed", result.message)
+                embed = create_error_embed("Backup Failed", result["message"])
 
             await ctx.respond(embed=embed)
 
@@ -1459,10 +1458,9 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.services.backup import get_backup_service
+            from mypalclara.client_common.engine_client import EngineApiClient
 
-            service = get_backup_service()
-            status = await service.get_status()
+            status = await EngineApiClient().backup_status()
 
             fields = []
 
@@ -1471,7 +1469,9 @@ class ClaraCommands(commands.Cog):
             connected = status.get("connected", {})
 
             clara_status = "\u2705" if connected.get("clara_db") else ("\u26ab" if config.get("clara_db") else "\u274c")
-            palace_status = "\u2705" if connected.get("palace_db") else ("\u26ab" if config.get("palace_db") else "\u274c")
+            palace_status = (
+                "\u2705" if connected.get("palace_db") else ("\u26ab" if config.get("palace_db") else "\u274c")
+            )
             s3_status = "\u2705" if connected.get("s3") else ("\u26ab" if config.get("s3") else "\u274c")
 
             fields.append(("Clara DB", clara_status, True))
@@ -1508,10 +1508,11 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.services.backup import get_backup_service
+            from datetime import datetime
 
-            service = get_backup_service()
-            backups = await service.list_backups(database=database, limit=limit)
+            from mypalclara.client_common.engine_client import EngineApiClient
+
+            backups = await EngineApiClient().backup_list(database=database, limit=limit)
 
             if not backups:
                 await ctx.respond(embed=create_info_embed("No Backups", "No backups found."))
@@ -1519,8 +1520,13 @@ class ClaraCommands(commands.Cog):
 
             lines = []
             for b in backups:
-                ts = b.timestamp.strftime("%Y-%m-%d %H:%M")
-                lines.append(f"**{b.filename}** ({b.database}) - {b.size_mb:.2f} MB - {ts}")
+                ts_raw = b.get("timestamp")
+                try:
+                    ts = datetime.fromisoformat(ts_raw).strftime("%Y-%m-%d %H:%M") if ts_raw else "unknown"
+                except (ValueError, TypeError):
+                    ts = str(ts_raw)
+                size_mb = (b.get("size_bytes") or 0) / (1024 * 1024)
+                lines.append(f"**{b['filename']}** ({b['database']}) - {size_mb:.2f} MB - {ts}")
 
             embed = create_list_embed(f"Backups ({len(backups)})", lines)
             await ctx.respond(embed=embed)

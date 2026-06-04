@@ -52,6 +52,12 @@ class EngineApiClient:
     async def backup_status(self) -> Any:
         return await self._request("GET", "/api/v1/backup/status")
 
+    async def backup_list(self, database: str | None = None, limit: int = 10) -> Any:
+        params: dict = {"limit": limit}
+        if database is not None:
+            params["database"] = database
+        return await self._request("GET", "/api/v1/backup/list", params=params)
+
     # --- sandbox ---
     async def sandbox_status(self) -> Any:
         return await self._request("GET", "/api/v1/sandbox/status")

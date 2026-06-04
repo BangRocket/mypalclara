@@ -91,10 +91,7 @@ def test_engine_has_no_new_client_or_sdk_imports():
 def test_known_violations_allowlist_is_not_stale():
     violations = _current_violations()
     stale = KNOWN_VIOLATIONS - violations
-    assert not stale, (
-        "These files no longer violate — remove them from KNOWN_VIOLATIONS: "
-        f"{sorted(stale)}"
-    )
+    assert not stale, "These files no longer violate — remove them from KNOWN_VIOLATIONS: " f"{sorted(stale)}"
 
 
 # --- Client side must not import gateway internals (only mypal_protocol / HTTP API) ---
@@ -161,3 +158,33 @@ def test_client_does_not_import_relocated_shared_code():
                     if alias.name in FORBIDDEN_SHARED_MODULES:
                         violations.append(f"{rel}: imports {alias.name}")
     assert not violations, "Client imports relocated shared code from engine:\n" + "\n".join(violations)
+
+
+# --- Client must not import engine modules that have been rewired to the API (Phase 2c, sub-plan 3) ---
+
+# Engine modules whose client uses are now routed through EngineApiClient. This set GROWS as each
+# rewire group lands; each entry forbids that module (and submodules) from all client packages.
+# Allowlist entries (file -> {modules}) carve out sites not yet rewired (e.g. MCP OAuth).
+CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
+    "mypalclara.core.services.backup",
+}
+REWIRE_ALLOWLIST: dict[str, set[str]] = {}
+
+
+def _forbidden_rewired(module: str) -> str | None:
+    for prefix in CLIENT_REWIRED_ENGINE_PREFIXES:
+        if module == prefix or module.startswith(prefix + "."):
+            return prefix
+    return None
+
+
+def test_client_does_not_import_rewired_engine_modules():
+    violations: list[str] = []
+    for path in _iter_client_shared_files():
+        rel = path.relative_to(PKG_ROOT).as_posix()
+        allowed = REWIRE_ALLOWLIST.get(rel, set())
+        for module in _imported_modules(path):
+            hit = _forbidden_rewired(module)
+            if hit and hit not in allowed:
+                violations.append(f"{rel}: imports {module} (rewire to EngineApiClient)")
+    assert not violations, "Client still imports rewired engine modules:\n" + "\n".join(violations)
