@@ -126,110 +126,6 @@ class ColoredConsoleFormatter(logging.Formatter):
         return msg
 
 
-class DatabaseHandler(logging.Handler):
-    """Async logging handler that writes to PostgreSQL via background thread."""
-
-    def __init__(self, level: int = logging.INFO):
-        super().__init__(level)
-        self._queue: Queue[dict[str, Any]] = Queue(maxsize=1000)
-        self._db_session_factory = None
-        self._shutdown = False
-        self._thread: threading.Thread | None = None
-
-    def set_session_factory(self, session_factory):
-        """Set the SQLAlchemy session factory and start the background thread."""
-        self._db_session_factory = session_factory
-        self._thread = threading.Thread(target=self._worker, daemon=True)
-        self._thread.start()
-
-    def _worker(self):
-        """Background worker that writes logs to the database."""
-        from mypalclara.db.models import LogEntry
-
-        batch: list[dict[str, Any]] = []
-        batch_size = 10
-        flush_interval = 2.0
-
-        while not self._shutdown:
-            try:
-                try:
-                    record_dict = self._queue.get(timeout=flush_interval)
-                    batch.append(record_dict)
-                except Empty:
-                    pass
-
-                while len(batch) < batch_size:
-                    try:
-                        record_dict = self._queue.get_nowait()
-                        batch.append(record_dict)
-                    except Empty:
-                        break
-
-                if batch and self._db_session_factory:
-                    self._flush_batch(batch, LogEntry)
-                    batch = []
-
-            except Exception as e:
-                print(f"[logging] Database handler error: {e}", file=sys.stderr)
-                batch = []
-
-    def _flush_batch(self, batch: list[dict[str, Any]], LogEntry):
-        """Write a batch of logs to the database."""
-        session: DBSession | None = None
-        try:
-            session = self._db_session_factory()
-            for record_dict in batch:
-                entry = LogEntry(**record_dict)
-                session.add(entry)
-            session.commit()
-        except Exception as e:
-            if session:
-                session.rollback()
-            print(f"[logging] Failed to write logs: {e}", file=sys.stderr)
-        finally:
-            if session:
-                session.close()
-
-    def emit(self, record: logging.LogRecord):
-        """Queue a log record for async database insertion."""
-        if self._shutdown or self._db_session_factory is None:
-            return
-
-        try:
-            extra_data = {}
-            for key in ["request_id", "duration_ms", "status_code", "method", "path", "channel_id", "guild_id"]:
-                if hasattr(record, key):
-                    extra_data[key] = getattr(record, key)
-
-            record_dict = {
-                "timestamp": utcnow(),
-                "level": record.levelname,
-                "logger_name": record.name,
-                "message": record.getMessage(),
-                "module": record.module,
-                "function": record.funcName,
-                "line_number": record.lineno,
-                "exception": ("".join(traceback.format_exception(*record.exc_info)) if record.exc_info else None),
-                "extra_data": json.dumps(extra_data) if extra_data else None,
-                "user_id": getattr(record, "user_id", None),
-                "session_id": getattr(record, "session_id", None),
-            }
-
-            try:
-                self._queue.put_nowait(record_dict)
-            except Exception:
-                pass  # Drop log if queue is full
-
-        except Exception:
-            self.handleError(record)
-
-    def shutdown(self):
-        """Gracefully shutdown the handler."""
-        self._shutdown = True
-        if self._thread:
-            self._thread.join(timeout=5.0)
-
-
 class DiscordLogHandler(logging.Handler):
     """Async logging handler that mirrors logs to a Discord channel.
 
@@ -452,7 +348,6 @@ class DiscordLogHandler(logging.Handler):
 
 
 # Global state
-_db_handler: DatabaseHandler | None = None
 _discord_handler: DiscordLogHandler | None = None
 _initialized = False
 
@@ -464,8 +359,12 @@ def _get_console_level() -> int:
 
 
 def init_logging(session_factory=None, console_level: int | None = None):
-    """Initialize the logging system with console and optional database handlers."""
-    global _db_handler, _initialized
+    """Initialize the logging system with the console handler.
+
+    `session_factory` is accepted for backward-compatible call sites but ignored
+    on the client (database logging lives in the engine).
+    """
+    global _initialized
 
     if _initialized:
         return
@@ -484,14 +383,10 @@ def init_logging(session_factory=None, console_level: int | None = None):
     console_handler.setLevel(console_level)
     console_handler.setFormatter(ColoredConsoleFormatter())
 
-    # Database handler
-    _db_handler = DatabaseHandler(level=logging.INFO)
-
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
-    root_logger.addHandler(_db_handler)
 
     # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -504,17 +399,12 @@ def init_logging(session_factory=None, console_level: int | None = None):
     logging.getLogger("watchfiles").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
-    if session_factory:
-        _db_handler.set_session_factory(session_factory)
-
     _initialized = True
 
 
 def set_db_session_factory(session_factory):
-    """Set the database session factory after init."""
-    global _db_handler
-    if _db_handler:
-        _db_handler.set_session_factory(session_factory)
+    """No-op on the client (database logging is engine-side). Kept for API compatibility."""
+    return None
 
 
 def init_discord_logging(bot, channel_id: int, loop, embed_renderer=None) -> DiscordLogHandler | None:
@@ -594,8 +484,6 @@ def get_mcp_logger(name: str) -> logging.Logger:
 
 def shutdown_logging():
     """Gracefully shutdown logging."""
-    global _db_handler, _discord_handler
-    if _db_handler:
-        _db_handler.shutdown()
+    global _discord_handler
     if _discord_handler:
         _discord_handler.shutdown()
