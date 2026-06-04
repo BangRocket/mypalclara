@@ -172,12 +172,9 @@ CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
     "mypalclara.core.memory",
     "mypalclara.core.mcp",
 }
-# Files still allowed to import a forbidden prefix (not yet fully rewired).
-# discord commands.py keeps core.mcp for the MCP OAuth flow + remaining non-OAuth
-# fallbacks until the deferred OAuth endpoints land (then this entry is removed).
-REWIRE_ALLOWLIST: dict[str, set[str]] = {
-    "adapters/discord/ui/commands.py": {"mypalclara.core.mcp"},
-}
+# Files still allowed to import a forbidden prefix (not yet fully rewired). Empty:
+# the client imports no rewired engine module anywhere.
+REWIRE_ALLOWLIST: dict[str, set[str]] = {}
 
 
 def _forbidden_rewired(module: str) -> str | None:

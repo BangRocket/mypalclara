@@ -155,3 +155,20 @@ class EngineApiClient:
 
     async def mcp_uninstall(self, name: str) -> Any:
         return await self._request("DELETE", f"/api/v1/mcp/servers/{name}")
+
+    # --- MCP Smithery OAuth ---
+    async def mcp_oauth_start(self, server: str) -> Any:
+        return await self._request("POST", f"/api/v1/mcp/servers/{server}/oauth/start")
+
+    async def mcp_oauth_complete(self, server: str, code: str) -> Any:
+        return await self._request("POST", f"/api/v1/mcp/servers/{server}/oauth/complete", json={"code": code})
+
+    async def mcp_oauth_status(self, server: str) -> Any:
+        return await self._request("GET", f"/api/v1/mcp/servers/{server}/oauth/status")
+
+    async def mcp_oauth_set_token(self, server: str, access_token: str, refresh_token: str | None = None) -> Any:
+        return await self._request(
+            "POST",
+            f"/api/v1/mcp/servers/{server}/oauth/token",
+            json={"access_token": access_token, "refresh_token": refresh_token},
+        )

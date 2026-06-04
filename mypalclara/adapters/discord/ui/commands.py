@@ -226,56 +226,9 @@ class ClaraCommands(commands.Cog):
                 await ctx.respond(embed=embed)
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-
-            if not server:
-                # Overall status
-                connected = len(manager)
-                statuses = manager.get_all_server_status()
-                total = len(statuses)
-                enabled = sum(1 for s in statuses if s.get("enabled", False))
-
-                embed = create_status_embed(
-                    "MCP System Status",
-                    fields=[
-                        ("Total Servers", str(total), True),
-                        ("Enabled", str(enabled), True),
-                        ("Connected", str(connected), True),
-                    ],
-                )
-                await ctx.respond(embed=embed)
-                return
-
-            # Specific server
-            status = manager.get_server_status(server)
-            if not status:
-                await ctx.respond(embed=create_error_embed("Not Found", f"Server '{server}' not found."))
-                return
-
-            fields = [
-                ("Status", status.get("status", "unknown"), True),
-                ("Connected", "Yes" if status.get("connected") else "No", True),
-                ("Transport", status.get("transport", "unknown"), True),
-                ("Tools", str(status.get("tool_count", 0)), True),
-            ]
-
-            if status.get("last_error"):
-                fields.append(("Last Error", status["last_error"][:100], False))
-
-            embed = create_status_embed(f"Server: {server}", fields=fields)
-
-            # Add tools list
-            tools = status.get("tools", [])
-            if tools:
-                tools_text = ", ".join(tools[:10])
-                if len(tools) > 10:
-                    tools_text += f" ... +{len(tools) - 10} more"
-                embed.add_field(name="Tools", value=tools_text, inline=False)
-
-            await ctx.respond(embed=embed)
+            # No gateway connection — MCP requires gateway mode.
+            await ctx.respond(embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."))
+            return
 
         except Exception as e:
             logger.error(f"[commands] Error getting MCP status: {e}")
@@ -396,32 +349,9 @@ class ClaraCommands(commands.Cog):
                     )
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-            from mypalclara.core.mcp.installer import MCPInstaller
-
-            installer = MCPInstaller()
-            result = await installer.install(
-                source=source,
-                name=name,
-                installed_by=str(ctx.author.id),
-            )
-
-            if result.success:
-                # Auto-start
-                manager = get_mcp_manager()
-                server_name = result.server.name if result.server else name or "unknown"
-                await manager.start_server(server_name)
-
-                embed = create_success_embed(
-                    "Server Installed",
-                    f"**{server_name}** installed successfully!\n"
-                    f"Source: `{source}`\n"
-                    f"Tools discovered: {result.tools_discovered}",
-                )
-                await ctx.respond(embed=embed)
-            else:
-                await ctx.respond(embed=create_error_embed("Installation Failed", result.error or "Unknown error"))
+            # No gateway connection — MCP requires gateway mode.
+            await ctx.respond(embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."))
+            return
 
         except Exception as e:
             logger.error(f"[commands] Error installing MCP server: {e}")
@@ -465,24 +395,12 @@ class ClaraCommands(commands.Cog):
                     await view.interaction.response.edit_message(embed=embed, view=None)
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-            from mypalclara.core.mcp.installer import MCPInstaller
-
-            manager = get_mcp_manager()
-            if server in manager:
-                await manager.stop_server(server)
-
-            installer = MCPInstaller()
-            success = await installer.uninstall(server)
-
-            if success:
-                embed = create_success_embed("Server Uninstalled", f"**{server}** has been removed.")
-            else:
-                embed = create_error_embed("Failed", f"Could not uninstall '{server}'.")
-
+            # No gateway connection — MCP requires gateway mode.
             if view.interaction:
-                await view.interaction.response.edit_message(embed=embed, view=None)
+                await view.interaction.response.edit_message(
+                    embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."),
+                    view=None,
+                )
 
         except Exception as e:
             logger.error(f"[commands] Error uninstalling MCP server: {e}")
@@ -514,18 +432,9 @@ class ClaraCommands(commands.Cog):
                     )
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-            success = await manager.enable_server(server)
-
-            if success:
-                await ctx.respond(
-                    embed=create_success_embed("Server Enabled", f"**{server}** is now enabled and running.")
-                )
-            else:
-                await ctx.respond(embed=create_error_embed("Failed", f"Could not enable '{server}'."))
+            # No gateway connection — MCP requires gateway mode.
+            await ctx.respond(embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."))
+            return
 
         except Exception as e:
             logger.error(f"[commands] Error enabling MCP server: {e}")
@@ -554,16 +463,9 @@ class ClaraCommands(commands.Cog):
                     )
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-            success = await manager.disable_server(server)
-
-            if success:
-                await ctx.respond(embed=create_success_embed("Server Disabled", f"**{server}** is now disabled."))
-            else:
-                await ctx.respond(embed=create_error_embed("Failed", f"Could not disable '{server}'."))
+            # No gateway connection — MCP requires gateway mode.
+            await ctx.respond(embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."))
+            return
 
         except Exception as e:
             logger.error(f"[commands] Error disabling MCP server: {e}")
@@ -594,16 +496,9 @@ class ClaraCommands(commands.Cog):
                     )
                 return
 
-            # Local mode
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-            success = await manager.restart_server(server)
-
-            if success:
-                await ctx.respond(embed=create_success_embed("Server Restarted", f"**{server}** has been restarted."))
-            else:
-                await ctx.respond(embed=create_error_embed("Failed", f"Could not restart '{server}'."))
+            # No gateway connection — MCP requires gateway mode.
+            await ctx.respond(embed=create_error_embed("Unavailable", "MCP management requires a gateway connection."))
+            return
 
         except Exception as e:
             logger.error(f"[commands] Error restarting MCP server: {e}")
@@ -617,10 +512,7 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-            results = await manager.reload()
+            results = await EngineApiClient().mcp_reload()
 
             if not results:
                 await ctx.respond(embed=create_info_embed("No Servers", "No MCP servers are configured."))
@@ -652,42 +544,9 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp.models import load_server_config
-            from mypalclara.core.mcp.oauth import SmitheryOAuthClient
-
-            # Check if server exists
-            config = load_server_config(server)
-            if not config:
-                await ctx.respond(embed=create_error_embed("Not Found", f"Server '{server}' not found."))
-                return
-
-            if config.source_type != "smithery-hosted":
-                await ctx.respond(
-                    embed=create_error_embed(
-                        "Not Hosted",
-                        f"'{server}' is not a hosted Smithery server. OAuth is only for `smithery-hosted:` servers.",
-                    )
-                )
-                return
-
-            # Get redirect URI
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
-            if api_url:
-                redirect_uri = f"{api_url}/oauth/mcp/callback"
-            else:
-                redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
-
-            # Start OAuth flow
-            oauth_client = SmitheryOAuthClient(server, config.endpoint_url)
-            auth_url = await oauth_client.start_oauth_flow(redirect_uri)
-
-            if not auth_url:
-                await ctx.respond(
-                    embed=create_error_embed("OAuth Failed", "Failed to start OAuth flow. Check logs for details.")
-                )
-                return
+            result = await EngineApiClient().mcp_oauth_start(server)
+            auth_url = result["auth_url"]
+            oob = result.get("oob", True)
 
             # Build response embed
             embed = discord.Embed(
@@ -697,7 +556,7 @@ class ClaraCommands(commands.Cog):
             )
             embed.add_field(name="Authorization URL", value=auth_url, inline=False)
 
-            if redirect_uri == "urn:ietf:wg:oauth:2.0:oob":
+            if oob:
                 embed.add_field(
                     name="Next Step",
                     value=f"After authorizing, copy the code and run:\n`/mcp oauth_complete server:{server} code:<your-code>`",
@@ -725,51 +584,11 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp import get_mcp_manager
-            from mypalclara.core.mcp.models import load_server_config, save_server_config
-            from mypalclara.core.mcp.oauth import SmitheryOAuthClient
-
-            # Check if server exists
-            config = load_server_config(server)
-            if not config:
-                await ctx.respond(embed=create_error_embed("Not Found", f"Server '{server}' not found."))
-                return
-
-            # Get redirect URI (must match what was used in oauth_start)
-            import os
-
-            api_url = os.getenv("CLARA_API_URL", "")
-            if api_url:
-                redirect_uri = f"{api_url}/oauth/mcp/callback"
-            else:
-                redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
-
-            # Exchange code for tokens
-            oauth_client = SmitheryOAuthClient(server, config.endpoint_url)
-            success = await oauth_client.exchange_code(code, redirect_uri)
-
-            if not success:
-                await ctx.respond(
-                    embed=create_error_embed(
-                        "Token Exchange Failed",
-                        "Could not exchange authorization code. The code may be invalid or expired.\n"
-                        "Try starting the flow again with `/mcp oauth_start`.",
-                    )
-                )
-                return
-
-            # Update server status and try to connect
-            config.status = "stopped"
-            config.last_error = None
-            save_server_config(config)
-
-            # Try to start the server
-            manager = get_mcp_manager()
-            connected = await manager.start_server(server)
+            result = await EngineApiClient().mcp_oauth_complete(server, code)
+            connected = result.get("connected")
+            tool_count = result.get("tool_count", 0)
 
             if connected:
-                status = manager.get_server_status(server)
-                tool_count = status.get("tool_count", 0) if status else 0
                 await ctx.respond(
                     embed=create_success_embed(
                         "OAuth Complete",
@@ -797,16 +616,9 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp.models import load_server_config
-            from mypalclara.core.mcp.oauth import load_oauth_state
+            result = await EngineApiClient().mcp_oauth_status(server)
 
-            # Check server config
-            config = load_server_config(server)
-            if not config:
-                await ctx.respond(embed=create_error_embed("Not Found", f"Server '{server}' not found."))
-                return
-
-            if config.source_type != "smithery-hosted":
+            if not result.get("hosted"):
                 await ctx.respond(
                     embed=create_info_embed(
                         "Not Hosted", f"'{server}' is not a hosted Smithery server. OAuth not required."
@@ -814,19 +626,16 @@ class ClaraCommands(commands.Cog):
                 )
                 return
 
-            # Check OAuth state
-            oauth_state = load_oauth_state(server)
-
             fields = [
-                ("Server Type", config.source_type, True),
-                ("Server Status", config.status, True),
+                ("Server Type", result.get("source_type", "?"), True),
+                ("Server Status", result.get("server_status", "?"), True),
             ]
 
-            if oauth_state and oauth_state.tokens:
+            if result.get("authorized"):
                 fields.append(("OAuth", "\u2705 Authorized", True))
-                if oauth_state.tokens.expires_at:
-                    fields.append(("Token Expires", oauth_state.tokens.expires_at[:19], False))
-                if oauth_state.tokens.is_expired():
+                if result.get("expires_at"):
+                    fields.append(("Token Expires", result["expires_at"][:19], False))
+                if result.get("expired"):
                     fields.append(("Token Status", "\u26a0\ufe0f Expired (will auto-refresh)", False))
                 else:
                     fields.append(("Token Status", "\u2705 Valid", False))
@@ -835,7 +644,7 @@ class ClaraCommands(commands.Cog):
 
             embed = create_status_embed(f"OAuth Status: {server}", fields=fields)
 
-            if not oauth_state or not oauth_state.tokens:
+            if not result.get("authorized"):
                 embed.set_footer(text=f"Start authorization with: /mcp oauth_start server:{server}")
 
             await ctx.respond(embed=embed)
@@ -857,32 +666,11 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.core.mcp import get_mcp_manager
-            from mypalclara.core.mcp.models import load_server_config, save_server_config
-            from mypalclara.core.mcp.oauth import SmitheryOAuthClient
-
-            # Check server config
-            config = load_server_config(server)
-            if not config:
-                await ctx.respond(embed=create_error_embed("Not Found", f"Server '{server}' not found."))
-                return
-
-            # Set tokens manually
-            oauth_client = SmitheryOAuthClient(server, config.endpoint_url)
-            oauth_client.set_tokens_manually(access_token, refresh_token)
-
-            # Update server status
-            config.status = "stopped"
-            config.last_error = None
-            save_server_config(config)
-
-            # Try to connect
-            manager = get_mcp_manager()
-            connected = await manager.start_server(server)
+            result = await EngineApiClient().mcp_oauth_set_token(server, access_token, refresh_token)
+            connected = result.get("connected")
+            tool_count = result.get("tool_count", 0)
 
             if connected:
-                status = manager.get_server_status(server)
-                tool_count = status.get("tool_count", 0) if status else 0
                 await ctx.respond(
                     embed=create_success_embed(
                         "Token Set",
@@ -1526,10 +1314,8 @@ class ClaraCommands(commands.Cog):
             provider = os.getenv("LLM_PROVIDER", "openrouter")
 
             # Get connected servers count
-            from mypalclara.core.mcp import get_mcp_manager
-
-            manager = get_mcp_manager()
-            mcp_count = len(manager)
+            servers = await EngineApiClient().mcp_list_servers()
+            mcp_count = len(servers)
 
             fields = [
                 ("LLM Provider", provider, True),
