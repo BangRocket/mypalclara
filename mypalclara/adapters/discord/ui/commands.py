@@ -129,11 +129,10 @@ class ClaraCommands(commands.Cog):
                     for s in response.servers
                 ]
             else:
-                # Local mode
-                from mypalclara.core.mcp import get_mcp_manager
-
-                manager = get_mcp_manager()
-                statuses = manager.get_all_server_status()
+                await ctx.respond(
+                    embed=create_error_embed("Unavailable", "MCP management requires a gateway connection.")
+                )
+                return
 
             if not statuses:
                 embed = create_info_embed(
