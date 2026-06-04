@@ -1175,20 +1175,14 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.sandbox.manager import get_sandbox_manager
+            from mypalclara.client_common.engine_client import EngineApiClient
 
-            manager = get_sandbox_manager()
-            status = await manager.get_status()
+            status = await EngineApiClient().sandbox_status()
+            stats = status.get("stats") or {}
 
-            fields = [
-                ("Mode", status.get("mode", "unknown"), True),
-                ("Available", "Yes" if status.get("available") else "No", True),
-            ]
-
-            if status.get("local_docker"):
-                fields.append(("Local Docker", "Available", True))
-            if status.get("remote_url"):
-                fields.append(("Remote URL", status["remote_url"][:30] + "...", True))
+            fields = [("Available", "Yes" if status.get("available") else "No", True)]
+            for key, value in stats.items():
+                fields.append((str(key).replace("_", " ").title(), str(value), True))
 
             embed = create_status_embed("Sandbox Status", fields=fields)
             await ctx.respond(embed=embed)

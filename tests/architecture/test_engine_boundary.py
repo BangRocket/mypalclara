@@ -167,6 +167,7 @@ def test_client_does_not_import_relocated_shared_code():
 # Allowlist entries (file -> {modules}) carve out sites not yet rewired (e.g. MCP OAuth).
 CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
     "mypalclara.core.services.backup",
+    "mypalclara.sandbox",
 }
 REWIRE_ALLOWLIST: dict[str, set[str]] = {}
 
