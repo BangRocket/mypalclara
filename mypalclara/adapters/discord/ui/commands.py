@@ -1590,13 +1590,13 @@ class ClaraCommands(commands.Cog):
             return
 
         try:
-            from mypalclara.db.channel_config import set_channel_mode
+            from mypalclara.client_common.engine_client import EngineApiClient
 
             if not ctx.channel_id or not ctx.guild_id:
                 await ctx.respond(embed=create_error_embed("Error", "This command must be used in a server channel."))
                 return
 
-            set_channel_mode(str(ctx.channel_id), str(ctx.guild_id), mode, str(ctx.author.id))
+            await EngineApiClient().set_channel_mode(str(ctx.channel_id), str(ctx.guild_id), mode, str(ctx.author.id))
 
             mode_descriptions = {
                 "active": "Clara will respond to all messages",
