@@ -4,7 +4,7 @@ Guidance for Claude Code working with this repository.
 
 ## Project Overview
 
-MyPalClara is the **client repo** for Clara — the platform adapters (Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, CLI) people use to talk to Clara. The **engine** (gateway, runtime, memory/Palace, LLM, tools, MCP, sandbox, database) lives in the separate **`mypal-engine`** repo (`github.com/BangRocket/mypal-engine`).
+MyPalClara is the **client repo** for Clara — the platform adapters people use to talk to Clara. **Implemented today: Discord, Teams, CLI** (plus a Pipecat voice server). Slack, Telegram, Matrix, Signal, and WhatsApp appear in `adapters/manifest.py`'s discovery list but are **planned, not built** — no code exists for them yet. The **engine** (gateway, runtime, memory/Palace, LLM, tools, MCP, sandbox, database) lives in the separate **`mypal-engine`** repo (`github.com/BangRocket/mypal-engine`).
 
 Adapters connect to a **running engine** over WebSocket (`:18789`) and HTTP API (`:18790`). They import **no** engine internals — only:
 
@@ -48,14 +48,13 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 
 | Path | Purpose |
 |------|---------|
-| `mypalclara/adapters/` | Platform adapters (discord, teams, cli, slack, telegram, matrix, signal, whatsapp) |
+| `mypalclara/adapters/` | Platform adapters — **discord, teams, cli** (slack/telegram/matrix/signal/whatsapp are in the manifest's discovery list but unbuilt) |
 | `mypalclara/adapters/base.py` | `GatewayClient` base — the WebSocket connection to the engine |
 | `mypalclara/adapters/cli/launch_adapters.py` | Dev launcher: run several adapters locally |
 | `mypalclara/client_common/engine_client.py` | `EngineApiClient` — typed async HTTP client for the engine `/api/v1` surface |
 | `mypalclara/client_common/{platform,toolspec,ids}.py` | Contracts vendored out of the engine |
 | `mypalclara/config/logging.py` | Console + Discord log handlers (no DB handler — that's engine-side) |
 | `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC) |
-| `mypalclara/web/` | Legacy web module |
 | `mypal_protocol/` | Shared wire contract (Pydantic messages); installable as `mypal-protocol` |
 | `services/{discord,base,web-ui}/` | Docker build contexts (client) |
 

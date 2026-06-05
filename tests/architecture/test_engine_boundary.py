@@ -124,7 +124,7 @@ def test_client_does_not_import_gateway_internals():
 # --- Client must not import shared code relocated to client_common (Phase 2c, sub-plan 1) ---
 
 # Client-side directories (under mypalclara/) scanned for relocated-shared-code imports.
-CLIENT_SHARED_DIRS = ["adapters", "web", "services/voice"]
+CLIENT_SHARED_DIRS = ["adapters", "services/voice"]
 
 # Engine modules whose client-used symbols now live in mypalclara.client_common.
 FORBIDDEN_SHARED_MODULES = {"mypalclara.core.platform", "mypalclara.tools._base"}
