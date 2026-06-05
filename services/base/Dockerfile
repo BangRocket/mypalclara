@@ -6,15 +6,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System dependencies (Node.js for MCP servers)
+# System dependencies (build toolchain for compiled wheels)
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    postgresql-client \
-    gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Poetry
