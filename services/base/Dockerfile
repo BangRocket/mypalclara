@@ -31,7 +31,6 @@ COPY personalities/ ./personalities/
 COPY VERSION ./
 
 # Persistent data directories
-RUN mkdir -p /data /app/clara_files /app/mcp_servers
+RUN mkdir -p /data /app/clara_files
 ENV DATA_DIR=/data
 ENV CLARA_FILES_DIR=/app/clara_files
-ENV MCP_SERVERS_DIR=/app/mcp_servers

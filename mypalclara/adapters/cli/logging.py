@@ -11,7 +11,7 @@ def configure_cli_logging() -> Path:
 
     This creates a clean console experience where only conversation
     (You: / Clara:) appears on screen, while all debug/info logs from
-    libraries (palace, httpx, anthropic, etc.) go to a file.
+    libraries (httpx, anthropic, etc.) go to a file.
 
     Returns:
         Path to the log file (~/.clara/cli.log)
@@ -38,23 +38,9 @@ def configure_cli_logging() -> Path:
         "adapters.cli",
         "config",
         "config.bot",
-        "palace",
-        "palace.config",
         "httpx",
         "anthropic",
         "openai",
-        "clara_core",
-        "mypalclara.core.config",
-        "mypalclara.core.mcp",
-        "mypalclara.core.mcp.client",
-        "mypalclara.core.mcp.local_server",
-        "mypalclara.core.mcp.manager",
-        "mypalclara.core.tools",
-        "db",
-        "tools",
-        "tools.loader",
-        "tools.registry",
-        "sqlalchemy.engine",
     ]
 
     for logger_name in noisy_loggers:
