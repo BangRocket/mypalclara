@@ -25,13 +25,9 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi
 
-# Playwright browsers
-RUN playwright install chromium --with-deps
-
 # Application code
 COPY mypalclara/ ./mypalclara/
 COPY personalities/ ./personalities/
-COPY scripts/ ./scripts/
 COPY VERSION ./
 
 # Persistent data directories

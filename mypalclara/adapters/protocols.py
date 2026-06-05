@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from mypalclara.gateway.protocol import ButtonInfo, FileData, GatewayMessage
+    from mypal_protocol import ButtonInfo, FileData, GatewayMessage
 
 
 @runtime_checkable

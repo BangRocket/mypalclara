@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from mypal_protocol import ChannelInfo, UserInfo
 from mypalclara.adapters.base import GatewayClient
 from mypalclara.adapters.discord.attachment_handler import extract_attachments
 from mypalclara.adapters.discord.message_builder import (
@@ -21,7 +22,6 @@ from mypalclara.adapters.discord.message_builder import (
 )
 from mypalclara.adapters.manifest import AdapterManifest, adapter
 from mypalclara.config.logging import get_logger
-from mypalclara.gateway.protocol import ChannelInfo, UserInfo
 
 if TYPE_CHECKING:
     import discord
@@ -406,7 +406,7 @@ class DiscordGatewayClient(GatewayClient):
         """
         import discord
 
-        from mypalclara.core.discord.embeds import (
+        from mypalclara.adapters.discord.ui.embeds import (
             EMBED_COLOR_ERROR,
             EMBED_COLOR_INFO,
             EMBED_COLOR_PRIMARY,
@@ -465,7 +465,7 @@ class DiscordGatewayClient(GatewayClient):
         Returns:
             Discord View with buttons
         """
-        from mypalclara.core.discord.views import GatewayButtonView
+        from mypalclara.adapters.discord.ui.views import GatewayButtonView
 
         return GatewayButtonView(buttons)
 

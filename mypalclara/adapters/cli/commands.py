@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from mypalclara.client_common.engine_client import EngineApiClient
 from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
@@ -190,7 +191,7 @@ class CommandDispatcher:
 
         # Identity linking
         try:
-            links = self._get_identity_links()
+            links = await self._get_identity_links()
             if links:
                 table.add_row("Linked identities", ", ".join(links))
             else:
@@ -200,25 +201,19 @@ class CommandDispatcher:
 
         return CommandResult(handled=True, output=table)
 
-    def _get_identity_links(self) -> list[str]:
-        """Query linked identities for status display."""
-        from mypalclara.db import SessionLocal
-        from mypalclara.db.models import PlatformLink
-
+    async def _get_identity_links(self) -> list[str]:
+        """Query linked identities for status display (via the engine API)."""
         cli_prefixed = f"cli-{self.client.user_id}"
-        with SessionLocal() as db:
-            link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == cli_prefixed).first()
-            if not link:
-                return []
-            all_links = (
-                db.query(PlatformLink)
-                .filter(
-                    PlatformLink.canonical_user_id == link.canonical_user_id,
-                    PlatformLink.prefixed_user_id != cli_prefixed,
-                )
-                .all()
-            )
-            return [f"{l.platform}:{l.platform_user_id}" for l in all_links]
+        resolved = await EngineApiClient().resolve_link_optional(cli_prefixed)
+        if not resolved:
+            return []
+        canonical_id = resolved["link"]["canonical_user_id"]
+        data = await EngineApiClient().list_user_links(canonical_id)
+        return [
+            f"{link['platform']}:{link['platform_user_id']}"
+            for link in data["links"]
+            if link["prefixed_user_id"] != cli_prefixed
+        ]
 
     # =========================================================================
     # MCP Commands
@@ -324,18 +319,9 @@ class CommandDispatcher:
 
         name = args[0]
         try:
-            from mypalclara.core.mcp import get_mcp_manager
+            all_tools = await EngineApiClient().mcp_list_tools()
+            tools = [t for t in all_tools if t.get("server") == name]
 
-            manager = get_mcp_manager()
-
-            # Try local server first, then remote
-            server = manager._local.get_server(name)
-            if not server:
-                server = manager._remote.get_connection(name)
-            if not server:
-                return CommandResult(handled=True, error=f"Server not found: {name}")
-
-            tools = server.get_tools()
             if not tools:
                 return CommandResult(handled=True, output=Text(f"No tools registered for {name}.", style="dim"))
 
@@ -344,14 +330,10 @@ class CommandDispatcher:
             table.add_column("Description")
 
             for tool in tools:
-                tool_name = tool.name if hasattr(tool, "name") else str(tool)
-                tool_desc = tool.description if hasattr(tool, "description") else ""
-                table.add_row(tool_name, tool_desc[:80])
+                table.add_row(tool.get("name") or "", (tool.get("description") or "")[:80])
 
             return CommandResult(handled=True, output=table)
 
-        except ImportError:
-            return CommandResult(handled=True, error="MCP manager not available in this environment")
         except Exception as e:
             return CommandResult(handled=True, error=f"Failed to list tools: {e}")
 
@@ -362,15 +344,14 @@ class CommandDispatcher:
 
         query = " ".join(args)
         try:
-            from mypalclara.core.mcp import SmitheryClient
+            data = await EngineApiClient().mcp_search(query)
+            result = data.get("result") or {}
 
-            client = SmitheryClient()
-            result = await client.search(query)
+            if result.get("error"):
+                return CommandResult(handled=True, error=f"Search failed: {result['error']}")
 
-            if result.error:
-                return CommandResult(handled=True, error=f"Search failed: {result.error}")
-
-            if not result.servers:
+            servers = result.get("servers") or []
+            if not servers:
                 return CommandResult(handled=True, output=Text(f"No results for '{query}'.", style="dim"))
 
             table = Table(title=f"Smithery: {query}", show_header=True, header_style="bold cyan")
@@ -378,17 +359,17 @@ class CommandDispatcher:
             table.add_column("Description")
             table.add_column("Source", style="dim")
 
-            for s in result.servers[:10]:
+            for s in servers[:10]:
                 table.add_row(
-                    s.display_name,
-                    (s.description or "")[:60],
-                    s.qualified_name,
+                    s.get("display_name") or s.get("qualified_name") or "",
+                    (s.get("description") or "")[:60],
+                    s.get("qualified_name") or "",
                 )
 
             return CommandResult(handled=True, output=table)
 
-        except ImportError:
-            return CommandResult(handled=True, error="Smithery client not available in this environment")
+        except Exception as e:
+            return CommandResult(handled=True, error=f"Search failed: {e}")
 
     async def _mcp_install(self, args: list[str]) -> CommandResult:
         """Install an MCP server with confirmation."""
@@ -492,73 +473,52 @@ class CommandDispatcher:
         return await self._link_create(platform, platform_id)
 
     async def _link_create(self, platform: str, platform_id: str) -> CommandResult:
-        """Link CLI user to another platform identity."""
-        from mypalclara.db import SessionLocal
-        from mypalclara.db.models import CanonicalUser, PlatformLink
-
+        """Link CLI user to another platform identity (via the engine API)."""
         cli_prefixed = f"cli-{self.client.user_id}"
         target_prefixed = f"{platform}-{platform_id}"
+        client = EngineApiClient()
 
         try:
-            with SessionLocal() as db:
-                # Find or create canonical user for target
-                target_link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == target_prefixed).first()
+            # Find or create the target identity's canonical user
+            target = await client.resolve_link_optional(target_prefixed)
+            if target:
+                canonical_user_id = target["link"]["canonical_user_id"]
+            else:
+                created = await client.create_link(
+                    platform=platform,
+                    platform_user_id=platform_id,
+                    prefixed_user_id=target_prefixed,
+                    display_name=f"{platform}:{platform_id}",
+                    linked_via="cli-command",
+                )
+                canonical_user_id = created["canonical_user_id"]
 
-                if target_link:
-                    canonical_user_id = target_link.canonical_user_id
-                else:
-                    # Create new canonical user and link for target
-                    from mypalclara.db.models import gen_uuid
+            # Check whether the CLI identity is already linked
+            cli_existing = await client.resolve_link_optional(cli_prefixed)
+            if cli_existing:
+                if cli_existing["link"]["canonical_user_id"] == canonical_user_id:
+                    return CommandResult(handled=True, output=Text("Already linked to this identity.", style="yellow"))
 
-                    canonical_user_id = gen_uuid()
-                    canonical_user = CanonicalUser(
-                        id=canonical_user_id,
-                        display_name=f"{platform}:{platform_id}",
-                    )
-                    db.add(canonical_user)
+                # Different canonical user — confirm re-link (no update endpoint: delete + recreate)
+                import asyncio
 
-                    target_link = PlatformLink(
-                        canonical_user_id=canonical_user_id,
-                        platform=platform,
-                        platform_user_id=platform_id,
-                        prefixed_user_id=target_prefixed,
-                        display_name=f"{platform}:{platform_id}",
-                        linked_via="cli-command",
-                    )
-                    db.add(target_link)
+                confirm = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.session.prompt("CLI is linked to a different identity. Re-link? [y/n]: "),
+                )
+                if confirm.lower().strip() not in ("y", "yes"):
+                    return CommandResult(handled=True, output=Text("Cancelled.", style="yellow"))
 
-                # Check if CLI user is already linked
-                cli_link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == cli_prefixed).first()
+                await client.delete_link(cli_prefixed)
 
-                if cli_link:
-                    if cli_link.canonical_user_id == canonical_user_id:
-                        return CommandResult(
-                            handled=True, output=Text("Already linked to this identity.", style="yellow")
-                        )
-
-                    # Different canonical user — confirm re-link
-                    import asyncio
-
-                    confirm = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self.session.prompt("CLI is linked to a different identity. Re-link? [y/n]: "),
-                    )
-                    if confirm.lower().strip() not in ("y", "yes"):
-                        return CommandResult(handled=True, output=Text("Cancelled.", style="yellow"))
-
-                    cli_link.canonical_user_id = canonical_user_id
-                else:
-                    cli_link = PlatformLink(
-                        canonical_user_id=canonical_user_id,
-                        platform="cli",
-                        platform_user_id=self.client.user_id,
-                        prefixed_user_id=cli_prefixed,
-                        display_name=f"cli:{self.client.user_id}",
-                        linked_via="cli-command",
-                    )
-                    db.add(cli_link)
-
-                db.commit()
+            await client.create_link(
+                platform="cli",
+                platform_user_id=self.client.user_id,
+                prefixed_user_id=cli_prefixed,
+                canonical_user_id=canonical_user_id,
+                display_name=f"cli:{self.client.user_id}",
+                linked_via="cli-command",
+            )
 
             return CommandResult(
                 handled=True,
@@ -569,51 +529,43 @@ class CommandDispatcher:
             return CommandResult(handled=True, error=f"Link failed: {e}")
 
     async def _link_status(self) -> CommandResult:
-        """Show linked identities."""
-        from mypalclara.db import SessionLocal
-        from mypalclara.db.models import CanonicalUser, PlatformLink
-
+        """Show linked identities (via the engine API)."""
         cli_prefixed = f"cli-{self.client.user_id}"
 
         try:
-            with SessionLocal() as db:
-                cli_link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == cli_prefixed).first()
-
-                if not cli_link:
-                    return CommandResult(
-                        handled=True,
-                        output=Text("No identity linked. Use !link <platform> <id> to link.", style="dim"),
-                    )
-
-                canonical = db.query(CanonicalUser).filter(CanonicalUser.id == cli_link.canonical_user_id).first()
-                all_links = (
-                    db.query(PlatformLink).filter(PlatformLink.canonical_user_id == cli_link.canonical_user_id).all()
+            client = EngineApiClient()
+            resolved = await client.resolve_link_optional(cli_prefixed)
+            if not resolved:
+                return CommandResult(
+                    handled=True,
+                    output=Text("No identity linked. Use !link <platform> <id> to link.", style="dim"),
                 )
 
-                table = Table(
-                    title=f"Identity: {canonical.display_name if canonical else '?'}",
-                    show_header=True,
-                    header_style="bold cyan",
-                )
-                table.add_column("Platform", style="green")
-                table.add_column("User ID")
-                table.add_column("Linked Via", style="dim")
+            canonical = resolved.get("canonical_user") or {}
+            canonical_id = resolved["link"]["canonical_user_id"]
+            data = await client.list_user_links(canonical_id)
 
-                for link in all_links:
-                    table.add_row(link.platform, link.platform_user_id, link.linked_via or "—")
+            table = Table(
+                title=f"Identity: {canonical.get('display_name', '?')}",
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("Platform", style="green")
+            table.add_column("User ID")
+            table.add_column("Linked Via", style="dim")
 
-                return CommandResult(handled=True, output=table)
+            for link in data["links"]:
+                table.add_row(link["platform"], link["platform_user_id"], link.get("linked_via") or "—")
+
+            return CommandResult(handled=True, output=table)
 
         except Exception as e:
             return CommandResult(handled=True, error=f"Failed to query links: {e}")
 
     async def _cmd_unlink(self, args: list[str]) -> CommandResult:
-        """Unlink CLI from a platform identity."""
+        """Unlink CLI from a platform identity (via the engine API)."""
         if not args:
             return CommandResult(handled=True, error="Usage: !unlink <platform>  (removes CLI's link)")
-
-        from mypalclara.db import SessionLocal
-        from mypalclara.db.models import PlatformLink
 
         cli_prefixed = f"cli-{self.client.user_id}"
 
@@ -627,14 +579,9 @@ class CommandDispatcher:
             if confirm.lower().strip() not in ("y", "yes"):
                 return CommandResult(handled=True, output=Text("Cancelled.", style="yellow"))
 
-            with SessionLocal() as db:
-                cli_link = db.query(PlatformLink).filter(PlatformLink.prefixed_user_id == cli_prefixed).first()
-
-                if not cli_link:
-                    return CommandResult(handled=True, output=Text("CLI is not linked to any identity.", style="dim"))
-
-                db.delete(cli_link)
-                db.commit()
+            result = await EngineApiClient().delete_link(cli_prefixed)
+            if not result.get("deleted"):
+                return CommandResult(handled=True, output=Text("CLI is not linked to any identity.", style="dim"))
 
             return CommandResult(handled=True, output=Text("Unlinked CLI identity.", style="green"))
 

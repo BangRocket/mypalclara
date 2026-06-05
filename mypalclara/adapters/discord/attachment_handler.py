@@ -291,7 +291,7 @@ async def process_image_attachment(
             return None
 
         # Resize for vision processing
-        from mypalclara.core.discord.utils import resize_image_for_vision
+        from mypalclara.adapters.discord.ui.utils import resize_image_for_vision
 
         resized_bytes, media_type = resize_image_for_vision(
             image_bytes,

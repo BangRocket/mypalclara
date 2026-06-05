@@ -33,9 +33,9 @@ from discord.ext import commands as discord_commands
 
 from mypalclara.adapters.discord.channel_modes import get_channel_mode
 from mypalclara.adapters.discord.gateway_client import DiscordGatewayClient
+from mypalclara.adapters.discord.ui import setup as setup_slash_commands
 from mypalclara.adapters.discord.voice import VoiceManager
 from mypalclara.config.logging import get_logger, init_logging
-from mypalclara.core.discord import setup as setup_slash_commands
 
 init_logging()
 logger = get_logger("adapters.discord")
@@ -143,7 +143,7 @@ class GatewayDiscordBot(discord_commands.Bot):
 
         # Get channel mode
         channel_id = str(message.channel.id)
-        channel_mode = get_channel_mode(channel_id)
+        channel_mode = await get_channel_mode(channel_id)
 
         # Check for stop phrase
         content_lower = message.content.lower().strip()

@@ -1,9 +1,0 @@
-# FalkorDB graph database — official image
-# Configure via Railway environment variables
-
-[build]
-dockerImage = "falkordb/falkordb:latest"
-
-[deploy]
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 5
