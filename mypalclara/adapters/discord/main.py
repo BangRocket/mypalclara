@@ -246,6 +246,27 @@ class GatewayDiscordBot(discord_commands.Bot):
         await super().close()
 
 
+async def _run_until_stopped(bot: GatewayDiscordBot, token: str, stop_event: asyncio.Event) -> None:
+    """Run ``bot.start(token)`` until it exits or ``stop_event`` is set.
+
+    Whichever finishes first wins; the loser is cancelled. A failure inside
+    ``bot.start`` is re-raised so the caller can log it.
+
+    Replaces ``asyncio.gather(bot.start(...), stop_event.wait())``, which never
+    returned on SIGINT/SIGTERM: gather waits for *both* awaitables, but
+    ``bot.start`` runs forever, so setting ``stop_event`` could not end it and
+    the bot never reached ``close()``.
+    """
+    bot_task = asyncio.create_task(bot.start(token), name="discord-bot")
+    stop_task = asyncio.create_task(stop_event.wait(), name="discord-stop")
+    done, pending = await asyncio.wait({bot_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    if bot_task in done:
+        bot_task.result()  # re-raise if bot.start() failed on its own
+
+
 async def main() -> None:
     """Run the gateway-connected Discord bot."""
     if not BOT_TOKEN:
@@ -265,13 +286,10 @@ async def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, signal_handler)
 
-    # Start bot
+    # Start bot — run until the bot exits or a shutdown signal fires.
     try:
         async with bot:
-            await asyncio.gather(
-                bot.start(BOT_TOKEN),
-                stop_event.wait(),
-            )
+            await _run_until_stopped(bot, BOT_TOKEN, stop_event)
     except Exception as e:
         logger.exception(f"Bot error: {e}")
     finally:
