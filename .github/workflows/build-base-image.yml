@@ -1,24 +1,33 @@
 name: Build Base Docker Image
 
 on:
+  workflow_dispatch:
+  # Builds on every branch so Dockerfile breakage shows up before merge;
+  # only main (or a manual run) publishes. See PUBLISH below.
   push:
-    branches: [main]
     paths:
       - 'services/base/Dockerfile'
+      - '.github/workflows/build-base-image.yml'
       - 'pyproject.toml'
       - 'poetry.lock'
       - 'mypalclara/**'
+      - 'mypal_protocol/**'
+      - 'personalities/**'
   pull_request:
     branches: [main]
     paths:
       - 'services/base/Dockerfile'
+      - '.github/workflows/build-base-image.yml'
       - 'pyproject.toml'
       - 'poetry.lock'
       - 'mypalclara/**'
+      - 'mypal_protocol/**'
+      - 'personalities/**'
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: bangrocket/clara-base
+  PUBLISH: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+  IMAGE_NAME: bangrocket/mypalclara-base
 
 jobs:
   build:
@@ -36,7 +45,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Log in to GHCR
-        if: github.event_name == 'push'
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -57,7 +66,7 @@ jobs:
         with:
           context: .
           file: services/base/Dockerfile
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ env.PUBLISH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

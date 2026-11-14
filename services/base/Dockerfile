@@ -1,6 +1,6 @@
-# Shared base image for MyPalClara Python services
+# Base image for the mypalclara client (adapters). Published as ghcr.io/bangrocket/mypalclara-base.
 # Build context: repo root
-# Usage: docker build -f services/base/Dockerfile -t clara-base:latest .
+# Usage: docker build -f services/base/Dockerfile -t ghcr.io/bangrocket/mypalclara-base:latest .
 
 FROM python:3.12-slim
 

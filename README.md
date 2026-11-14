@@ -640,7 +640,7 @@ Users connect their Google account via Discord:
 
 ### Railway
 
-Each service has its own `railway.toml` under `services/`. Python services (Discord, Gateway, Backup) use a shared base Docker image built via GitHub Actions and published to `ghcr.io/bangrocket/clara-base`. Qdrant and FalkorDB use official Docker images. PostgreSQL and Redis use Railway managed plugins.
+Each service has its own `railway.toml` under `services/`. The Discord service builds on a base image published by this repo to `ghcr.io/bangrocket/mypalclara-base`. The engine publishes its own, `ghcr.io/bangrocket/mypal-engine-base`. Qdrant and FalkorDB use official Docker images. PostgreSQL and Redis use Railway managed plugins.
 
 1. Connect your GitHub repo to Railway
 2. Add each service pointing to its `services/<name>/` directory
