@@ -56,7 +56,7 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 | `mypalclara/config/logging.py` | Console + Discord log handlers (no DB handler — that's engine-side) |
 | `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC) |
 | `mypal_protocol/` | Shared wire contract (Pydantic messages); installable as `mypal-protocol` |
-| `services/{discord,base,web-ui}/` | Docker build contexts (client) |
+| `services/{discord,base}/` | Docker build contexts (client) |
 
 ### How adapters reach the engine
 
@@ -90,15 +90,6 @@ Message prefixes select the engine model tier per-message: `!high`/`!opus` (high
 - `LOG_LEVEL` (default INFO)
 
 > Engine-side config — LLM providers, embeddings, Palace/memory, database, MCP servers, sandbox, backup, heartbeat — lives in the **`mypal-engine`** repo; see its CLAUDE.md.
-
-## Web UI
-
-`services/web-ui/` is a Rails BFF + React frontend. Rails handles its own game logic (own PostgreSQL) and proxies other API requests to the engine's HTTP API (`CLARA_GATEWAY_API_URL`).
-
-```bash
-cd services/web-ui/backend && rails s -p 3000    # Rails API
-cd services/web-ui/frontend && npm run dev       # Vite dev server (port 5173)
-```
 
 ## Notes
 

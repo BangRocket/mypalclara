@@ -8,7 +8,6 @@ A personal AI assistant with persistent memory and tool capabilities. The assist
 - **Multi-Platform Support** - Discord, Teams, Slack, Telegram, Matrix, Signal, WhatsApp, and CLI adapters via gateway architecture
 - **Persistent Memory (Palace)** - Episodic memory, semantic extraction, knowledge graph, and layered retrieval with HuggingFace embeddings
 - **Clara Voice** - Browser-based voice chat via Pipecat + WebRTC with local STT/TTS
-- **Web UI** - React SPA with Rails backend for browser-based chat
 - **MCP Plugin System** - Install and use tools from external MCP servers
 - **Code Execution** - Sandboxed Python/Bash via Docker containers
 - **Web Search** - Real-time web search via Tavily/Brave
@@ -49,10 +48,10 @@ A personal AI assistant with persistent memory and tool capabilities. The assist
 │ Discord Adapter │  │  Teams Adapter  │  │   MCP Servers        │
 │  (py-cord)      │  │  (Bot Framework)│  │   (stdio/HTTP)       │
 └─────────────────┘  └─────────────────┘  └──────────────────────┘
-┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐
-│   CLI Adapter   │  │  Voice Server   │  │   Web UI             │
-│   (Terminal)    │  │  (Pipecat/RTC)  │  │   (Rails + React)    │
-└─────────────────┘  └─────────────────┘  └──────────────────────┘
+┌─────────────────┐  ┌─────────────────┐
+│   CLI Adapter   │  │  Voice Server   │
+│   (Terminal)    │  │  (Pipecat/RTC)  │
+└─────────────────┘  └─────────────────┘
 ```
 
 ## Quick Start
@@ -353,23 +352,6 @@ poetry run python scripts/clear_dbs.py              # With prompt
 poetry run python scripts/clear_dbs.py --yes        # Skip prompt
 poetry run python scripts/clear_dbs.py --user <id>  # Specific user
 ```
-
-## Web UI
-
-Clara includes a browser-based chat interface.
-
-```bash
-# Rails API backend
-cd services/web-ui/backend && rails s -p 3000
-
-# React frontend (Vite dev server)
-cd services/web-ui/frontend && npm run dev  # port 5173
-
-# Docker (unified image)
-docker build -t clara-web services/web-ui/
-```
-
-Rails handles game logic directly and proxies API requests to the gateway HTTP API (port 18790).
 
 ## Clara Voice
 
