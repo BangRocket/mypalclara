@@ -28,6 +28,7 @@ import threading
 import traceback
 from datetime import datetime, timezone
 from queue import Empty, Queue
+
 # MCP SAFETY FLAG
 # When True, all logging handlers use stderr, never stdout.
 # This is critical for MCP stdio transport where stdout carries JSON-RPC.
