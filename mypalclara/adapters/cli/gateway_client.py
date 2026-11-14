@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from mypal_protocol import ChannelInfo, UserInfo
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -16,7 +17,6 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
-from mypal_protocol import ChannelInfo, UserInfo
 from mypalclara.adapters.base import GatewayClient
 from mypalclara.adapters.manifest import AdapterManifest, adapter
 from mypalclara.config.logging import get_logger

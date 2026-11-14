@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import discord
-
 from mypal_protocol import ChannelInfo, UserInfo
+
 from mypalclara.adapters.discord.voice.config import (
     VOICE_ENABLE_INTERRUPTION,
     VOICE_IDLE_TIMEOUT,

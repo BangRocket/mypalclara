@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from mypal_protocol import ChannelInfo, UserInfo
+
 from mypalclara.config.logging import get_logger
 
 if TYPE_CHECKING:
