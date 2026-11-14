@@ -138,6 +138,19 @@ def test_client_imports_no_engine_code():
     )
 
 
+def test_client_holds_no_persona():
+    # Who Clara is lives only in the engine's character/ directory.
+    assert not (
+        REPO_ROOT / "personalities"
+    ).exists(), "personalities/ reappeared; personas live in mypal-engine/character/"
+    offenders = [
+        p.relative_to(REPO_ROOT).as_posix()
+        for p in [*PKG_ROOT.rglob("*.py"), *PKG_ROOT.rglob("*.md"), *PKG_ROOT.rglob("*.txt")]
+        if "You are Clara" in p.read_text(encoding="utf-8", errors="ignore")
+    ]
+    assert not offenders, f"Persona text in the client (it belongs in mypal-engine/character/): {offenders}"
+
+
 def test_engine_directories_do_not_exist_in_client():
     present = [d for d in ENGINE_DIRS if (PKG_ROOT / d).exists()]
     assert not present, f"Engine directories reappeared under {PKG_NAME}/: {present}"

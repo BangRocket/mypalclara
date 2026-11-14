@@ -361,6 +361,7 @@ Browser-based voice chat using Pipecat with WebRTC. Uses local STT/TTS by defaul
 - **faster-whisper** - Local speech-to-text
 - **Kokoro** - Natural local text-to-speech
 - Routes through Clara gateway for full Palace memory context
+- Persona and voice style come from the engine: the server requests the `clara-voice` model, which adds the engine's voice instructions (`character/surfaces/voice.md` in mypal-engine)
 
 ```bash
 # Requires separate installation
@@ -375,6 +376,7 @@ Configuration:
 CLARA_GATEWAY_API_URL=http://localhost:18790  # Gateway for LLM
 VOICE_TTS_SPEAKER=af_heart                    # Kokoro voice
 VOICE_STT_MODEL=small                         # Whisper model size
+VOICE_ENGINE_MODEL=clara-voice                # Engine model id; selects the engine's voice instructions
 ```
 
 ## Discord Features

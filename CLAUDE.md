@@ -54,7 +54,7 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 | `mypalclara/client_common/engine_client.py` | `EngineApiClient` — typed async HTTP client for the engine `/api/v1` surface |
 | `mypalclara/client_common/{platform,toolspec,ids}.py` | Contracts vendored out of the engine |
 | `mypalclara/config/logging.py` | Console + Discord log handlers (no DB handler — that's engine-side) |
-| `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC) |
+| `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC). Sends no persona: it requests the engine's `clara-voice` model, and the engine adds its voice instructions |
 | `services/{discord,base}/` | Docker build contexts (client) |
 
 ### How adapters reach the engine
@@ -93,6 +93,7 @@ Message prefixes select the engine model tier per-message: `!high`/`!opus` (high
 ## Notes
 
 - Poetry runs in `package-mode = false` (code runs from the repo root on `sys.path`).
+- **Who Clara is** (persona, name, how she talks on each surface) lives only in the engine's `character/` directory. This repo holds no persona text; the architecture test fails if `personalities/` or "You are Clara" reappears here.
 - **Changing the wire contract:** edit `mypal_protocol/` in mypal-engine first (bump `PROTOCOL_VERSION` if an older peer would misread the change), then move the `rev` pin in this repo's `pyproject.toml` to that engine commit and run `poetry lock`. Never add a local `mypal_protocol/` copy; `tests/protocol/test_installed.py` fails if one appears.
 - **Version handshake:** adapters send `PROTOCOL_VERSION` on register and log a warning if the engine reports a different one. The engine rejects mismatches only when `CLARA_GATEWAY_REQUIRE_PROTOCOL_VERSION=true`.
 - The deploy topology is two repos: run `mypal-engine` (engine + its infra: postgres/qdrant/redis/falkordb), then point these adapters at it via `CLARA_GATEWAY_*`.

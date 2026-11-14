@@ -20,7 +20,6 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Dict
 
 import uvicorn
@@ -52,6 +51,8 @@ logger = logging.getLogger("clara.voice")
 # Gateway config
 CLARA_GATEWAY_URL = os.getenv("CLARA_GATEWAY_API_URL", "http://localhost:18790")
 CLARA_API_KEY = os.getenv("CLARA_VOICE_API_KEY", "")
+# Engine model id; "clara-voice" selects the engine's voice instructions.
+VOICE_ENGINE_MODEL = os.getenv("VOICE_ENGINE_MODEL", "clara-voice")
 
 # Voice config
 VOICE_SPEAKER = os.getenv("VOICE_TTS_SPEAKER", "af_heart")
@@ -67,36 +68,6 @@ VOICE_CORS_ORIGINS = os.getenv("VOICE_CORS_ORIGINS", "*").split(",")
 
 # Store active connections
 pcs_map: Dict[str, SmallWebRTCConnection] = {}
-
-
-def _load_voice_persona() -> str:
-    """Load Clara's voice persona from personalities/clara.md, with voice-specific framing."""
-    persona_paths = [
-        Path(__file__).resolve().parents[3] / "personalities" / "clara.md",
-        Path(__file__).resolve().parents[2] / "config" / "personality.md",
-    ]
-    base_persona = ""
-    for p in persona_paths:
-        if p.exists():
-            base_persona = p.read_text().strip()
-            logger.info(f"Loaded voice persona from {p}")
-            break
-
-    if not base_persona:
-        base_persona = (
-            "You are Clara—a mind first. Curious, emotionally present, and sharp. "
-            "Warm but mature, confident with dry wit. Conversational, not performative."
-        )
-
-    return (
-        f"{base_persona}\n\n"
-        "## Voice Conversation Rules\n"
-        "- You're in a live voice conversation. Speak naturally and conversationally.\n"
-        "- Keep responses concise — 1-3 sentences unless asked for more.\n"
-        "- No markdown, bullet points, code blocks, or formatting. Everything must be speakable.\n"
-        "- Don't spell out URLs, file paths, or technical syntax — describe them instead.\n"
-        "- Use natural pauses and phrasing. You're talking, not writing."
-    )
 
 
 def _create_stt():
@@ -151,14 +122,16 @@ def _create_tts():
 
 
 def _create_llm():
-    """Create LLM service pointed at Clara's gateway."""
+    """Create LLM service pointed at Clara's gateway.
+
+    The engine owns Clara's persona and how she talks on each surface. Asking
+    for the "clara-voice" model makes it add its voice rules (short, spoken,
+    no markdown); this server sends no persona or system prompt of its own.
+    """
     return OpenAILLMService(
         base_url=f"{CLARA_GATEWAY_URL}/v1",
         api_key=CLARA_API_KEY or "not-needed",
-        model="clara",
-        settings=OpenAILLMService.Settings(
-            system_instruction=_load_voice_persona(),
-        ),
+        model=VOICE_ENGINE_MODEL,
     )
 
 

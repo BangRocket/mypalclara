@@ -23,7 +23,6 @@ RUN poetry config virtualenvs.create false \
 
 # Application code
 COPY mypalclara/ ./mypalclara/
-COPY personalities/ ./personalities/
 COPY VERSION ./
 
 # Persistent data directories
