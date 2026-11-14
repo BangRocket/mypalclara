@@ -20,6 +20,7 @@ import websockets
 from websockets.client import WebSocketClientProtocol
 
 from mypal_protocol import (
+    PROTOCOL_VERSION,
     AttachmentInfo,
     CancelMessage,
     ChannelInfo,
@@ -265,6 +266,7 @@ class GatewayClient(ABC):
             platform=self.platform,
             capabilities=self.capabilities,
             secret=os.getenv("CLARA_GATEWAY_SECRET", ""),
+            protocol_version=PROTOCOL_VERSION,
         )
 
     async def connect(self) -> bool:
@@ -293,6 +295,14 @@ class GatewayClient(ABC):
                 self.adapter_token = data.get("adapter_token")
                 self._connected = True
                 logger.info(f"Registered as {self.node_id} with session {self.session_id}")
+                gateway_version = data.get("protocol_version")
+                if gateway_version != PROTOCOL_VERSION:
+                    # The engine accepted us, so it is not enforcing versions yet.
+                    # Messages may still be misread in either direction.
+                    logger.warning(
+                        f"Protocol mismatch: adapter speaks {PROTOCOL_VERSION}, "
+                        f"gateway speaks {gateway_version or 'an unversioned protocol (pre-handshake engine)'}"
+                    )
                 return True
             else:
                 logger.error(f"Unexpected registration response: {data}")

@@ -1,6 +1,6 @@
 [project]
 name = "mypal-protocol"
-version = "0.1.0"
+version = "0.2.0"
 description = "Wire-protocol message models shared between mypal-engine and its clients."
 requires-python = ">=3.11,<3.14"
 license = { text = "PolyForm-Noncommercial-1.0.0" }

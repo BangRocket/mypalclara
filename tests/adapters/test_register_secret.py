@@ -25,3 +25,11 @@ def test_build_register_includes_secret(monkeypatch):
     assert msg.secret == "shared-xyz"
     assert msg.platform == "probe"
     assert msg.node_id
+
+
+def test_build_register_includes_protocol_version(monkeypatch):
+    from mypal_protocol import PROTOCOL_VERSION
+
+    monkeypatch.setenv("CLARA_GATEWAY_SECRET", "shared-xyz")
+    msg = _Probe()._build_register_message()
+    assert msg.protocol_version == PROTOCOL_VERSION

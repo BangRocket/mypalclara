@@ -12,6 +12,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Version of this wire contract. Both sides send it during registration:
+# adapters in RegisterMessage, the gateway in RegisteredMessage.
+#
+# Bump it for any change an older peer would misread: a new required field,
+# a removed or renamed field or message, or a changed meaning. Adding an
+# optional field with a default does not need a bump. Compare as an exact
+# string; there is no ordering between versions.
+#
+# "1" was the implicit version before the handshake existed; peers that send
+# no version are assumed to speak it.
+PROTOCOL_VERSION = "2"
+
 
 class MessageType(str, Enum):
     """Types of messages in the gateway protocol."""
@@ -122,6 +134,11 @@ class RegisterMessage(BaseModel):
         default=None,
         description="Shared gateway secret for authentication (CLARA_GATEWAY_SECRET)",
     )
+    auth_token: str | None = None  # Clerk JWT for browser ("web") clients; adapters use `secret`
+    protocol_version: str | None = Field(
+        default=None,
+        description="mypal_protocol.PROTOCOL_VERSION the client was built against; None means a pre-handshake client",
+    )
 
 
 class RegisteredMessage(BaseModel):
@@ -134,6 +151,10 @@ class RegisteredMessage(BaseModel):
     adapter_token: str | None = Field(
         default=None,
         description="Server-issued per-connection identity token",
+    )
+    protocol_version: str | None = Field(
+        default=None,
+        description="mypal_protocol.PROTOCOL_VERSION the gateway speaks",
     )
 
 
