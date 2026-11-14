@@ -23,6 +23,7 @@ RUN poetry config virtualenvs.create false \
 
 # Application code
 COPY mypalclara/ ./mypalclara/
+COPY mypal_protocol/ ./mypal_protocol/
 COPY personalities/ ./personalities/
 COPY VERSION ./
 
