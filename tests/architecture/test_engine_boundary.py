@@ -1,10 +1,24 @@
-"""Architecture boundary test for the gateway → mypal-engine extraction (Phase 1).
+"""Architecture boundary test for the client repo.
 
-The engine packages in ENGINE_PACKAGES must never import a platform SDK
-(discord, telethon, …) or the client-side `mypalclara.adapters` package. Known
-remaining violations live in KNOWN_VIOLATIONS and shrink to empty as Phase 1
-tasks land; the test fails if a NEW violation appears or if an allowlisted file
-no longer violates (forcing the allowlist to stay in lockstep with the fixes).
+The client is where Clara shows up: adapters, voice, the client SDK. It reaches
+the engine only over the wire (`GatewayClient` WebSocket, `EngineApiClient`
+HTTP) and through the shared `mypal_protocol` contract. It must never import
+engine code or carry engine infrastructure.
+
+Three rules, all checked on every `.py` file under `mypalclara/`:
+
+1. Every `mypalclara.*` import resolves to a module that exists in THIS repo.
+   The engine's Python package is also named `mypalclara`, so an import of
+   `mypalclara.core...` or `mypalclara.gateway...` would only work with the
+   engine on `sys.path`. Resolving against the repo catches that by
+   construction, whatever the engine names its packages in future.
+2. No import of an engine or memory-service distribution, and no import of
+   the infrastructure SDKs (database, vector store, graph, LLM orchestration)
+   that only the engine should hold.
+3. The engine's package directories do not exist under the client package.
+
+The `test_detector_*` tests feed the checker known-bad source so a checker
+that silently matches nothing fails loudly instead of passing.
 """
 
 from __future__ import annotations
@@ -12,185 +26,155 @@ from __future__ import annotations
 import ast
 import pathlib
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-PKG_ROOT = REPO_ROOT / "mypalclara"
+import pytest
 
-# Directories that travel with the standalone engine.
-ENGINE_PACKAGES = [
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+PKG_NAME = "mypalclara"
+PKG_ROOT = REPO_ROOT / PKG_NAME
+
+# Engine-side distributions and the infrastructure only the engine may hold.
+FORBIDDEN_ROOTS = {
+    # engine / memory service code
+    "mypal_engine",
+    "clara_core",
+    "mypalace",
+    "mypalace_client",
+    # persistence
+    "sqlalchemy",
+    "alembic",
+    "psycopg2",
+    "asyncpg",
+    "redis",
+    # memory stores
+    "qdrant_client",
+    "falkordb",
+    "pgvector",
+    # LLM orchestration (the engine decides what Clara says)
+    "anthropic",
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "langchain_anthropic",
+    "langchain_aws",
+    # sandbox
+    "docker",
+}
+
+# Directories that belong to the engine and must not reappear here.
+ENGINE_DIRS = [
     "core",
     "db",
-    "config",
+    "gateway",
     "sandbox",
     "tools",
-    "gateway",
+    "ambient",
+    "workspace",
+    "services/email",
+    "services/backup",
     "services/proactive",
     "services/blog",
-    "services/email",
 ]
 
-FORBIDDEN_SDK_ROOTS = {
-    "discord",
-    "telethon",
-    "telegram",
-    "slack_sdk",
-    "slack_bolt",
-    "botbuilder",
-    "signalbot",
-    "whatsapp",
-}
-FORBIDDEN_INTERNAL_PREFIXES = ("mypalclara.adapters",)
 
-# Files (relative to mypalclara/) still expected to violate. Empty: the engine is clean.
-KNOWN_VIOLATIONS: set[str] = set()
+def _absolute_imports(source: str, filename: str = "<src>") -> set[str]:
+    """Every absolutely-imported module name in `source`, including lazy ones.
 
-
-def _iter_engine_files():
-    for pkg in ENGINE_PACKAGES:
-        base = PKG_ROOT / pkg
-        if not base.exists():
-            continue
-        for path in base.rglob("*.py"):
-            yield path
-
-
-def _imported_modules(path: pathlib.Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    `from pkg import name` yields both `pkg` and `pkg.name`, because `name`
+    may be a submodule (`from mypalclara import core`).
+    """
     modules: set[str] = set()
-    for node in ast.walk(tree):
+    for node in ast.walk(ast.parse(source, filename=filename)):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                modules.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module is not None and node.level == 0:
-                modules.add(node.module)
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module)
+            modules.update(f"{node.module}.{alias.name}" for alias in node.names)
     return modules
 
 
-def _is_forbidden(module: str) -> bool:
-    top = module.split(".")[0]
-    if top in FORBIDDEN_SDK_ROOTS:
-        return True
-    return any(module == p or module.startswith(p + ".") for p in FORBIDDEN_INTERNAL_PREFIXES)
+def _resolves_in_repo(module: str) -> bool:
+    """True if `module` is a package or module file in this repo."""
+    path = REPO_ROOT.joinpath(*module.split("."))
+    return (path / "__init__.py").exists() or path.with_suffix(".py").exists()
 
 
-def _current_violations() -> set[str]:
-    violations: set[str] = set()
-    for path in _iter_engine_files():
-        rel = path.relative_to(PKG_ROOT).as_posix()
-        if any(_is_forbidden(m) for m in _imported_modules(path)):
-            violations.add(rel)
-    return violations
+def _violations(source: str, filename: str = "<src>") -> set[str]:
+    """Imports in `source` that cross the client/engine boundary."""
+    bad: set[str] = set()
+    for module in _absolute_imports(source, filename):
+        parts = module.split(".")
+        if parts[0] in FORBIDDEN_ROOTS:
+            bad.add(module)
+        elif parts[0] == PKG_NAME and len(parts) > 1:
+            # `from mypalclara.x import name`: `mypalclara.x.name` is usually an
+            # attribute, not a module. Only the module part has to resolve, so
+            # accept the import if it or its parent is a real module here.
+            if not (_resolves_in_repo(module) or (len(parts) > 2 and _resolves_in_repo(".".join(parts[:-1])))):
+                bad.add(module)
+    return bad
 
 
-def test_engine_has_no_new_client_or_sdk_imports():
-    violations = _current_violations()
-    unexpected = violations - KNOWN_VIOLATIONS
-    assert not unexpected, f"New engine boundary violations: {sorted(unexpected)}"
+def _client_files() -> list[pathlib.Path]:
+    return sorted(PKG_ROOT.rglob("*.py"))
 
 
-def test_known_violations_allowlist_is_not_stale():
-    violations = _current_violations()
-    stale = KNOWN_VIOLATIONS - violations
-    assert not stale, "These files no longer violate — remove them from KNOWN_VIOLATIONS: " f"{sorted(stale)}"
+def test_client_package_is_scanned():
+    # Guards against the checker passing because it found nothing to check.
+    files = _client_files()
+    assert len(files) > 20, f"expected the client package under {PKG_ROOT}, found {len(files)} files"
+    assert (PKG_ROOT / "adapters" / "base.py").exists()
 
 
-# --- Client side must not import gateway internals (only mypal_protocol / HTTP API) ---
-
-CLIENT_PACKAGES = ["adapters"]
-
-# Files (relative to mypalclara/) still importing mypalclara.gateway.*. Shrinks to {}.
-KNOWN_CLIENT_GATEWAY_IMPORTS: set[str] = set()
-
-
-def _client_gateway_importers() -> set[str]:
-    found: set[str] = set()
-    for pkg in CLIENT_PACKAGES:
-        base = PKG_ROOT / pkg
-        for path in base.rglob("*.py"):
-            rel = path.relative_to(PKG_ROOT).as_posix()
-            for module in _imported_modules(path):
-                if module == "mypalclara.gateway" or module.startswith("mypalclara.gateway."):
-                    found.add(rel)
-                    break
-    return found
+def test_client_imports_no_engine_code():
+    offenders = {}
+    for path in _client_files():
+        bad = _violations(path.read_text(encoding="utf-8"), str(path))
+        if bad:
+            offenders[path.relative_to(REPO_ROOT).as_posix()] = sorted(bad)
+    assert not offenders, (
+        "Client files import engine code or engine-only infrastructure. "
+        "Use EngineApiClient (HTTP) or GatewayClient (WS) instead:\n"
+        + "\n".join(f"  {f}: {mods}" for f, mods in sorted(offenders.items()))
+    )
 
 
-def test_client_does_not_import_gateway_internals():
-    importers = _client_gateway_importers()
-    unexpected = importers - KNOWN_CLIENT_GATEWAY_IMPORTS
-    assert not unexpected, f"Client modules importing gateway internals: {sorted(unexpected)}"
+def test_engine_directories_do_not_exist_in_client():
+    present = [d for d in ENGINE_DIRS if (PKG_ROOT / d).exists()]
+    assert not present, f"Engine directories reappeared under {PKG_NAME}/: {present}"
 
 
-# --- Client must not import shared code relocated to client_common (Phase 2c, sub-plan 1) ---
-
-# Client-side directories (under mypalclara/) scanned for relocated-shared-code imports.
-CLIENT_SHARED_DIRS = ["adapters", "services/voice"]
-
-# Engine modules whose client-used symbols now live in mypalclara.client_common.
-FORBIDDEN_SHARED_MODULES = {"mypalclara.core.platform", "mypalclara.tools._base"}
-# Engine module → names the client must no longer import from it (the rest are Sub-plan 3).
-FORBIDDEN_SHARED_NAMES = {"mypalclara.db.models": {"gen_uuid"}}
-
-
-def _iter_client_shared_files():
-    for pkg in CLIENT_SHARED_DIRS:
-        base = PKG_ROOT / pkg
-        if not base.exists():
-            continue
-        yield from base.rglob("*.py")
-
-
-def test_client_does_not_import_relocated_shared_code():
-    violations: list[str] = []
-    for path in _iter_client_shared_files():
-        rel = path.relative_to(PKG_ROOT).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module in FORBIDDEN_SHARED_MODULES:
-                    violations.append(f"{rel}: imports {node.module}")
-                bad = FORBIDDEN_SHARED_NAMES.get(node.module, set())
-                for alias in node.names:
-                    if alias.name in bad:
-                        violations.append(f"{rel}: imports {alias.name} from {node.module}")
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name in FORBIDDEN_SHARED_MODULES:
-                        violations.append(f"{rel}: imports {alias.name}")
-    assert not violations, "Client imports relocated shared code from engine:\n" + "\n".join(violations)
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from mypalclara.core.memory_manager import MemoryManager",
+        "import mypalclara.gateway.processor",
+        "from mypalclara import db",
+        "from mypalclara.db.models import Session",
+        "def f():\n    from mypalclara.core.llm import make_llm\n",
+        "try:\n    import mypalclara.sandbox\nexcept ImportError:\n    pass\n",
+        "import mypal_engine.gateway",
+        "from mypalace_client import PalaceClient",
+        "import sqlalchemy",
+        "from qdrant_client import QdrantClient",
+        "from langchain_anthropic import ChatAnthropic",
+    ],
+)
+def test_detector_flags_boundary_violations(source):
+    assert _violations(source), f"checker missed a violation: {source!r}"
 
 
-# --- Client must not import engine modules that have been rewired to the API (Phase 2c, sub-plan 3) ---
-
-# Engine modules whose client uses are now routed through EngineApiClient. This set GROWS as each
-# rewire group lands; each entry forbids that module (and submodules) from all client packages.
-# Allowlist entries (file -> {modules}) carve out sites not yet rewired (e.g. MCP OAuth).
-CLIENT_REWIRED_ENGINE_PREFIXES: set[str] = {
-    "mypalclara.core.services.backup",
-    "mypalclara.sandbox",
-    "mypalclara.db",
-    "mypalclara.core.memory",
-    "mypalclara.core.mcp",
-}
-# Files still allowed to import a forbidden prefix (not yet fully rewired). Empty:
-# the client imports no rewired engine module anywhere.
-REWIRE_ALLOWLIST: dict[str, set[str]] = {}
-
-
-def _forbidden_rewired(module: str) -> str | None:
-    for prefix in CLIENT_REWIRED_ENGINE_PREFIXES:
-        if module == prefix or module.startswith(prefix + "."):
-            return prefix
-    return None
-
-
-def test_client_does_not_import_rewired_engine_modules():
-    violations: list[str] = []
-    for path in _iter_client_shared_files():
-        rel = path.relative_to(PKG_ROOT).as_posix()
-        allowed = REWIRE_ALLOWLIST.get(rel, set())
-        for module in _imported_modules(path):
-            hit = _forbidden_rewired(module)
-            if hit and hit not in allowed:
-                violations.append(f"{rel}: imports {module} (rewire to EngineApiClient)")
-    assert not violations, "Client still imports rewired engine modules:\n" + "\n".join(violations)
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from mypalclara.adapters.base import GatewayClient",
+        "from mypalclara.client_common.engine_client import EngineApiClient",
+        "from mypalclara.client_common import engine_client",
+        "import mypalclara.config.logging",
+        "from mypal_protocol import RegisterMessage",
+        "import discord",
+        "import httpx",
+        "from . import sibling",
+    ],
+)
+def test_detector_allows_client_imports(source):
+    assert not _violations(source), f"checker rejected a legitimate import: {source!r}"
