@@ -14,7 +14,6 @@ venv/
 ENV/
 
 # Poetry
-poetry.lock
 
 # Environment variables
 .env
