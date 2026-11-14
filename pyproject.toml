@@ -27,6 +27,11 @@ uvicorn = {extras = ["standard"], version = "^0.38.0"}
 # Rook memory system dependencies
 pydantic = "^2.0"  # Config validation
 
+# Wire contract. Its only home is the engine repo; pinned to a commit so the
+# client changes protocol only when this pin moves. Bump it (and relock) when
+# the engine changes mypal_protocol.
+mypal-protocol = { git = "https://github.com/BangRocket/mypal-engine.git", rev = "8ba4c4eb132a4586edcb34c84a986365bcfc47be", subdirectory = "mypal_protocol" }
+
 # PostgreSQL support
 
 # Caching

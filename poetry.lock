@@ -1790,6 +1790,26 @@ files = [
 ]
 
 [[package]]
+name = "mypal-protocol"
+version = "0.2.0"
+description = "Wire-protocol message models shared between mypal-engine and its clients."
+optional = false
+python-versions = ">=3.11,<3.14"
+groups = ["main"]
+files = []
+develop = false
+
+[package.dependencies]
+pydantic = ">=2,<3"
+
+[package.source]
+type = "git"
+url = "https://github.com/BangRocket/mypal-engine.git"
+reference = "8ba4c4eb132a4586edcb34c84a986365bcfc47be"
+resolved_reference = "8ba4c4eb132a4586edcb34c84a986365bcfc47be"
+subdirectory = "mypal_protocol"
+
+[[package]]
 name = "oauthlib"
 version = "4.0.1"
 description = "A generic, spec-compliant, thorough implementation of the OAuth request-signing logic"
@@ -3352,4 +3372,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "5311d55f1203f8f748e81163d166137ee38093a72f863170fce5e8dcf965d098"
+content-hash = "205ffd72e3742c97425b1006fa4b314709c868bd20a5a43c179a59dd516e8a5f"

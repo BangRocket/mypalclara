@@ -8,7 +8,7 @@ MyPalClara is the **client repo** for Clara — the platform adapters people use
 
 Adapters connect to a **running engine** over WebSocket (`:18789`) and HTTP API (`:18790`). They import **no** engine internals — only:
 
-- **`mypal_protocol`** — the shared Pydantic wire contract (vendored top-level package)
+- **`mypal_protocol`** — the shared Pydantic wire contract. Its only home is the engine repo; this repo installs it as the `mypal-protocol` git dependency, pinned to an engine commit in `pyproject.toml`
 - **`mypalclara.client_common`** — client helpers, incl. `EngineApiClient` (HTTP client for the engine API), plus relocated `platform`/`toolspec`/`ids` contracts
 - **`mypalclara.config.logging`** — client-retained console + Discord log handlers
 
@@ -55,7 +55,6 @@ git config core.hooksPath .githooks  # Enable hooks (run once)
 | `mypalclara/client_common/{platform,toolspec,ids}.py` | Contracts vendored out of the engine |
 | `mypalclara/config/logging.py` | Console + Discord log handlers (no DB handler — that's engine-side) |
 | `mypalclara/services/voice/` | Voice server (Pipecat / WebRTC) |
-| `mypal_protocol/` | Shared wire contract (Pydantic messages); installable as `mypal-protocol` |
 | `services/{discord,base}/` | Docker build contexts (client) |
 
 ### How adapters reach the engine
@@ -93,5 +92,7 @@ Message prefixes select the engine model tier per-message: `!high`/`!opus` (high
 
 ## Notes
 
-- Poetry runs in `package-mode = false` (code runs from the repo root on `sys.path`); `mypal_protocol/` is a vendored top-level package.
+- Poetry runs in `package-mode = false` (code runs from the repo root on `sys.path`).
+- **Changing the wire contract:** edit `mypal_protocol/` in mypal-engine first (bump `PROTOCOL_VERSION` if an older peer would misread the change), then move the `rev` pin in this repo's `pyproject.toml` to that engine commit and run `poetry lock`. Never add a local `mypal_protocol/` copy; `tests/protocol/test_installed.py` fails if one appears.
+- **Version handshake:** adapters send `PROTOCOL_VERSION` on register and log a warning if the engine reports a different one. The engine rejects mismatches only when `CLARA_GATEWAY_REQUIRE_PROTOCOL_VERSION=true`.
 - The deploy topology is two repos: run `mypal-engine` (engine + its infra: postgres/qdrant/redis/falkordb), then point these adapters at it via `CLARA_GATEWAY_*`.
