@@ -36,7 +36,13 @@ def _get_redis_client() -> "Redis | None":
     try:
         from redis import Redis
 
-        client = Redis.from_url(redis_url, decode_responses=True)
+        # Cache only — fail fast and fall through rather than block a request.
+        client = Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_timeout=float(os.getenv("REDIS_SOCKET_TIMEOUT", "2")),
+            socket_connect_timeout=float(os.getenv("REDIS_CONNECT_TIMEOUT", "2")),
+        )
         # Test connection
         client.ping()
         return client

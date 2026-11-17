@@ -29,7 +29,13 @@ def _get_graph_store():
             password = os.getenv("FALKORDB_PASSWORD") or None
             graph_name = os.getenv("FALKORDB_GRAPH_NAME", "clara")
 
-            db = FalkorDB(host=host, port=port, password=password)
+            db = FalkorDB(
+                host=host,
+                port=port,
+                password=password,
+                socket_timeout=float(os.getenv("FALKORDB_SOCKET_TIMEOUT", "10")),
+                socket_connect_timeout=float(os.getenv("FALKORDB_CONNECT_TIMEOUT", "5")),
+            )
             return db.select_graph(graph_name)
         except Exception as e:
             logger.error(f"Failed to connect to FalkorDB: {e}")

@@ -49,23 +49,40 @@ BLOCKING_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="gateway-io-",
 )
 
+# Separate pool for Palace retrieval. A timed-out retrieval can't be cancelled
+# (Python threads can't be killed), so it holds its thread until the backend
+# client timeouts fire. Isolating it means a stalled Palace can exhaust only this
+# pool — DB session/message calls on BLOCKING_EXECUTOR keep working.
+MEMORY_EXECUTOR = ThreadPoolExecutor(
+    max_workers=int(os.getenv("GATEWAY_MEMORY_THREADS", "8")),
+    thread_name_prefix="gateway-memory-",
+)
+
 # Memory fetch timeout (graceful degradation on Qdrant slowness)
 MEMORY_FETCH_TIMEOUT = float(os.getenv("MEMORY_FETCH_TIMEOUT", "30"))
 
 
-def _io_pool_stats() -> str:
-    """Diagnostic snapshot of BLOCKING_EXECUTOR.
+def _pool_stats(executor: ThreadPoolExecutor, label: str) -> str:
+    """Diagnostic snapshot of a thread pool.
 
-    io_queued > 0 means every worker thread is busy (possibly stuck) and new
+    <label>_queued > 0 means every worker thread is busy (possibly stuck) and new
     run_in_executor calls are waiting in line — a silent-hang signature.
     """
     try:
         return (
-            f"io_threads={len(BLOCKING_EXECUTOR._threads)}/{BLOCKING_EXECUTOR._max_workers} "
-            f"io_queued={BLOCKING_EXECUTOR._work_queue.qsize()}"
+            f"{label}_threads={len(executor._threads)}/{executor._max_workers} "
+            f"{label}_queued={executor._work_queue.qsize()}"
         )
     except Exception as e:  # private attrs — never let diagnostics break the request
-        return f"io_stats_unavailable({type(e).__name__})"
+        return f"{label}_stats_unavailable({type(e).__name__})"
+
+
+def _io_pool_stats() -> str:
+    return _pool_stats(BLOCKING_EXECUTOR, "io")
+
+
+def _memory_pool_stats() -> str:
+    return _pool_stats(MEMORY_EXECUTOR, "mem")
 
 
 @asynccontextmanager
@@ -706,12 +723,12 @@ class MessageProcessor:
         # Build prompt using layered retrieval (episodes, graph, memories)
         _t_layered = time.monotonic()
         logger.info(
-            f"[req {rid}] → build_prompt_layered (timeout {MEMORY_FETCH_TIMEOUT}s, {_io_pool_stats()})"
+            f"[req {rid}] → build_prompt_layered (timeout {MEMORY_FETCH_TIMEOUT}s, {_memory_pool_stats()})"
         )
         try:
             messages = await asyncio.wait_for(
                 loop.run_in_executor(
-                    BLOCKING_EXECUTOR,
+                    MEMORY_EXECUTOR,
                     lambda: self._memory_manager.build_prompt_layered(
                         user_id=user_id,
                         user_message=user_content,
@@ -729,8 +746,15 @@ class MessageProcessor:
         except (TimeoutError, asyncio.TimeoutError):
             logger.warning(
                 f"[req {rid}] Layered prompt build timed out after {MEMORY_FETCH_TIMEOUT}s, "
-                "falling back to minimal prompt. NOTE: the worker thread is NOT cancelled and "
-                f"keeps holding a BLOCKING_EXECUTOR slot ({_io_pool_stats()})"
+                "falling back to minimal prompt. The worker thread is not cancelled; it keeps a "
+                f"MEMORY_EXECUTOR slot until its client timeouts fire ({_memory_pool_stats()})"
+            )
+            messages = self._memory_manager.build_prompt(
+                [], [], None, recent_msgs, user_content,
+                privacy_scope=privacy_scope,
+                user_id=user_id,
+                system_prompts=system_prompts,
+                vault_snapshot_block=vault_snapshot_block,
             )
         except Exception as e:
             logger.error(
@@ -739,13 +763,6 @@ class MessageProcessor:
                 exc_info=True,
             )
             raise
-            messages = self._memory_manager.build_prompt(
-                [], [], None, recent_msgs, user_content,
-                privacy_scope=privacy_scope,
-                user_id=user_id,
-                system_prompts=system_prompts,
-                vault_snapshot_block=vault_snapshot_block,
-            )
 
         # Add gateway context
         last_message_at = recent_msgs[-1].created_at if recent_msgs else None
@@ -1191,45 +1208,53 @@ class MessageProcessor:
             from mypalclara.db.models import Message as DbMessage
             from mypalclara.db.models import Session
 
-            db = SessionLocal()
-            try:
-                channel_id = context.get("channel_id", "default")
-                thread = (
-                    db.query(Session)
-                    .filter(Session.user_id == user_id, Session.context_id == channel_id)
-                    .order_by(Session.last_activity_at.desc())
-                    .first()
-                )
-                if not thread:
-                    return
+            channel_id = context.get("channel_id", "default")
 
-                messages = (
-                    db.query(DbMessage)
-                    .filter(DbMessage.session_id == thread.id)
-                    .order_by(DbMessage.created_at.asc())
-                    .limit(30)
-                    .all()
-                )
+            def _load_reflection_messages() -> list[dict] | None:
+                # Synchronous SQLAlchemy — must run off the event loop, or a slow
+                # DB stalls every connection on the gateway.
+                db = SessionLocal()
+                try:
+                    thread = (
+                        db.query(Session)
+                        .filter(Session.user_id == user_id, Session.context_id == channel_id)
+                        .order_by(Session.last_activity_at.desc())
+                        .first()
+                    )
+                    if not thread:
+                        return None
 
-                msg_dicts = [
-                    {
-                        "role": msg.role,
-                        "content": msg.content,
-                        "name": msg.user_id if msg.role == "user" else "Clara",
-                        "timestamp": msg.created_at.isoformat() if msg.created_at else "",
-                    }
-                    for msg in messages
-                ]
-            finally:
-                db.close()
+                    messages = (
+                        db.query(DbMessage)
+                        .filter(DbMessage.session_id == thread.id)
+                        .order_by(DbMessage.created_at.asc())
+                        .limit(30)
+                        .all()
+                    )
 
-            if len(msg_dicts) < 4:
-                return
+                    return [
+                        {
+                            "role": msg.role,
+                            "content": msg.content,
+                            "name": msg.user_id if msg.role == "user" else "Clara",
+                            "timestamp": msg.created_at.isoformat() if msg.created_at else "",
+                        }
+                        for msg in messages
+                    ]
+                finally:
+                    db.close()
 
             loop = asyncio.get_event_loop()
+            async with _stage(request.id, "background: load reflection messages"):
+                msg_dicts = await loop.run_in_executor(BLOCKING_EXECUTOR, _load_reflection_messages)
+
+            if not msg_dicts or len(msg_dicts) < 4:
+                return
+
+            # Palace-heavy (LLM + embeddings + graph writes) — keep it off the DB pool.
             async with _stage(request.id, f"background: reflect_on_session ({len(msg_dicts)} msgs)", slow=30.0):
                 await loop.run_in_executor(
-                    BLOCKING_EXECUTOR,
+                    MEMORY_EXECUTOR,
                     lambda: self._memory_manager.reflect_on_session(
                         msg_dicts, user_id, session_id=context.get("channel_id")
                     ),

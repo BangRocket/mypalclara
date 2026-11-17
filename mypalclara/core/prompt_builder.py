@@ -446,8 +446,17 @@ class PromptBuilder:
 
             fut.add_done_callback(_done)
 
+        import os as _os
+
         _t_pool = _time.monotonic()
-        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="memory") as pool:
+        # One shared deadline for the whole parallel phase. (Previously each future
+        # got its own 15s in sequence — up to 4x15s — and the `with` block's exit
+        # then waited on stragglers indefinitely.)
+        _deadline = _t_pool + float(_os.getenv("MEMORY_BACKEND_TIMEOUT", "15"))
+        # Not a `with` block: ThreadPoolExecutor.__exit__ calls shutdown(wait=True),
+        # which blocks on any hung backend regardless of the result() timeout.
+        pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="memory")
+        try:
             futures = {}
 
             if PALACE is not None:
@@ -483,7 +492,7 @@ class PromptBuilder:
             # Collect results
             for key, future in futures.items():
                 try:
-                    result = future.result(timeout=15)
+                    result = future.result(timeout=max(0.0, _deadline - _time.monotonic()))
                     if key == "semantic":
                         semantic_memories = result.get("results", []) if isinstance(result, dict) else []
                     elif key == "graph":
@@ -505,15 +514,14 @@ class PromptBuilder:
             _pending = [k for k, f in futures.items() if not f.done()]
             if _pending:
                 logger.warning(
-                    f"[layered] leaving executor with backends STILL RUNNING: {_pending} — "
-                    "ThreadPoolExecutor.__exit__ will block until they finish (timeout is not enforced here)"
+                    f"[layered] abandoning backends still running past deadline: {_pending} — "
+                    "continuing without them (their threads finish in the background, bounded by client timeouts)"
                 )
-            _t_shutdown = _time.monotonic()
+        finally:
+            # Don't wait on stragglers; drop anything not yet started.
+            pool.shutdown(wait=False, cancel_futures=True)
 
-        _dt_shutdown = _time.monotonic() - _t_shutdown
-        (logger.warning if _dt_shutdown > 1 else logger.info)(
-            f"[layered] executor shutdown waited {_dt_shutdown:.2f}s (parallel phase total {_time.monotonic() - _t_pool:.2f}s)"
-        )
+        logger.info(f"[layered] parallel phase total {_time.monotonic() - _t_pool:.2f}s")
 
         # Non-embedding fetches (fast, no parallelization needed)
         if memory_manager and memory_manager.episode_store:

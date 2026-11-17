@@ -30,7 +30,10 @@ class HuggingFaceEmbedding(EmbeddingBase):
 
         from huggingface_hub import InferenceClient
 
-        kwargs = {"model": self.config.model, "token": token}
+        # Without a timeout the underlying HTTP call can block forever, pinning
+        # a worker thread (and with it a gateway executor slot) indefinitely.
+        timeout = float(os.getenv("HF_EMBED_TIMEOUT", "30"))
+        kwargs = {"model": self.config.model, "token": token, "timeout": timeout}
         try:
             self._client = InferenceClient(provider="hf-inference", **kwargs)
         except TypeError:

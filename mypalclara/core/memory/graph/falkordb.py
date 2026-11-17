@@ -55,6 +55,9 @@ class MemoryGraph:
             host=graph_config.get("host", "localhost"),
             port=graph_config.get("port", 6379),
             password=graph_config.get("password"),
+            # Default is no timeout: a stalled FalkorDB would block forever.
+            socket_timeout=float(os.getenv("FALKORDB_SOCKET_TIMEOUT", "10")),
+            socket_connect_timeout=float(os.getenv("FALKORDB_CONNECT_TIMEOUT", "5")),
         )
         self.graph = self.client.select_graph(graph_config.get("graph_name", "clara_memory"))
 
