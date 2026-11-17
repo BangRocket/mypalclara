@@ -78,7 +78,7 @@ def load_plugin_manifest(root_dir: Path) -> PluginManifestLoadResult:
         )
 
     try:
-        raw = manifest_path.read_text()
+        raw = manifest_path.read_text(encoding="utf-8")
         data: dict[str, Any] = json.loads(raw)
     except json.JSONDecodeError as e:
         return PluginManifestLoadResult(

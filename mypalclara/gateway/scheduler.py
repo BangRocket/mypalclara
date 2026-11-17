@@ -37,6 +37,7 @@ from typing import Any, Callable, Coroutine
 import yaml
 
 from mypalclara.config.logging import get_logger
+from mypalclara.core.shell import decode_output, kill_process_tree
 from mypalclara.gateway.events import Event, EventType, emit
 
 logger = get_logger("gateway.scheduler")
@@ -491,8 +492,8 @@ class Scheduler:
                 timeout=task.timeout,
             )
 
-            output = stdout.decode("utf-8", errors="replace")
-            error_output = stderr.decode("utf-8", errors="replace")
+            output = decode_output(stdout)
+            error_output = decode_output(stderr)
 
             if proc.returncode == 0:
                 return TaskResult(
@@ -509,7 +510,7 @@ class Scheduler:
                 )
 
         except asyncio.TimeoutError:
-            proc.kill()
+            await kill_process_tree(proc)
             return TaskResult(
                 task_name=task.name,
                 success=False,
@@ -535,7 +536,7 @@ class Scheduler:
             return 0
 
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load scheduler config: {e}")

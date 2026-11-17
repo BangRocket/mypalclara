@@ -78,7 +78,7 @@ def _load_voice_persona() -> str:
     base_persona = ""
     for p in persona_paths:
         if p.exists():
-            base_persona = p.read_text().strip()
+            base_persona = p.read_text(encoding="utf-8").strip()
             logger.info(f"Loaded voice persona from {p}")
             break
 

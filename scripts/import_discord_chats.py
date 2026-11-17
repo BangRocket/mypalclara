@@ -64,12 +64,12 @@ def load_chat_with_decisions(chat_path: Path) -> tuple[dict, list[dict]]:
     """
     decisions_path = chat_path.with_name(chat_path.stem + "_decisions.json")
 
-    with open(chat_path) as f:
+    with open(chat_path, encoding="utf-8") as f:
         chat = json.load(f)
 
     decisions = {}
     if decisions_path.exists():
-        with open(decisions_path) as f:
+        with open(decisions_path, encoding="utf-8") as f:
             decisions = json.load(f)
         logger.info(f"Loaded decisions from {decisions_path.name}")
     else:

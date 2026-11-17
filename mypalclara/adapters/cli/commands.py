@@ -681,7 +681,7 @@ class CommandDispatcher:
         except ImportError as e:
             return CommandResult(
                 handled=True,
-                error=f"Voice dependencies not available: {e}\nInstall: pip install sounddevice && brew install portaudio",
+                error=f"Voice dependencies not available: {e}\nInstall: pip install sounddevice (Linux also needs PortAudio: apt install libportaudio2)",
             )
         except Exception as e:
             return CommandResult(handled=True, error=f"Failed to start voice: {e}")

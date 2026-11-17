@@ -38,6 +38,7 @@ from typing import Any, Callable, Coroutine
 import yaml
 
 from mypalclara.config.logging import get_logger
+from mypalclara.core.shell import decode_output, kill_process_tree
 from mypalclara.gateway.events import Event, EventEmitter, EventType, get_event_emitter
 
 logger = get_logger("gateway.hooks")
@@ -316,8 +317,8 @@ class HookManager:
                 timeout=hook.timeout,
             )
 
-            output = stdout.decode("utf-8", errors="replace")
-            error_output = stderr.decode("utf-8", errors="replace")
+            output = decode_output(stdout)
+            error_output = decode_output(stderr)
 
             if proc.returncode == 0:
                 return HookResult(
@@ -334,7 +335,7 @@ class HookManager:
                 )
 
         except asyncio.TimeoutError:
-            proc.kill()
+            await kill_process_tree(proc)
             raise
 
     def _substitute_vars(self, command: str, env: dict[str, str]) -> str:
@@ -373,7 +374,7 @@ class HookManager:
             return 0
 
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load hooks file: {e}")

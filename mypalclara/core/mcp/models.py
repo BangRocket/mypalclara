@@ -359,7 +359,7 @@ def load_local_server_config(server_name: str) -> LocalServerConfig | None:
         return None
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
         return LocalServerConfig.from_dict(data)
     except (json.JSONDecodeError, OSError) as e:
@@ -383,7 +383,7 @@ def save_local_server_config(config: LocalServerConfig) -> bool:
         server_dir.mkdir(parents=True, exist_ok=True)
         config.updated_at = utcnow_iso()
 
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config.to_dict(), f, indent=2)
 
         return True
@@ -458,7 +458,7 @@ def load_remote_server_config(server_name: str) -> RemoteServerConfig | None:
         return None
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check if it's in standard MCP format
@@ -565,7 +565,7 @@ def save_remote_server_config(config: RemoteServerConfig, use_standard_format: b
         else:
             output = config.to_dict()
 
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2)
 
         return True
@@ -695,7 +695,7 @@ def migrate_legacy_config(legacy_path: Path) -> bool:
         True if migration successful
     """
     try:
-        with open(legacy_path) as f:
+        with open(legacy_path, encoding="utf-8") as f:
             data = json.load(f)
 
         server_name = data.get("name")
@@ -775,7 +775,7 @@ def load_server_config(server_name: str) -> LocalServerConfig | None:
     legacy_path = MCP_SERVERS_DIR / server_name / "config.json"
     if legacy_path.exists():
         try:
-            with open(legacy_path) as f:
+            with open(legacy_path, encoding="utf-8") as f:
                 data = json.load(f)
             return LocalServerConfig.from_dict(data)
         except Exception:

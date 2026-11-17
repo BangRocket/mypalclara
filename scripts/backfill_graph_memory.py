@@ -88,7 +88,7 @@ def load_progress() -> dict:
     """Load progress from file."""
     if PROGRESS_FILE.exists():
         try:
-            return json.loads(PROGRESS_FILE.read_text())
+            return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
         except Exception:
             return {}
     return {}
@@ -96,7 +96,7 @@ def load_progress() -> dict:
 
 def save_progress(progress: dict) -> None:
     """Save progress to file."""
-    PROGRESS_FILE.write_text(json.dumps(progress, indent=2))
+    PROGRESS_FILE.write_text(json.dumps(progress, indent=2), encoding="utf-8")
 
 
 def get_sessions_to_process(

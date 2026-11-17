@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from mypalclara.config.timefmt import strftime
+
 if TYPE_CHECKING:
     from zoneinfo import ZoneInfo
 
@@ -134,7 +136,7 @@ def format_user_timezone_timestamp(dt: datetime, timezone_name: str) -> str:
     try:
         tz = ZoneInfo(timezone_name)
         local_dt = dt.astimezone(tz)
-        return local_dt.strftime("%-I:%M %p %Z")
+        return strftime(local_dt, "%-I:%M %p %Z")
     except Exception:
         return dt.strftime("%H:%M UTC")
 

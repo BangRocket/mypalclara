@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from mypalclara.config.logging import get_logger
+from mypalclara.config.timefmt import strftime
 from mypalclara.core.llm.messages import AssistantMessage, SystemMessage, UserMessage
 from mypalclara.core.llm.messages import Message as LLMMessage
 from mypalclara.db import SessionLocal
@@ -813,7 +814,7 @@ class MessageProcessor:
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=UTC)
                         local_dt = dt.astimezone(chain_tz)
-                        ts_prefix = f"[{local_dt.strftime('%-I:%M %p')}] "
+                        ts_prefix = f"[{strftime(local_dt, '%-I:%M %p')}] "
                     except (ValueError, TypeError):
                         pass
 
@@ -929,7 +930,7 @@ class MessageProcessor:
         now = datetime.now(tz)
         parts = [
             "## Current Context",
-            f"- Current time: {now.strftime('%A, %B %d, %Y at %-I:%M %p')} ({tz_name})",
+            f"- Current time: {strftime(now, '%A, %B %d, %Y at %-I:%M %p')} ({tz_name})",
             f"- Platform: {request.metadata.get('platform', 'unknown')}",
         ]
 

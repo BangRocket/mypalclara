@@ -11,6 +11,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from mypalclara.core.shell import (
+    decode_output,
+    is_dangerous_command,
+    kill_process_tree,
+    shell_description,
+    terminate_process_tree,
+)
 from mypalclara.tools._base import ToolContext, ToolDef
 
 MODULE_NAME = "process"
@@ -36,7 +43,10 @@ You can start and manage background processes. This is useful for:
 - Output is buffered (last 1000 lines kept)
 - Processes timeout after 1 hour by default
 - Use `force=true` with process_stop for stubborn processes
+- Dangerous commands are blocked (same rules as execute_command)
 """.strip()
+
+SYSTEM_PROMPT += f"\n\n**Host shell:** commands run in {shell_description()}"
 
 
 @dataclass
@@ -68,12 +78,12 @@ async def _read_output(name: str, proc: asyncio.subprocess.Process, timeout: int
                 if not line:
                     break
                 if name in _processes:
-                    _processes[name].output_buffer.append(line.decode(errors="replace"))
+                    _processes[name].output_buffer.append(decode_output(line))
                     # Keep last 1000 lines
                     if len(_processes[name].output_buffer) > 1000:
                         _processes[name].output_buffer.pop(0)
     except asyncio.TimeoutError:
-        proc.terminate()
+        await terminate_process_tree(proc)
         if name in _processes:
             _processes[name].output_buffer.append(f"\n[Process timed out after {timeout}s]")
     except Exception as e:
@@ -92,6 +102,10 @@ async def process_start(args: dict[str, Any], ctx: ToolContext) -> str:
     name = args.get("name", f"proc_{int(time.time())}")
     timeout = args.get("timeout", 3600)  # Default 1 hour
     cwd = args.get("cwd")
+
+    is_dangerous, reason = is_dangerous_command(command)
+    if is_dangerous:
+        return f"Error: Command blocked for security reasons. {reason}"
 
     if name in _processes:
         tp = _processes[name]
@@ -191,17 +205,17 @@ async def process_stop(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Process '{name}' already finished (exit code {tp.process.returncode})."
 
     if force:
-        tp.process.kill()
+        await kill_process_tree(tp.process)
         action = "killed"
     else:
-        tp.process.terminate()
+        await terminate_process_tree(tp.process)
         action = "terminated"
 
     try:
         await asyncio.wait_for(tp.process.wait(), timeout=5.0)
     except asyncio.TimeoutError:
         if not force:
-            tp.process.kill()
+            await kill_process_tree(tp.process)
             await tp.process.wait()
             action = "force killed (did not respond to terminate)"
 
@@ -236,7 +250,8 @@ TOOLS = [
         name="process_start",
         description=(
             "Start a background process and track it. Use this for long-running commands "
-            "like development servers, builds, or any command that runs in the background."
+            "like development servers, builds, or any command that runs in the background. "
+            f"Commands run in {shell_description()}."
         ),
         parameters={
             "type": "object",
@@ -365,11 +380,11 @@ async def cleanup() -> None:
     for name in list(_processes.keys()):
         tp = _processes[name]
         if tp.process.returncode is None:
-            tp.process.terminate()
+            await terminate_process_tree(tp.process)
             try:
                 await asyncio.wait_for(tp.process.wait(), timeout=2.0)
             except asyncio.TimeoutError:
-                tp.process.kill()
+                await kill_process_tree(tp.process)
 
     _processes.clear()
 

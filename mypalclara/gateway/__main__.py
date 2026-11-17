@@ -4,8 +4,11 @@ Usage:
     # Start gateway in foreground
     python -m gateway
 
-    # Start gateway as daemon with all enabled adapters
+    # Start gateway (foreground) with all enabled adapters
     python -m gateway start
+
+    # Start gateway as a background daemon
+    python -m gateway start -d
 
     # Start gateway with specific adapter only
     python -m gateway start --adapter discord
@@ -52,7 +55,7 @@ def _get_version() -> str:
     """Read version from VERSION file."""
     version_file = Path(__file__).parent.parent.parent / "VERSION"
     if version_file.exists():
-        return version_file.read_text().strip()
+        return version_file.read_text(encoding="utf-8").strip()
     return "0.0.0"
 
 
@@ -81,12 +84,12 @@ def create_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   %(prog)s                      Run in foreground (development)
-  %(prog)s start                Start daemon with all enabled adapters
-  %(prog)s start -f             Start in foreground with adapters
+  %(prog)s start                Start in foreground with all enabled adapters
+  %(prog)s start -d             Start as background daemon with adapters
   %(prog)s start --adapter discord  Start with specific adapter
   %(prog)s stop                 Stop daemon
   %(prog)s status               Show running status
-  %(prog)s restart              Restart daemon
+  %(prog)s restart -d           Restart daemon
   %(prog)s adapter discord start  Start individual adapter
   %(prog)s logs                 Tail gateway logs
 """,
@@ -119,10 +122,12 @@ Examples:
         default=os.getenv("CLARA_ADAPTERS_CONFIG"),
         help="Path to adapters.yaml (default: gateway/adapters.yaml)",
     )
+    from mypalclara.gateway.daemon import DEFAULT_GATEWAY_PIDFILE
+
     parser.add_argument(
         "--pidfile",
-        default=os.getenv("CLARA_GATEWAY_PIDFILE", "/tmp/clara-gateway.pid"),
-        help="PID file path (default: /tmp/clara-gateway.pid)",
+        default=os.getenv("CLARA_GATEWAY_PIDFILE", DEFAULT_GATEWAY_PIDFILE),
+        help=f"PID file path (default: {DEFAULT_GATEWAY_PIDFILE})",
     )
     parser.add_argument(
         "--logfile",
@@ -133,12 +138,12 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Start command
-    start_parser = subparsers.add_parser("start", help="Start gateway daemon with adapters")
+    start_parser = subparsers.add_parser("start", help="Start gateway with adapters")
     start_parser.add_argument(
-        "-f",
-        "--foreground",
+        "-d",
+        "--daemon",
         action="store_true",
-        help="Run in foreground instead of daemonizing",
+        help="Run as a background daemon (default: foreground)",
     )
     start_parser.add_argument(
         "--adapter",
@@ -161,10 +166,10 @@ Examples:
     # Restart command
     restart_parser = subparsers.add_parser("restart", help="Restart gateway daemon")
     restart_parser.add_argument(
-        "-f",
-        "--foreground",
+        "-d",
+        "--daemon",
         action="store_true",
-        help="Run in foreground after restart",
+        help="Run as a background daemon after restart (default: foreground)",
     )
 
     # Adapter subcommand
@@ -207,7 +212,7 @@ def cmd_start(args: argparse.Namespace) -> None:
 
     # Check if already running
     if check_daemon_running(pidfile):
-        with open(pidfile) as f:
+        with open(pidfile, encoding="utf-8") as f:
             pid = f.read().strip()
         print(f"{_C.warn('Gateway already running')} {_C.dim(f'(PID: {pid})')}")
         sys.exit(1)
@@ -215,7 +220,7 @@ def cmd_start(args: argparse.Namespace) -> None:
     # [] = start no adapters, None = start all enabled, ["foo"] = start specific
     adapters = [] if args.no_adapters else args.adapters
 
-    if args.foreground:
+    if not args.daemon:
         _print_startup_info(args.host, args.port, adapters, args.no_adapters)
         _run_gateway(args, adapters)
     else:
@@ -261,7 +266,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     if config_path.exists() if isinstance(config_path, Path) else Path(config_path).exists():
         import yaml
 
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         adapter_names = list(config.get("adapters", {}).keys())
     else:
@@ -352,15 +357,35 @@ def cmd_logs(args: argparse.Namespace) -> None:
         print(_C.err(f"Log file not found: {logfile}"))
         sys.exit(1)
 
-    cmd = ["tail"]
-    if args.follow:
-        cmd.append("-f")
-    cmd.extend(["-n", str(args.lines), logfile])
+    import shutil
 
     try:
-        subprocess.run(cmd)
+        if shutil.which("tail"):
+            cmd = ["tail"]
+            if args.follow:
+                cmd.append("-f")
+            cmd.extend(["-n", str(args.lines), logfile])
+            subprocess.run(cmd)
+        else:
+            _tail_python(logfile, args.lines, args.follow)  # Windows: no tail
     except KeyboardInterrupt:
         pass
+
+
+def _tail_python(path: str, lines: int, follow: bool) -> None:
+    """Minimal ``tail -n N [-f]`` for platforms without tail."""
+    import collections
+    import time
+
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in collections.deque(f, maxlen=lines):
+            print(line, end="")
+        while follow:
+            line = f.readline()
+            if line:
+                print(line, end="", flush=True)
+            else:
+                time.sleep(0.5)
 
 
 def _start_adapter_directly(name: str, args: argparse.Namespace) -> None:
@@ -380,7 +405,7 @@ def _start_adapter_directly(name: str, args: argparse.Namespace) -> None:
 
     import yaml
 
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     adapters = config.get("adapters", {})
@@ -415,7 +440,7 @@ def _start_adapter_directly(name: str, args: argparse.Namespace) -> None:
     from mypalclara.gateway.daemon import get_adapter_pidfile
 
     pidfile = get_adapter_pidfile(name)
-    with open(pidfile, "w") as f:
+    with open(pidfile, "w", encoding="utf-8") as f:
         f.write(str(process.pid))
 
     print(f"  {_C.bold(name)}  {_C.ok('● started')}  {_C.dim(f'PID {process.pid}')}")
@@ -622,8 +647,9 @@ async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] 
 
     import signal
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    from mypalclara.config.signals import install_shutdown_handler
+
+    install_shutdown_handler(loop, signal_handler)
 
     logger.info("Gateway ready and accepting connections")
     logger.info(f"Connect adapters to: ws://{args.host}:{args.port}")
@@ -667,10 +693,13 @@ async def _async_run_gateway(args: argparse.Namespace, adapter_names: list[str] 
 
 def main() -> None:
     """Main entry point."""
+    from mypalclara.config.console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()  # banner/status output must not crash on redirected Windows consoles
     parser = create_parser()
     args = parser.parse_args()
 
-    # If no command, run in foreground with adapters (same as 'start -f')
+    # If no command, run in foreground with adapters (same as 'start')
     if args.command is None:
         _print_startup_info(args.host, args.port, None)
         # None = start all enabled adapters

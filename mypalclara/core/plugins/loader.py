@@ -206,7 +206,7 @@ class PluginLoader:
             pkg_json = path / "package.json"
             if pkg_json.exists():
                 try:
-                    pkg_data = json.loads(pkg_json.read_text())
+                    pkg_data = json.loads(pkg_json.read_text(encoding="utf-8"))
                     candidates = []
 
                     # Check for 'openclaw' metadata

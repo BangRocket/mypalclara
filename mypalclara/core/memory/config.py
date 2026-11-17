@@ -17,6 +17,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from mypalclara.config.timefmt import strftime
+
 # ---------------------------------------------------------------------------
 # Memory system tuning constants
 # ---------------------------------------------------------------------------
@@ -74,12 +76,13 @@ def _format_message_timestamp(dt: datetime | None) -> str:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         local_dt = dt.astimezone(tz)
-        return local_dt.strftime("%-I:%M %p")
+        return strftime(local_dt, "%-I:%M %p")
     except Exception:
         # Fallback to UTC
         if dt.tzinfo is None:
             return dt.strftime("%H:%M UTC")
-        return dt.strftime("%-I:%M %p")
+        return strftime(dt, "%-I:%M %p")
+
 
 # Use Clara's native memory system
 from mypalclara.core.memory.core.memory import ClaraMemory

@@ -1,0 +1,5 @@
+# Shell scripts and git hooks must keep LF line endings: they run on Linux (Docker, remote
+# hosts via sync_to_remote.sh) and a CRLF checkout (core.autocrlf=true on Windows) breaks them
+# with "/bin/bash^M: bad interpreter" / "$'\r': command not found".
+*.sh        text eol=lf
+.githooks/* text eol=lf

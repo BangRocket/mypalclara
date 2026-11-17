@@ -236,13 +236,13 @@ def write_json_files(memories: dict, output_dir: Path):
             continue
 
         filepath = output_dir / filename
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(items, f, indent=2)
         print(f"[bootstrap] Wrote {len(items)} items to {filepath}")
 
     # Write memory policy
     policy_path = output_dir / "memory_policy.json"
-    with open(policy_path, "w") as f:
+    with open(policy_path, "w", encoding="utf-8") as f:
         json.dump(DEFAULT_POLICY, f, indent=2)
     print(f"[bootstrap] Wrote memory policy to {policy_path}")
 
@@ -262,7 +262,7 @@ def load_existing_memories(output_dir: Path) -> dict:
     for namespace, filename in filename_map.items():
         filepath = output_dir / filename
         if filepath.exists():
-            with open(filepath) as f:
+            with open(filepath, encoding="utf-8") as f:
                 existing[namespace] = json.load(f)
 
     return existing
@@ -542,7 +542,7 @@ def main():
 
     # Read input
     print(f"[bootstrap] Reading {input_path}...")
-    profile_text = input_path.read_text()
+    profile_text = input_path.read_text(encoding="utf-8")
 
     # Check for existing generated files
     existing = load_existing_memories(output_dir)

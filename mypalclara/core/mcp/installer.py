@@ -45,6 +45,18 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
+async def _run_tool(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    """Run an external tool (git, npm, pnpm, yarn, uv, pip) without blocking the event loop.
+
+    The executable is resolved through PATH first: on Windows npm/pnpm/yarn are ``.cmd`` shims
+    that ``subprocess`` cannot launch by bare name (FileNotFoundError). On Unix this resolves to
+    the same binary the bare name would.
+    """
+    exe = shutil.which(cmd[0]) or cmd[0]
+    return await asyncio.to_thread(subprocess.run, [exe, *cmd[1:]], **kwargs)
+
+
 # Smithery API configuration
 SMITHERY_REGISTRY_URL = "https://registry.smithery.ai/servers"
 SMITHERY_API_TOKEN = os.getenv("SMITHERY_API_TOKEN", "")
@@ -615,7 +627,7 @@ class MCPInstaller:
 
         try:
             logger.info(f"[MCP Installer] Cloning {source}...")
-            result = subprocess.run(
+            result = await _run_tool(
                 ["git", "clone", "--depth", "1", source, str(clone_dir)],
                 capture_output=True,
                 text=True,
@@ -676,7 +688,7 @@ class MCPInstaller:
         package_json = repo_dir / "package.json"
         if package_json.exists():
             try:
-                with open(package_json) as f:
+                with open(package_json, encoding="utf-8") as f:
                     pkg = json.load(f)
                 workspaces = pkg.get("workspaces", [])
                 if workspaces:
@@ -711,7 +723,7 @@ class MCPInstaller:
                 pkg_json = pkg_dir / "package.json"
                 if pkg_json.exists():
                     try:
-                        with open(pkg_json) as f:
+                        with open(pkg_json, encoding="utf-8") as f:
                             pkg = json.load(f)
 
                         pkg_name = pkg.get("name", "").lower()
@@ -749,7 +761,7 @@ class MCPInstaller:
         try:
             import yaml
 
-            with open(smithery_yaml) as f:
+            with open(smithery_yaml, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
             start_command = config.get("startCommand", {})
@@ -795,7 +807,7 @@ class MCPInstaller:
         package_json = working_dir / "package.json"
         if package_json.exists():
             try:
-                with open(package_json) as f:
+                with open(package_json, encoding="utf-8") as f:
                     pkg = json.load(f)
 
                 scripts = pkg.get("scripts", {})
@@ -807,7 +819,7 @@ class MCPInstaller:
                     pkg_manager = "yarn"
 
                 logger.info(f"[MCP Installer] Installing dependencies with {pkg_manager}...")
-                subprocess.run(
+                await _run_tool(
                     [pkg_manager, "install"],
                     cwd=working_dir,
                     capture_output=True,
@@ -816,7 +828,7 @@ class MCPInstaller:
 
                 if "build" in scripts:
                     logger.info("[MCP Installer] Running build script...")
-                    subprocess.run(
+                    await _run_tool(
                         [pkg_manager, "run", "build"],
                         cwd=working_dir,
                         capture_output=True,
@@ -879,7 +891,7 @@ class MCPInstaller:
                 uv_path = shutil.which("uv")
                 if uv_path:
                     logger.info("[MCP Installer] Installing Python dependencies with uv...")
-                    subprocess.run(
+                    await _run_tool(
                         ["uv", "pip", "install", "."],
                         cwd=working_dir,
                         capture_output=True,
@@ -889,7 +901,7 @@ class MCPInstaller:
                     server.args = ["run", "python", "-m", name.replace("_", "-")]
                 else:
                     logger.info("[MCP Installer] Installing Python dependencies with pip...")
-                    subprocess.run(
+                    await _run_tool(
                         ["pip", "install", "."],
                         cwd=working_dir,
                         capture_output=True,
@@ -907,7 +919,7 @@ class MCPInstaller:
         if setup_py.exists():
             try:
                 logger.info("[MCP Installer] Installing Python package with pip...")
-                subprocess.run(
+                await _run_tool(
                     ["pip", "install", "."],
                     cwd=working_dir,
                     capture_output=True,

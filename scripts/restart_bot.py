@@ -35,7 +35,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 def get_pid_from_file(pidfile: str) -> int | None:
     """Read PID from file, returning None if not found or invalid."""
     try:
-        with open(pidfile, "r") as f:
+        with open(pidfile, "r", encoding="utf-8") as f:
             return int(f.read().strip())
     except (FileNotFoundError, ValueError):
         return None

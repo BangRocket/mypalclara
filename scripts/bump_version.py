@@ -70,18 +70,18 @@ def bump_version(current: str) -> str:
 def read_version() -> str:
     """Read current version from VERSION file."""
     if VERSION_FILE.exists():
-        return VERSION_FILE.read_text().strip()
+        return VERSION_FILE.read_text(encoding="utf-8").strip()
     return get_current_week_version()
 
 
 def write_version(version: str) -> None:
     """Write version to VERSION file and pyproject.toml."""
     # Update VERSION file
-    VERSION_FILE.write_text(version + "\n")
+    VERSION_FILE.write_text(version + "\n", encoding="utf-8")
 
     # Update pyproject.toml
     if PYPROJECT_FILE.exists():
-        content = PYPROJECT_FILE.read_text()
+        content = PYPROJECT_FILE.read_text(encoding="utf-8")
         # Replace version = "x.y.z" with new version
         updated = re.sub(
             r'^version\s*=\s*"[^"]+"',
@@ -89,7 +89,7 @@ def write_version(version: str) -> None:
             content,
             flags=re.MULTILINE,
         )
-        PYPROJECT_FILE.write_text(updated)
+        PYPROJECT_FILE.write_text(updated, encoding="utf-8")
 
 
 def main():

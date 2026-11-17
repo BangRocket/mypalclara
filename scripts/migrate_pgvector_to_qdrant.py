@@ -235,14 +235,14 @@ def save_checkpoint(offset: int, migrated: int, total: int) -> None:
         "total": total,
         "timestamp": datetime.now().isoformat(),
     }
-    CHECKPOINT_FILE.write_text(json.dumps(checkpoint, indent=2))
+    CHECKPOINT_FILE.write_text(json.dumps(checkpoint, indent=2), encoding="utf-8")
     logger.debug(f"Checkpoint saved: {checkpoint}")
 
 
 def load_checkpoint() -> dict | None:
     """Load migration checkpoint if exists."""
     if CHECKPOINT_FILE.exists():
-        return json.loads(CHECKPOINT_FILE.read_text())
+        return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
     return None
 
 

@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from mypalclara.core.shell import decode_output, is_dangerous_command, kill_process_tree
+
 # Timeout for command execution
 DEFAULT_TIMEOUT = 60  # seconds
 
@@ -59,6 +61,11 @@ SAFE_COMMANDS = {
     "tree",
     "less",
     "more",
+    # Windows (cmd) read-only equivalents
+    "dir",
+    "type",
+    "where",
+    "ver",
 }
 
 # Patterns that indicate dangerous commands requiring explicit "yes" confirmation
@@ -71,6 +78,15 @@ DANGEROUS_PATTERNS = [
     r":\(\)\s*\{\s*:\|",  # Fork bomb - exact pattern only
     r"chmod\s+777",  # Overly permissive
     r"chown\s+-R",  # Recursive ownership change
+    # Windows (cmd / PowerShell) equivalents
+    r"\b(rd|rmdir)\b.*\s/s\b",  # recursive directory delete
+    r"\b(del|erase)\b.*\s/s\b",  # recursive file delete
+    r"\b(remove-item|ri|rm)\b.*\s-r(ecurse)?\b",  # PowerShell recursive delete
+    r"\brunas\b|\bstart-process\b.*-verb\s+runas",  # elevation (sudo equivalent)
+    r"\bformat(\.com)?\s+[a-z]:",  # format drive
+    r"\b(diskpart|bcdedit)\b",  # disk / boot configuration
+    r"\breg(\.exe)?\s+(delete|add|import)\b",  # registry writes
+    r"\b(takeown|icacls)\b",  # ownership / ACL changes
 ]
 
 
@@ -103,8 +119,10 @@ def classify_command(command: str) -> CommandSafety:
         CommandSafety indicating the safety level
     """
     # Check for dangerous patterns first
+    if is_dangerous_command(command)[0]:
+        return CommandSafety.DANGEROUS
     for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return CommandSafety.DANGEROUS
 
     # Parse the base command (first word)
@@ -164,8 +182,8 @@ async def execute_shell(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             # Decode output
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
+            stdout = decode_output(stdout_bytes)
+            stderr = decode_output(stderr_bytes)
             exit_code = process.returncode or 0
 
             return ShellResult(
@@ -178,15 +196,20 @@ async def execute_shell(
 
         except asyncio.TimeoutError:
             # Kill the process on timeout
-            process.terminate()
-
-            # Give it 5 seconds to terminate gracefully
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                # Force kill if it doesn't respond
-                process.kill()
+            if os.name == "nt":
+                # terminate() would only kill the cmd.exe wrapper, leaving the command running
+                await kill_process_tree(process)
                 await process.wait()
+            else:
+                process.terminate()
+
+                # Give it 5 seconds to terminate gracefully
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    # Force kill if it doesn't respond
+                    process.kill()
+                    await process.wait()
 
             return ShellResult(
                 success=False,

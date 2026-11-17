@@ -97,8 +97,9 @@ async def main(host: str, port: int, hooks_dir: str, scheduler_dir: str) -> None
         logger.info("Received shutdown signal")
         stop_event.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    from mypalclara.config.signals import install_shutdown_handler
+
+    install_shutdown_handler(loop, signal_handler)
 
     logger.info("Gateway ready and accepting connections")
     logger.info(f"Connect adapters to: ws://{host}:{port}")

@@ -482,6 +482,11 @@ def init_logging(session_factory=None, console_level: int | None = None):
     if console_level is None:
         console_level = _get_console_level()
 
+    # Windows pipes/redirects default to cp1252 and choke on emoji / non-Latin text
+    from mypalclara.config.console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()
+
     # Clear any existing handlers on root logger (from basicConfig or other sources)
     root_logger = logging.getLogger()
     if root_logger.handlers:

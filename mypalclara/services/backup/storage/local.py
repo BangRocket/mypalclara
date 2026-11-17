@@ -87,14 +87,14 @@ class LocalBackend:
         if not marker.exists():
             return None
         try:
-            data = json.loads(marker.read_text())
+            data = json.loads(marker.read_text(encoding="utf-8"))
             return datetime.fromisoformat(data["timestamp"])
         except Exception:
             return None
 
     def set_last_backup_time(self, ts: datetime) -> None:
         marker = self.base_dir / MARKER_FILE
-        marker.write_text(json.dumps({"timestamp": ts.isoformat()}))
+        marker.write_text(json.dumps({"timestamp": ts.isoformat()}), encoding="utf-8")
 
     def cleanup_old(self, db_name: str, retention_days: int) -> int:
         cutoff = datetime.now(UTC) - timedelta(days=retention_days)

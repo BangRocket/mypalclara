@@ -26,6 +26,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from mypalclara.core.shell import (  # noqa: F401  (DANGEROUS_PATTERNS re-exported)
+    DANGEROUS_PATTERNS,
+    decode_output,
+    is_dangerous_command,
+    kill_process_tree,
+    shell_description,
+)
 from mypalclara.tools._base import ToolContext, ToolDef
 
 MODULE_NAME = "terminal"
@@ -60,40 +67,20 @@ You have access to terminal command execution and file system operations.
 - `update_file_content` - Update/replace at specific rows
 
 **Security Notes:**
-- Dangerous commands are blocked (rm -rf /, mkfs, fork bombs)
+- Dangerous commands are blocked (rm -rf /, mkfs, fork bombs, rd /s C:\\, format, diskpart)
 - File operations limited to 10 MB
 - Commands have configurable timeouts (default 30s)
 """.strip()
+
+SYSTEM_PROMPT += f"\n\n**Host shell:** commands run in {shell_description()}"
 
 
 # =============================================================================
 # Dangerous Command Detection
 # =============================================================================
 
-DANGEROUS_PATTERNS = [
-    r"rm\s+(-[rfRv]+\s+)*(/|/\*|\*/)",  # rm -rf / or rm -rf /*
-    r"rm\s+(-[rfRv]+\s+)+\.\.",  # rm -rf ..
-    r"mkfs\s",  # mkfs commands
-    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",  # Fork bomb
-    r"dd\s+.*of=/dev/(sd|hd|nvme)",  # dd to raw disk
-    r">\s*/dev/(sd|hd|nvme)",  # Redirect to raw disk
-    r"chmod\s+(-R\s+)?777\s+/",  # chmod 777 /
-    r"chown\s+(-R\s+)?.*\s+/\s*$",  # chown /
-]
-
-DANGEROUS_COMPILED = [re.compile(p, re.IGNORECASE) for p in DANGEROUS_PATTERNS]
-
-
-def is_dangerous_command(command: str) -> tuple[bool, str]:
-    """Check if a command is potentially dangerous.
-
-    Returns:
-        tuple: (is_dangerous, reason)
-    """
-    for pattern in DANGEROUS_COMPILED:
-        if pattern.search(command):
-            return True, f"Command matches dangerous pattern: {pattern.pattern}"
-    return False, ""
+# Blocklist (Unix + Windows forms) lives in mypalclara.core.shell; DANGEROUS_PATTERNS and
+# is_dangerous_command are imported above and remain available from this module.
 
 
 # =============================================================================
@@ -162,7 +149,7 @@ async def execute_command(args: dict[str, Any], ctx: ToolContext) -> str:
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            process.kill()
+            await kill_process_tree(process)  # on Windows, kill() alone leaves cmd's children running
             await process.wait()
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -180,8 +167,8 @@ async def execute_command(args: dict[str, Any], ctx: ToolContext) -> str:
             return f"Error: Command timed out after {timeout} seconds"
 
         duration_ms = int((time.time() - start_time) * 1000)
-        stdout_str = stdout.decode("utf-8", errors="replace")
-        stderr_str = stderr.decode("utf-8", errors="replace")
+        stdout_str = decode_output(stdout)
+        stderr_str = decode_output(stderr)
 
         entry = CommandHistoryEntry(
             command=command,
@@ -622,8 +609,8 @@ TOOLS = [
     ToolDef(
         name="execute_command",
         description=(
-            "Execute a terminal command with optional timeout. "
-            "Dangerous commands (rm -rf /, mkfs, fork bombs) are blocked for security."
+            f"Execute a terminal command with optional timeout. Commands run in {shell_description()}. "
+            "Dangerous commands (rm -rf /, mkfs, fork bombs, rd /s C:\\, format, diskpart) are blocked for security."
         ),
         parameters={
             "type": "object",

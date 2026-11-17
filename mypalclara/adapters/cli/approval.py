@@ -28,7 +28,7 @@ def show_write_preview(
     if path.exists():
         # File exists - show unified diff
         try:
-            old_content = path.read_text(errors="replace")
+            old_content = path.read_text(errors="replace", encoding="utf-8")
         except Exception:
             old_content = ""
 

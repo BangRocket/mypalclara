@@ -232,7 +232,7 @@ def migrate_qdrant_to_pgvector():
                 "payload": p.payload,
             }
         )
-    with open(backup_file, "w") as f:
+    with open(backup_file, "w", encoding="utf-8") as f:
         json.dump(backup_data, f)
     print(f"[migrate] Backup saved to {backup_file}")
 

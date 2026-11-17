@@ -214,8 +214,9 @@ async def main() -> None:
         logger.info("Received shutdown signal")
         stop_event.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    from mypalclara.config.signals import install_shutdown_handler
+
+    install_shutdown_handler(loop, signal_handler)
 
     # Run server
     runner = web.AppRunner(app)

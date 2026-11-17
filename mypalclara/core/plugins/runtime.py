@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, TypeAlias
 
+from mypalclara.core.shell import decode_output, kill_process_tree
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,19 +95,19 @@ class PluginRuntime:
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
-            return process.returncode or 0, stdout.decode(), stderr.decode()
+            return process.returncode or 0, decode_output(stdout), decode_output(stderr)
 
         except asyncio.TimeoutError:
             if process is not None:
-                process.kill()
+                await kill_process_tree(process)
                 try:
                     stdout, stderr = await process.communicate()
                 except Exception:
                     stdout, stderr = b"", b""
                 return (
                     -1,
-                    stdout.decode(),
-                    stderr.decode() or "Command timed out",
+                    decode_output(stdout),
+                    decode_output(stderr) or "Command timed out",
                 )
             return -1, "", "Command timed out"
         except Exception as e:

@@ -262,16 +262,24 @@ async def main() -> None:
         logger.info("Received shutdown signal")
         stop_event.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    from mypalclara.config.signals import install_shutdown_handler
+
+    install_shutdown_handler(loop, signal_handler)
 
     # Start bot
     try:
         async with bot:
-            await asyncio.gather(
-                bot.start(BOT_TOKEN),
-                stop_event.wait(),
-            )
+            # Return as soon as either the bot exits or a shutdown signal arrives
+            # (gather would keep waiting on bot.start() after the signal).
+            bot_task = asyncio.create_task(bot.start(BOT_TOKEN))
+            stop_task = asyncio.create_task(stop_event.wait())
+            done, _ = await asyncio.wait({bot_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+            stop_task.cancel()
+            if bot_task in done:
+                bot_task.result()  # re-raise bot errors into the handler below
+            else:
+                await bot.close()
+                await asyncio.gather(bot_task, return_exceptions=True)
     except Exception as e:
         logger.exception(f"Bot error: {e}")
     finally:

@@ -126,7 +126,7 @@ def save_oauth_state(server_name: str, state: OAuthState) -> bool:
     try:
         OAUTH_TOKENS_DIR.mkdir(parents=True, exist_ok=True)
         state.updated_at = datetime.now(timezone.utc).isoformat()
-        with open(_get_state_path(server_name), "w") as f:
+        with open(_get_state_path(server_name), "w", encoding="utf-8") as f:
             json.dump(state.to_dict(), f, indent=2)
         return True
     except OSError as e:
@@ -140,7 +140,7 @@ def load_oauth_state(server_name: str) -> OAuthState | None:
     if not path.exists():
         return None
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return OAuthState.from_dict(data)
     except (json.JSONDecodeError, OSError) as e:

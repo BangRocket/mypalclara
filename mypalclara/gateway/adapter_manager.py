@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -184,7 +185,7 @@ class AdapterManager:
             return configs
 
         try:
-            with open(self.config_path) as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
             adapters_data = data.get("adapters", {})
@@ -367,6 +368,10 @@ class AdapterManager:
         # Build environment
         env = os.environ.copy()
         env.update(config.env)
+        # Output goes to a pipe, not a TTY: keep stdout line-flushed so the relay sees it promptly
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        # The relay decodes UTF-8; without this, Windows children write the pipe as cp1252
+        env.setdefault("PYTHONUTF8", "1")
 
         # Build command
         cmd = [sys.executable, "-m", config.module]
@@ -389,7 +394,7 @@ class AdapterManager:
 
             # Write PID file
             pidfile = get_adapter_pidfile(name)
-            with open(pidfile, "w") as f:
+            with open(pidfile, "w", encoding="utf-8") as f:
                 f.write(str(process.pid))
 
             # Track metrics
@@ -399,8 +404,15 @@ class AdapterManager:
 
             logger.info(f"Adapter {name} started (PID: {process.pid})")
 
-            # Start output reader task
-            asyncio.create_task(self._read_output(name, process))
+            # Relay output on a dedicated thread: independent of the event loop and the shared
+            # default executor, so a busy/blocked gateway can't stall it (and with it, the adapter
+            # once the OS pipe buffer fills).
+            threading.Thread(
+                target=self._read_output,
+                args=(name, process),
+                name=f"adapter-output-{name}",
+                daemon=True,
+            ).start()
 
             return True
 
@@ -629,8 +641,8 @@ class AdapterManager:
 
         return False
 
-    async def _read_output(self, name: str, process: subprocess.Popen) -> None:
-        """Read and log adapter output.
+    def _read_output(self, name: str, process: subprocess.Popen) -> None:
+        """Read and log adapter output (runs on its own thread until the pipe closes).
 
         Args:
             name: Adapter name
@@ -647,11 +659,8 @@ class AdapterManager:
         log_pattern = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+(\w+)\s+\[([^\]]+)\]\s*(.*)$")
         adapter_logger = get_logger(f"adapter.{name}")
 
-        try:
-            while True:
-                line = await asyncio.get_event_loop().run_in_executor(None, process.stdout.readline)
-                if not line:
-                    break
+        for line in iter(process.stdout.readline, b""):
+            try:
                 line_str = line.decode("utf-8", errors="replace").rstrip()
                 if not line_str:
                     continue
@@ -665,12 +674,16 @@ class AdapterManager:
                     level_str = match.group(2).upper()
                     message = match.group(4)
                     level = getattr(logging, level_str, logging.INFO)
+                    if not isinstance(level, int):
+                        level = logging.INFO
                     adapter_logger.log(level, message)
                 else:
                     # Non-log output (like "[logging] Initializing...")
                     adapter_logger.info(clean_line)
-        except Exception:
-            pass  # Process likely terminated
+            except Exception:
+                # Never let one bad line kill the relay: a dead relay stops draining the pipe,
+                # and the adapter then blocks on its next write.
+                logger.exception(f"Failed to relay output line from adapter {name}")
 
 
 # Singleton instance

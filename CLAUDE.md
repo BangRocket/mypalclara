@@ -13,8 +13,9 @@ MyPalClara is a personal AI assistant (Clara) with session management, persisten
 poetry install                    # Install dependencies
 poetry run ruff check . && poetry run ruff format .  # Lint + format
 
-# Run gateway with all adapters
+# Run gateway with all adapters (foreground; add -d to daemonize)
 poetry run python -m mypalclara.gateway start
+poetry run python -m mypalclara.gateway start -d
 
 # Run specific adapter only
 poetry run python -m mypalclara.gateway start --adapter discord
