@@ -409,15 +409,44 @@ class PromptBuilder:
 
         # Pre-embed the query once to warm the cache, so all parallel
         # searches get cache hits instead of each calling the HF API
+        import time as _time
+
+        _t_layered = _time.monotonic()
+        logger.info(f"[layered] start user={user_id} palace={'yes' if PALACE is not None else 'NONE'}")
+
         if PALACE is not None:
+            _t0 = _time.monotonic()
+            logger.info("[layered] pre-embed: calling embedding model")
             try:
                 PALACE.embedding_model.embed(user_message, "search")
-            except Exception:
-                pass
+                _dt = _time.monotonic() - _t0
+                (logger.warning if _dt > 5 else logger.info)(f"[layered] pre-embed: done in {_dt:.2f}s")
+            except Exception as e:
+                logger.warning(
+                    f"[layered] pre-embed FAILED after {_time.monotonic() - _t0:.2f}s: {type(e).__name__}: {e!r}",
+                    exc_info=True,
+                )
 
         # Run searches in parallel (all hit embedding cache now)
         vch_snippets = []
 
+        def _track(key: str, fut: Any, started: float) -> None:
+            """Log every backend's real completion time, even after we've stopped waiting."""
+
+            def _done(f: Any) -> None:
+                dt = _time.monotonic() - started
+                exc = f.exception()
+                if exc is not None:
+                    logger.warning(
+                        f"[layered] {key}: raised after {dt:.2f}s: {type(exc).__name__}: {exc!r}",
+                        exc_info=exc,
+                    )
+                else:
+                    (logger.warning if dt > 5 else logger.info)(f"[layered] {key}: finished in {dt:.2f}s")
+
+            fut.add_done_callback(_done)
+
+        _t_pool = _time.monotonic()
         with ThreadPoolExecutor(max_workers=4, thread_name_prefix="memory") as pool:
             futures = {}
 
@@ -447,6 +476,10 @@ class PromptBuilder:
                 )
             )
 
+            for _key, _fut in futures.items():
+                _track(_key, _fut, _t_pool)
+            logger.info(f"[layered] submitted backends: {list(futures)}")
+
             # Collect results
             for key, future in futures.items():
                 try:
@@ -463,25 +496,58 @@ class PromptBuilder:
                     elif key == "vch":
                         vch_snippets = result if isinstance(result, list) else []
                 except Exception as e:
-                    logger.debug(f"{key} fetch failed: {e}")
+                    # NB: str(TimeoutError()) is "" — always log the type.
+                    logger.warning(
+                        f"[layered] {key} fetch gave up after {_time.monotonic() - _t_pool:.2f}s: "
+                        f"{type(e).__name__}: {e!r}"
+                    )
+
+            _pending = [k for k, f in futures.items() if not f.done()]
+            if _pending:
+                logger.warning(
+                    f"[layered] leaving executor with backends STILL RUNNING: {_pending} — "
+                    "ThreadPoolExecutor.__exit__ will block until they finish (timeout is not enforced here)"
+                )
+            _t_shutdown = _time.monotonic()
+
+        _dt_shutdown = _time.monotonic() - _t_shutdown
+        (logger.warning if _dt_shutdown > 1 else logger.info)(
+            f"[layered] executor shutdown waited {_dt_shutdown:.2f}s (parallel phase total {_time.monotonic() - _t_pool:.2f}s)"
+        )
 
         # Non-embedding fetches (fast, no parallelization needed)
         if memory_manager and memory_manager.episode_store:
+            _t0 = _time.monotonic()
+            logger.info("[layered] recent_episodes: start")
             try:
                 recent_episodes = [
                     ep.__dict__ if hasattr(ep, "__dict__") else ep
                     for ep in memory_manager.episode_store.get_recent(user_id, limit=5)
                 ]
+                logger.info(f"[layered] recent_episodes: {len(recent_episodes)} in {_time.monotonic() - _t0:.2f}s")
             except Exception as e:
-                logger.debug(f"Recent episode fetch failed: {e}")
+                logger.warning(
+                    f"[layered] recent_episodes FAILED after {_time.monotonic() - _t0:.2f}s: {type(e).__name__}: {e!r}",
+                    exc_info=True,
+                )
 
+            _t0 = _time.monotonic()
+            logger.info("[layered] active_arcs: start")
             try:
                 active_arcs = [
                     arc.__dict__ if hasattr(arc, "__dict__") else arc
                     for arc in memory_manager.episode_store.get_active_arcs(user_id)
                 ]
+                logger.info(f"[layered] active_arcs: {len(active_arcs)} in {_time.monotonic() - _t0:.2f}s")
             except Exception as e:
-                logger.debug(f"Active arc fetch failed: {e}")
+                logger.warning(
+                    f"[layered] active_arcs FAILED after {_time.monotonic() - _t0:.2f}s: {type(e).__name__}: {e!r}",
+                    exc_info=True,
+                )
+        else:
+            logger.warning("[layered] no episode_store on memory_manager — episodes/arcs skipped")
+
+        logger.info(f"[layered] retrieval complete in {_time.monotonic() - _t_layered:.2f}s, building context")
 
         # --- Build layered context ---
         layered_context = retrieval.build_context(

@@ -423,6 +423,14 @@ def _start_adapter_directly(name: str, args: argparse.Namespace) -> None:
 
 def _run_gateway(args: argparse.Namespace, adapter_names: list[str] | None) -> None:
     """Run the gateway (and optionally adapters) in the current process."""
+    # Hang diagnostics: `kill -USR1 <gateway pid>` dumps every thread's stack to stderr
+    # (the daemon logfile when run with -d). Shows exactly where a stuck request is blocked.
+    import faulthandler
+    import signal
+
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+
     try:
         asyncio.run(_async_run_gateway(args, adapter_names))
     except KeyboardInterrupt:

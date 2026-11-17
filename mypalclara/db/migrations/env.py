@@ -24,10 +24,16 @@ config = context.config
 if os.getenv("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Interpret the config file for Python logging — ONLY when nothing has configured
+# logging yet (i.e. the standalone `alembic` CLI). When migrations run in-process
+# (db.connection.run_alembic_migrations at gateway/adapter startup), the app's
+# logging is already set up; fileConfig would replace its handlers, drop the root
+# level to WARNING, and (by default) disable every existing logger — silently
+# muting all gateway logs, including errors, for the rest of the process.
+import logging
+
+if config.config_file_name is not None and not logging.getLogger().handlers:
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Import Base metadata for autogenerate support
 # This allows Alembic to detect schema changes against our models

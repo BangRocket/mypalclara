@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +51,37 @@ BLOCKING_EXECUTOR = ThreadPoolExecutor(
 
 # Memory fetch timeout (graceful degradation on Qdrant slowness)
 MEMORY_FETCH_TIMEOUT = float(os.getenv("MEMORY_FETCH_TIMEOUT", "30"))
+
+
+def _io_pool_stats() -> str:
+    """Diagnostic snapshot of BLOCKING_EXECUTOR.
+
+    io_queued > 0 means every worker thread is busy (possibly stuck) and new
+    run_in_executor calls are waiting in line — a silent-hang signature.
+    """
+    try:
+        return (
+            f"io_threads={len(BLOCKING_EXECUTOR._threads)}/{BLOCKING_EXECUTOR._max_workers} "
+            f"io_queued={BLOCKING_EXECUTOR._work_queue.qsize()}"
+        )
+    except Exception as e:  # private attrs — never let diagnostics break the request
+        return f"io_stats_unavailable({type(e).__name__})"
+
+
+@asynccontextmanager
+async def _stage(req_id: str, name: str, slow: float = 5.0):
+    """Log entry/exit/duration of a request stage. A '→' with no matching '←' marks a hang."""
+    t0 = time.monotonic()
+    logger.info(f"[req {req_id}] → {name} ({_io_pool_stats()})")
+    try:
+        yield
+    except BaseException as e:
+        logger.warning(
+            f"[req {req_id}] ✗ {name} after {time.monotonic() - t0:.2f}s: {type(e).__name__}: {e!r}"
+        )
+        raise
+    dt = time.monotonic() - t0
+    (logger.warning if dt > slow else logger.info)(f"[req {req_id}] ← {name} {dt:.2f}s")
 
 # Per-user VM feature flag
 USER_VM_ENABLED = os.getenv("USER_VM_ENABLED", "false").lower() == "true"
@@ -397,7 +430,8 @@ class MessageProcessor:
         is_dm = request.channel.type == "dm"
         is_mention = request.metadata.get("is_mention", False)
         if TARGET_CLASSIFIER_ENABLED and not is_dm and not is_mention:
-            target = await self._classify_target(request)
+            async with _stage(request.id, "classify_target"):
+                target = await self._classify_target(request)
             if target != "CLARA":
                 logger.info(f"Skipping {request.id} — classified as {target}, not directed at Clara")
                 await self._send(
@@ -413,7 +447,8 @@ class MessageProcessor:
         # Determine model tier
         tier = request.tier_override
         if not tier and AUTO_TIER_ENABLED:
-            tier = await self._classify_tier(request)
+            async with _stage(request.id, "classify_tier"):
+                tier = await self._classify_tier(request)
             logger.info(f"Auto-tier classification: {tier}")
 
         # Send response start
@@ -433,17 +468,23 @@ class MessageProcessor:
             if node:
                 adapter_capabilities = node.capabilities
 
-            tools = (
-                await self._tool_executor.get_all_tools(
-                    adapter_capabilities=adapter_capabilities,
-                    user_id=request.user.id,
+            async with _stage(request.id, "get_all_tools"):
+                tools = (
+                    await self._tool_executor.get_all_tools(
+                        adapter_capabilities=adapter_capabilities,
+                        user_id=request.user.id,
+                    )
+                    if self._tool_executor
+                    else []
                 )
-                if self._tool_executor
-                else []
-            )
 
             # Build context and process (tools passed for WORM capability inventory)
-            context = await self._build_context(request, tools=tools)
+            async with _stage(request.id, "build_context (total)", slow=10.0):
+                context = await self._build_context(request, tools=tools)
+
+            _t_llm = time.monotonic()
+            _first_event_logged = False
+            logger.info(f"[req {request.id}] → llm generate_with_tools ({len(tools)} tools)")
 
             # Extract images from attachments
             images = [att for att in request.attachments if att.type == "image"]
@@ -463,6 +504,11 @@ class MessageProcessor:
                 images=images if images else None,
             ):
                 event_type = event.get("type")
+                if not _first_event_logged:
+                    _first_event_logged = True
+                    logger.info(
+                        f"[req {request.id}] llm first event '{event_type}' after {time.monotonic() - _t_llm:.2f}s"
+                    )
 
                 if event_type == "tool_start":
                     await self._send(
@@ -506,8 +552,11 @@ class MessageProcessor:
                     tool_count = event.get("tool_count", 0)
                     files = event.get("files", [])
 
+            logger.info(f"[req {request.id}] ← llm generate_with_tools {time.monotonic() - _t_llm:.2f}s")
+
             # Store messages in DB (fast — must complete before response)
-            await self._store_messages_db(request, full_text, context)
+            async with _stage(request.id, "store_messages_db"):
+                await self._store_messages_db(request, full_text, context)
 
             # Convert file paths to FileData with content
             file_data_list = await self._prepare_file_data(files)
@@ -560,25 +609,30 @@ class MessageProcessor:
         channel_id = request.channel.id
         is_dm = request.channel.type == "dm"
 
+        rid = request.id
+
         # Get or create database session for persistence
-        db_session = await loop.run_in_executor(
-            BLOCKING_EXECUTOR,
-            lambda: self._get_or_create_db_session(user_id, channel_id, is_dm),
-        )
+        async with _stage(rid, "db: get_or_create_session"):
+            db_session = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._get_or_create_db_session(user_id, channel_id, is_dm),
+            )
 
         # Fetch recent messages from database
-        recent_msgs = await loop.run_in_executor(
-            BLOCKING_EXECUTOR,
-            lambda: self._get_recent_messages(db_session.id, user_id=user_id),
-        )
+        async with _stage(rid, "db: recent_messages"):
+            recent_msgs = await loop.run_in_executor(
+                BLOCKING_EXECUTOR,
+                lambda: self._get_recent_messages(db_session.id, user_id=user_id),
+            )
 
         # Fetch channel-wide context for group channels
         channel_context_msgs = []
         if not is_dm:
-            channel_context_msgs = await loop.run_in_executor(
-                BLOCKING_EXECUTOR,
-                lambda: self._get_channel_context(f"channel-{channel_id}"),
-            )
+            async with _stage(rid, "db: channel_context"):
+                channel_context_msgs = await loop.run_in_executor(
+                    BLOCKING_EXECUTOR,
+                    lambda: self._get_channel_context(f"channel-{channel_id}"),
+                )
 
         # Prepare user content with text file attachments
         user_content = request.content
@@ -606,13 +660,15 @@ class MessageProcessor:
             register_user_workspace(user_id, None)
 
             try:
-                await self._vm_manager.ensure_vm(user_id)
+                async with _stage(rid, "user_vm: ensure_vm"):
+                    await self._vm_manager.ensure_vm(user_id)
 
                 # Load workspace files into prompt builder cache (DMs only — privacy)
                 if is_dm:
-                    await self._memory_manager.load_user_workspace(user_id, self._vm_manager)
+                    async with _stage(rid, "user_vm: load_workspace"):
+                        await self._memory_manager.load_user_workspace(user_id, self._vm_manager)
             except Exception as e:
-                logger.warning(f"Could not set up user VM for {user_id}: {e}")
+                logger.warning(f"Could not set up user VM for {user_id}: {e!r}", exc_info=True)
 
         # Check intentions for this message
         fired_intentions = []
@@ -621,14 +677,15 @@ class MessageProcessor:
                 "channel_name": request.channel.name or "",
                 "is_dm": is_dm,
             }
-            fired_intentions = await loop.run_in_executor(
-                BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.check_intentions(user_id, user_content, intention_context),
-            )
+            async with _stage(rid, "check_intentions"):
+                fired_intentions = await loop.run_in_executor(
+                    BLOCKING_EXECUTOR,
+                    lambda: self._memory_manager.check_intentions(user_id, user_content, intention_context),
+                )
             if fired_intentions:
                 logger.info(f"Fired {len(fired_intentions)} intentions for {user_id}")
         except Exception as e:
-            logger.debug(f"Could not check intentions: {e}")
+            logger.warning(f"Could not check intentions: {type(e).__name__}: {e!r}", exc_info=True)
 
         # Gather per-tool system_prompts and per-user vault snapshot block.
         system_prompts: list[tuple[str, str]] = []
@@ -640,12 +697,17 @@ class MessageProcessor:
             try:
                 from mypalclara.core.obsidian import fetch_vault_snapshot_block
 
-                vault_snapshot_block = await fetch_vault_snapshot_block(user_id)
+                async with _stage(rid, "obsidian vault snapshot"):
+                    vault_snapshot_block = await fetch_vault_snapshot_block(user_id)
             except Exception as e:
                 logger.warning("Failed to fetch Obsidian vault snapshot: %s", e, exc_info=True)
                 vault_snapshot_block = None
 
         # Build prompt using layered retrieval (episodes, graph, memories)
+        _t_layered = time.monotonic()
+        logger.info(
+            f"[req {rid}] → build_prompt_layered (timeout {MEMORY_FETCH_TIMEOUT}s, {_io_pool_stats()})"
+        )
         try:
             messages = await asyncio.wait_for(
                 loop.run_in_executor(
@@ -663,11 +725,20 @@ class MessageProcessor:
                 ),
                 timeout=MEMORY_FETCH_TIMEOUT,
             )
+            logger.info(f"[req {rid}] ← build_prompt_layered {time.monotonic() - _t_layered:.2f}s")
         except (TimeoutError, asyncio.TimeoutError):
             logger.warning(
-                f"Layered prompt build timed out after {MEMORY_FETCH_TIMEOUT}s, "
-                "falling back to minimal prompt"
+                f"[req {rid}] Layered prompt build timed out after {MEMORY_FETCH_TIMEOUT}s, "
+                "falling back to minimal prompt. NOTE: the worker thread is NOT cancelled and "
+                f"keeps holding a BLOCKING_EXECUTOR slot ({_io_pool_stats()})"
             )
+        except Exception as e:
+            logger.error(
+                f"[req {rid}] build_prompt_layered raised after {time.monotonic() - _t_layered:.2f}s: "
+                f"{type(e).__name__}: {e!r}",
+                exc_info=True,
+            )
+            raise
             messages = self._memory_manager.build_prompt(
                 [], [], None, recent_msgs, user_content,
                 privacy_scope=privacy_scope,
@@ -1028,7 +1099,7 @@ class MessageProcessor:
 
             logger.debug(f"Background memory ops completed for {request.id}")
         except Exception as e:
-            logger.warning(f"Background memory ops failed for {request.id}: {e}")
+            logger.warning(f"Background memory ops failed for {request.id}: {type(e).__name__}: {e!r}", exc_info=True)
 
     async def _track_sentiment(
         self,
@@ -1087,7 +1158,7 @@ class MessageProcessor:
 
             logger.debug(f"Promoted {len(memory_ids)} memories for user {user_id}")
         except Exception as e:
-            logger.warning(f"Failed to promote memories: {e}")
+            logger.warning(f"Failed to promote memories: {type(e).__name__}: {e!r}", exc_info=True)
 
     async def _maybe_reflect(
         self, context: dict[str, Any], request: Any, response: str
@@ -1156,14 +1227,15 @@ class MessageProcessor:
                 return
 
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                BLOCKING_EXECUTOR,
-                lambda: self._memory_manager.reflect_on_session(
-                    msg_dicts, user_id, session_id=context.get("channel_id")
-                ),
-            )
+            async with _stage(request.id, f"background: reflect_on_session ({len(msg_dicts)} msgs)", slow=30.0):
+                await loop.run_in_executor(
+                    BLOCKING_EXECUTOR,
+                    lambda: self._memory_manager.reflect_on_session(
+                        msg_dicts, user_id, session_id=context.get("channel_id")
+                    ),
+                )
         except Exception as e:
-            logger.warning(f"Periodic reflection failed for {user_id}: {e}")
+            logger.warning(f"Periodic reflection failed for {user_id}: {type(e).__name__}: {e!r}", exc_info=True)
 
     def _get_tool_emoji(self, tool_name: str) -> str:
         """Get emoji for a tool.

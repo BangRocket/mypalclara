@@ -60,7 +60,7 @@ def init_db(run_migrations: bool = True) -> None:
         try:
             run_alembic_migrations()
         except Exception as e:
-            logger.warning(f"Migration failed: {e}")
+            logger.error(f"Migration failed: {type(e).__name__}: {e}", exc_info=True)
 
     # Always run create_all to ensure new tables exist
     # (create_all only creates tables that don't exist, it's safe to call after migrations)
