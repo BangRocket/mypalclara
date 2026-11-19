@@ -43,7 +43,6 @@ def configure_cli_logging() -> Path:
         "httpx",
         "anthropic",
         "openai",
-        "clara_core",
         "mypalclara.core.config",
         "mypalclara.core.mcp",
         "mypalclara.core.mcp.client",

@@ -5,7 +5,7 @@ The Clara plugin system provides a unified architecture for extending Clara with
 ## Quick Start
 
 ```python
-from clara_core.plugins import initialize_plugins, get_registry
+from mypalclara.core.plugins import initialize_plugins, get_registry
 
 # Initialize the plugin system
 registry = await initialize_plugins(
@@ -117,8 +117,8 @@ my_plugin/
 ### 3. Plugin Code (`plugin.py`)
 
 ```python
-from clara_core.plugins import PluginAPI, PluginContext
-from clara_core.plugins._base import ToolDef, ToolContext
+from mypalclara.core.plugins import PluginAPI, PluginContext
+from mypalclara.tools._base import ToolDef, ToolContext
 
 
 def register(api: PluginAPI):
@@ -195,7 +195,7 @@ async def _on_message_received(event) -> None:
 
 Plugins are discovered from these locations (in order):
 
-1. **Bundled**: `<codebase>/clara_core/plugins/bundled/`
+1. **Bundled**: `<codebase>/mypalclara/plugins/bundled/`
 2. **Global**: `~/.mypalclara/plugins/`
 3. **Workspace**: `<workspace>/.mypalclara/plugins/`
 4. **Extra**: From `config.plugin_paths` in main config
@@ -316,7 +316,7 @@ Existing tool modules that export `TOOLS` lists continue to work via the compati
 
 ```python
 # Old-style tool (still works)
-from clara_core.tools._base import ToolDef
+from mypalclara.tools._base import ToolDef
 
 TOOLS = [
     ToolDef(name="old_tool", ...),
@@ -352,7 +352,7 @@ logging.basicConfig(level=logging.DEBUG)
 Check plugin status:
 
 ```python
-from clara_core.plugins import get_plugin_status
+from mypalclara.core.plugins import get_plugin_status
 
 status = get_plugin_status()
 for plugin_id, info in status.items():
@@ -372,7 +372,7 @@ Test your plugin by:
 
 ## Examples
 
-See `clara_core/plugins/examples/` for complete example plugins.
+See `mypalclara/core/plugins/examples/` for complete example plugins.
 
 ## API Reference
 
@@ -470,6 +470,6 @@ await shutdown_plugins()
 ## Support
 
 For questions or issues:
-- Check the example plugins in `clara_core/plugins/examples/`
+- Check the example plugins in `mypalclara/core/plugins/examples/`
 - Review the OpenClaw plugin system for inspiration
 - Examine existing Clara tools for patterns

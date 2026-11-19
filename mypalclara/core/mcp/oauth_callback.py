@@ -6,7 +6,7 @@ and other MCP servers that require authentication.
 Can be run standalone or integrated into a FastAPI/ASGI application:
 
 Standalone:
-    python -m clara_core.mcp.oauth_callback --port 8080
+    python -m mypalclara.core.mcp.oauth_callback --port 8080
 
 Integration:
     from mypalclara.core.mcp.oauth_callback import get_oauth_router

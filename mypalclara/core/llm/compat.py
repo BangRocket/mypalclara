@@ -1,4 +1,4 @@
-"""Backward compatibility layer for the old clara_core/llm.py API.
+"""Backward compatibility layer for the old monolithic llm.py module API.
 
 This module provides the same function signatures as the old llm.py,
 but implemented using the new unified provider architecture.

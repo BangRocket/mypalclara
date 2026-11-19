@@ -217,7 +217,7 @@ def _get_llm_config() -> dict | None:
         logger.info(f"Palace LLM Base URL: {base_url}")
 
     # Use unified provider for all backends
-    # This ensures consistent behavior with clara_core.llm
+    # This ensures consistent behavior with mypalclara.core.llm
     return {
         "provider": "unified",
         "config": {

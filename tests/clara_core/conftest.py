@@ -1,4 +1,4 @@
-"""Shared fixtures for clara_core tests."""
+"""Shared fixtures for mypalclara.core tests."""
 
 from __future__ import annotations
 

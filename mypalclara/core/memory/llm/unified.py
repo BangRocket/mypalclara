@@ -1,7 +1,7 @@
-"""Unified LLM implementation using the new clara_core.llm providers.
+"""Unified LLM implementation using the new mypalclara.core.llm providers.
 
 This module bridges the memory system's LLMBase interface with the
-unified LLM provider architecture in clara_core.llm.
+unified LLM provider architecture in mypalclara.core.llm.
 
 Benefits:
 - Consistent LLM behavior across chat and memory systems
@@ -53,7 +53,7 @@ class UnifiedLLMConfig(BaseLlmConfig):
 
 
 class UnifiedLLM(LLMBase):
-    """Memory system LLM using unified clara_core.llm providers.
+    """Memory system LLM using unified mypalclara.core.llm providers.
 
     This class adapts the new LLMProvider interface to the memory
     system's LLMBase interface, ensuring consistent behavior across

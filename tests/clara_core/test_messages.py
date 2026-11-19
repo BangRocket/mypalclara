@@ -1,4 +1,4 @@
-"""Tests for the typed message format (clara_core.llm.messages)."""
+"""Tests for the typed message format (mypalclara.core.llm.messages)."""
 
 from __future__ import annotations
 

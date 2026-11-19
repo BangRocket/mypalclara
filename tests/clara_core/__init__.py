@@ -1,1 +1,1 @@
-"""Tests for clara_core modules."""
+"""Tests for mypalclara.core modules."""

@@ -1,7 +1,7 @@
 """Unified LLM Provider Architecture for Clara.
 
 This module provides a standardized interface for all LLM providers used in Clara.
-It replaces the old clara_core/llm.py with a more organized, maintainable structure.
+It replaces the old monolithic llm.py module with a more organized, maintainable structure.
 
 Key Components:
 - LLMConfig: Unified configuration dataclass

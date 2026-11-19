@@ -112,9 +112,9 @@ async def init_tools(
             if skip_modules:
                 logger.debug(f"Skipping modules replaced by MCP: {skip_modules}")
         except ImportError:
-            pass  # clara_core.tools not available
+            pass  # mypalclara.core.core_tools not available
 
-    # Also skip chat_history and system_logs - they're now in clara_core/tools
+    # Also skip chat_history and system_logs - they're now in mypalclara/core/core_tools
     skip_modules.extend(["chat_history", "system_logs"])
 
     loader = get_loader(skip_modules=skip_modules)
